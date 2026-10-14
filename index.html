@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rugby Play Designer</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <input id="play-name" type="text" value="Untitled play" aria-label="Play name" spellcheck="false" maxlength="60">
+    <div class="segmented" role="group" aria-label="Pitch view">
+      <button type="button" data-view="full">Full pitch</button>
+      <button type="button" data-view="half">Half pitch</button>
+    </div>
+  </header>
+
+  <nav class="toolbar" aria-label="Tools">
+    <div class="group">
+      <h2>Players</h2>
+      <button type="button" data-action="add-attack"><span class="swatch attack"></span>Add attack</button>
+      <button type="button" data-action="add-defense"><span class="swatch defense"></span>Add defender</button>
+    </div>
+    <div class="group">
+      <h2>Markers</h2>
+      <button type="button" data-object="ball">Ball</button>
+      <button type="button" data-object="ruck">Ruck</button>
+      <button type="button" data-object="scrum">Scrum</button>
+      <button type="button" data-object="lineout">Lineout</button>
+    </div>
+    <div class="group" id="route-tools">
+      <h2>Routes</h2>
+      <!-- filled from ROUTE_TYPES in app.js -->
+    </div>
+    <div class="group">
+      <h2>Edit</h2>
+      <button type="button" data-action="delete" class="danger">Delete</button>
+      <p class="tip">Double-click a player to rename. Drag a route's dot to bend it. Esc clears.</p>
+    </div>
+  </nav>
+
+  <main class="pitch-wrap">
+    <svg id="pitch" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Rugby pitch">
+      <defs id="defs"></defs>
+      <g id="pitch-layer"></g>
+      <g id="objects-layer"></g>
+      <g id="routes-layer"></g>
+      <g id="players-layer"></g>
+    </svg>
+    <div class="legend" id="legend" aria-hidden="true"></div>
+  </main>
+</body>
+</html>
