@@ -116,7 +116,7 @@
     <div class="phase-nav">
       <button type="button" data-phase="prev" aria-label="Previous phase" title="Previous phase (←)">‹<span class="long">&nbsp;Prev</span></button>
       <div class="phase-tabs" id="phase-tabs" role="group" aria-label="Phase"></div>
-      <button type="button" data-phase="add" class="add-phase" aria-label="Add phase" title="Add phase: players move to the end of their runs, the ball follows the last pass">+</button>
+      <button type="button" data-phase="add" class="add-phase" aria-label="Add phase" title="Add a phase at the end, built from the last one: players move to the end of their runs, the ball goes to the receiver">+</button>
       <button type="button" data-phase="next" aria-label="Next phase" title="Next phase (→)"><span class="long">Next&nbsp;</span>›</button>
     </div>
     <div class="phase-tools">
@@ -125,6 +125,7 @@
         <button type="button" data-phase="left" aria-label="Move phase left" title="Move phase left">◂<span class="long">&nbsp;Move</span></button>
         <button type="button" data-phase="right" aria-label="Move phase right" title="Move phase right"><span class="long">Move&nbsp;</span>▸</button>
       </div>
+      <button type="button" data-phase="insert" title="Insert a phase straight after this one, built from it. Later phases are kept as they are.">Insert after</button>
       <button type="button" data-phase="delete" class="danger">Delete<span class="long">&nbsp;phase</span></button>
       <textarea id="phase-note" rows="1" placeholder="Note for this phase" aria-label="Phase note"></textarea>
     </div>
@@ -145,14 +146,14 @@
     </form>
   </dialog>
 
-  <dialog id="image-dialog" aria-labelledby="image-title">
+  <dialog id="save-dialog" aria-labelledby="save-title">
     <form method="dialog">
-      <h2 id="image-title">Save image</h2>
-      <img id="image-preview" alt="Picture of the current phase">
-      <p class="tip">Press and hold the picture to save it, or open it in a new tab.</p>
+      <h2 id="save-title">Save image</h2>
+      <img id="save-preview" alt="Picture of the current phase">
+      <p class="tip" id="save-tip">Press and hold the picture to save it, or open it in a new tab.</p>
       <div class="choices">
-        <button type="button" id="image-share" hidden>Share…</button>
-        <a id="image-open" class="button" target="_blank" rel="noopener">Open in new tab</a>
+        <button type="button" id="save-share" hidden>Share…</button>
+        <a id="save-open" class="button" target="_blank" rel="noopener">Open in new tab</a>
         <button value="">Close</button>
       </div>
     </form>

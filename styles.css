@@ -259,11 +259,11 @@ dialog legend { padding: 0; margin-bottom: .45rem; font-weight: 600; }
 dialog .choices { display: flex; gap: .5rem; }
 dialog .choices button { flex: 1; justify-content: center; padding: .6rem; }
 dialog .cancel { margin: .75rem 0 0 auto; }
-#image-dialog { max-width: min(30rem, calc(100vw - 2rem)); }
-#image-preview { display: block; max-width: 100%; max-height: 60dvh; margin: 0 auto; border-radius: 4px; }
-#image-dialog .choices { flex-wrap: wrap; margin-top: .6rem; }
-#image-dialog .choices > * { flex: 1; justify-content: center; }
-#image-dialog [hidden] { display: none; }
+#save-dialog { max-width: min(30rem, calc(100vw - 2rem)); }
+#save-preview { display: block; max-width: 100%; max-height: 60dvh; margin: 0 auto; border-radius: 4px; }
+#save-dialog .choices { flex-wrap: wrap; margin-top: .6rem; }
+#save-dialog .choices > * { flex: 1; justify-content: center; }
+#save-dialog [hidden] { display: none; }
 
 /* SVG: pitch. All sizes are in metres (SVG user units). */
 .grass { fill: #3d8b40; }
@@ -320,6 +320,7 @@ dialog .cancel { margin: .75rem 0 0 auto; }
 .handle.bend .handle-dot { fill: #ffeb3b; }
 
 /* SVG: previous phase shown faintly */
+.ghost-routes { opacity: .3; }
 .ghost circle { fill: none; stroke-width: .18; stroke-dasharray: .45 .3; opacity: .75; }
 .ghost.attack circle { stroke: #ffb3b3; }
 .ghost.defense circle { stroke: #b3d1ff; }
@@ -327,20 +328,6 @@ dialog .cancel { margin: .75rem 0 0 auto; }
 .badge { cursor: pointer; }
 .badge circle { fill: #1d1d1d; stroke-width: .2; }
 .badge text { fill: #fff; font-family: system-ui, sans-serif; font-weight: 700; pointer-events: none; }
-
-/* Print view for "Save PDF": one page per phase. Only shown while printing it. */
-.print-view { display: none; }
-@media print {
-  body.printing { display: block; height: auto; background: #fff; }
-  body.printing > :not(.print-view) { display: none !important; }
-  body.printing .print-view { display: block; }
-  .print-page { break-after: page; text-align: center; color: #000; }
-  .print-page:last-child { break-after: auto; }
-  .print-page h1 { margin: 0 0 4mm; font-size: 16pt; }
-  .print-page svg { display: block; margin: 0 auto; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-  .print-phase { margin: 4mm 0 1mm; font-size: 12pt; font-weight: 600; }
-  .print-note { margin: 0 auto; max-width: 180mm; font-size: 11pt; white-space: pre-wrap; }
-}
 
 /* Phone: toolbar moves to the bottom and scrolls sideways */
 @media (max-width: 700px) {
@@ -368,8 +355,8 @@ dialog .cancel { margin: .75rem 0 0 auto; }
   .phasebar { gap: .4rem; padding: .4rem .5rem; }
   .phase-nav { flex-basis: 100%; }
   .phase-tabs { flex: 1; max-width: none; }
-  .phase-tools { flex-basis: 100%; }
-  #phase-note { min-width: 0; resize: none; }
+  .phase-tools { flex-basis: 100%; flex-wrap: wrap; }
+  #phase-note { flex-basis: 100%; min-width: 0; resize: none; }
   .legend { left: .75rem; bottom: .75rem; grid-template-columns: repeat(3, auto auto); font-size: .7rem; }
   .legend .route-sample { width: 1.8rem; }
 }

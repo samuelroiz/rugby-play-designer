@@ -113,7 +113,11 @@ export function parsePlay(data) {
     for (const r of routes) {
       if (!isObj(r) || typeof r.id !== 'string' || typeof r.type !== 'string' || !Array.isArray(r.points) || r.points.length < 2 || !r.points.every(isPoint)) fail('a route is broken');
     }
-    return { ...ph, note: typeof ph.note === 'string' ? ph.note : '', positions, objects, routes };
+    // A route's "from" and a pass's "to" must name a player in the play; otherwise that end is loose.
+    const ids = new Set(players.map(p => p.id));
+    const end = id => (typeof id === 'string' && ids.has(id) ? id : null);
+    const checked = routes.map(r => ({ ...r, from: end(r.from), ...(r.type === 'pass' ? { to: end(r.to) } : {}) }));
+    return { ...ph, note: typeof ph.note === 'string' ? ph.note : '', positions, objects, routes: checked };
   });
 
   let tags = data.tags ?? [];

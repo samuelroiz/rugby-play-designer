@@ -3,15 +3,19 @@
 // and schedules the autosave, so every change to the play is undoable and saved without extra wiring.
 
 import { drawPitch, setView, viewCentre, startSpot, svgEl, uprightTurn, PLAYER_R } from './pitch.js';
-import { initEditor, routeGeometry, nextId } from './editor.js';
+import { initEditor, routeGeometry, nextId, isAttached } from './editor.js';
 import { placeScrum, moveScrum } from './setpiece.js';
-import { nextPhase } from './phases.js';
+import { appendPhase, insertPhaseAfter, movePhase } from './phases.js';
 import { createHistory } from './history.js';
 import { blankPlay, loadAutosave, saveAutosave, downloadPlay, downloadBlob, readPlayFile, safeFileName } from './storage.js';
-import { pictureSvg, pageCss, svgToPng, pageFit, printPages } from './export.js';
+import { pictureSvg, pageCss, svgToPng, pageFit, makePdf } from './export.js';
 
 const MAX_PER_TEAM = 15;
 const BADGE_R = 0.9;
+// A pass attached to a receiver stops this far from their centre, so its arrowhead touches their disc.
+const PASS_END_GAP = PLAYER_R + 0.2;
+// PDF pages: the pitch picture is drawn at this many times its size in CSS px on the page (about 190 dpi).
+const PDF_SCALE = 2;
 const AUTOSAVE_MS = 400;
 // Smallest touch target for route handles and lines, in screen pixels (converted to metres at draw time).
 const HANDLE_HIT_PX = 22;
@@ -44,6 +48,7 @@ const ui = {
   selected: null,
   dragging: false,
   snap: null, // player a route being drawn will attach to (highlighted)
+  snapTo: null, // receiver a pass being drawn will end on (highlighted)
   layers: { distances: true, grid: false, legend: true, ghost: true },
   orientationChosen: false, // once the user picks one, stop following the phone's rotation
 };
@@ -73,6 +78,7 @@ function replacePlay(play, phaseIndex = 0) {
   ui.phase = Math.min(Math.max(0, phaseIndex), state.phases.length - 1);
   ui.selected = null;
   ui.tool = null;
+  inputsStale = true;
 }
 
 const history = createHistory({
@@ -125,6 +131,7 @@ let pitchKey = '';
 // `commitKey` groups typing in one text box into a single undo step.
 function render(commitKey = null) {
   if (!ui.tool && !ui.dragging) ui.snap = null;
+  if (!ui.dragging) ui.snapTo = null;
   drawScene();
   updateToolbar();
   updatePhaseBar();
@@ -183,6 +190,9 @@ function badgePosition(r, geometry) {
   return { x: sx + tx * 0.6 - ty * side * out, y: sy + ty * 0.6 + tx * side * out };
 }
 
+// The drawn shape of a route: a pass to a receiver stops at the edge of their disc.
+const drawnGeometry = r => routeGeometry(r, { endGap: r.to ? PASS_END_GAP : 0 });
+
 function renderRoutes() {
   const layer = layers.routes;
   layer.replaceChildren();
@@ -192,10 +202,10 @@ function renderRoutes() {
   const lineHit = Math.max(1.6, LINE_HIT_PX / ppm);
   for (const r of phase().routes) {
     const selected = isSelected('route', r.id);
-    const cls = `route${selected ? ' selected' : ''}${r.from ? '' : ' loose'}`;
+    const cls = `route${selected ? ' selected' : ''}${isAttached(r) ? '' : ' loose'}`;
     const g = svgEl('g', { class: cls, 'data-kind': 'route', 'data-id': r.id }, layer);
     const geometry = routeGeometry(r);
-    const { d } = geometry;
+    const { d } = drawnGeometry(r);
     if (selected) svgEl('path', { d, class: 'route-highlight', 'stroke-width': (ROUTE_TYPES[r.type]?.width ?? 0.3) + 0.9 }, g);
     svgEl('path', { d, class: 'route-hit', 'stroke-width': lineHit }, g);
     routePaths(g, 'path', { d }, r.type);
@@ -236,7 +246,7 @@ function renderPlayers() {
     const cls = `player ${p.team}${isSelected('player', p.id) ? ' selected' : ''}`;
     const g = svgEl('g', { class: cls, 'data-kind': 'player', 'data-id': p.id, transform: `translate(${pos.x} ${pos.y})${turn()}` }, layer);
     svgEl('circle', { r: PLAYER_R * 1.6, class: 'hit' }, g); // bigger touch target
-    if (ui.snap === p.id) svgEl('circle', { r: PLAYER_R + 0.55, class: 'snap-ring' }, g);
+    if (ui.snap === p.id || ui.snapTo === p.id) svgEl('circle', { r: PLAYER_R + 0.55, class: 'snap-ring' }, g);
     svgEl('circle', { r: PLAYER_R, class: 'body' }, g);
     playerText(g, p.label);
   }
@@ -250,12 +260,15 @@ function playerText(g, label) {
   }, g).textContent = label;
 }
 
-// The previous phase's players as faint outlines, so you can see who moved where. Not clickable.
+// The previous phase's routes and players, faintly, so you can see who moved where. The whole layer
+// ignores the pointer. Routes have no badges or handles, so nothing in it reads as the current phase.
 function renderGhost() {
   const layer = layers.ghost;
   layer.replaceChildren();
   const prev = state.phases[ui.phase - 1];
   if (!ui.layers.ghost || !prev) return;
+  const routes = svgEl('g', { class: 'ghost-routes' }, layer);
+  for (const r of prev.routes) routePaths(routes, 'path', { d: drawnGeometry(r).d }, r.type);
   for (const p of state.players) {
     const pos = prev.positions[p.id];
     if (!pos) continue;
@@ -370,13 +383,22 @@ function updatePhaseBar() {
   btn('delete').disabled = n === 1;
 }
 
-// Text boxes follow the state (after undo, load or a phase change), except the one being typed in.
+// Text boxes follow the state, except the one being typed in. But when the play is replaced (undo, load,
+// New play) or the note box's phase changes, every box is refreshed even if it has the focus: Safari keeps
+// the focus in a text box when a button is tapped, and a stale box would write its old text over the new
+// play or phase on the next keystroke.
+let inputsStale = true;
+let notePhase = null; // the phase object whose note the note box shows
 function syncInputs() {
-  const set = (el, value) => { if (document.activeElement !== el && el.value !== value) el.value = value; };
-  set(inputs.name, state.name);
-  set(inputs.category, state.category);
-  set(inputs.tags, state.tags.join(', '));
-  set(inputs.note, phase().note);
+  const force = inputsStale;
+  const forceNote = force || notePhase !== phase();
+  inputsStale = false;
+  notePhase = phase();
+  const set = (el, value, always) => { if ((always || document.activeElement !== el) && el.value !== value) el.value = value; };
+  set(inputs.name, state.name, force);
+  set(inputs.category, state.category, force);
+  set(inputs.tags, state.tags.join(', '), force);
+  set(inputs.note, phase().note, forceNote);
 }
 
 // --- Actions ---
@@ -422,7 +444,7 @@ function deleteSelected() {
     state.players = state.players.filter(p => p.id !== sel.id);
     for (const each of state.phases) {
       delete each.positions[sel.id];
-      each.routes = each.routes.filter(r => r.from !== sel.id);
+      each.routes = each.routes.filter(r => r.from !== sel.id && r.to !== sel.id);
     }
   } else if (sel.kind === 'route') {
     ph.routes = ph.routes.filter(r => r.id !== sel.id);
@@ -463,22 +485,18 @@ function goToPhase(i) {
   ui.tool = null;
 }
 
-// Phase bar actions. Each returns after changing state; the caller re-renders.
+// Phase bar actions. Each returns after changing state; the caller re-renders, which records one undo step.
 function phaseAction(action, index) {
   const i = ui.phase;
   const phases = state.phases;
   if (action === 'prev') goToPhase(i - 1);
   else if (action === 'next') goToPhase(i + 1);
   else if (action === 'goto') goToPhase(index);
-  else if (action === 'add') {
-    phases.splice(i + 1, 0, nextPhase(phases[i], state.players));
-    ui.phase = i + 1;
+  else if (action === 'add' || action === 'insert') {
+    ui.phase = action === 'add' ? appendPhase(phases, state.players) : insertPhaseAfter(phases, i, state.players);
     ui.tool = null;
   } else if (action === 'left' || action === 'right') {
-    const j = action === 'left' ? i - 1 : i + 1;
-    if (j < 0 || j >= phases.length) return;
-    [phases[i], phases[j]] = [phases[j], phases[i]];
-    ui.phase = j;
+    ui.phase = movePhase(phases, i, action === 'left' ? i - 1 : i + 1);
   } else if (action === 'delete') {
     if (phases.length === 1) return;
     if (!confirm(`Delete phase ${i + 1}? You can undo this.`)) return;
@@ -494,7 +512,7 @@ async function fileAction(action) {
   } else if (action === 'png') {
     savePng();
   } else if (action === 'pdf') {
-    printAllPhases();
+    savePdf();
   } else if (action === 'load') {
     $('load-input').click();
   } else if (action === 'new') {
@@ -524,11 +542,12 @@ async function loadFromInput(input) {
 
 const legendItems = () => Object.entries(ROUTE_TYPES).map(([type, st]) => [type, st.label]);
 
-// Phase i as a standalone picture: drawn with nothing selected (no highlights or handles), in the
-// current view, orientation and layers. Redraws the shown phase afterwards.
+// Phase i as a standalone picture, in the current view, orientation and layers, except that the
+// previous-phase ghost is always left out, and so are selection highlights and handles (nothing is
+// selected while it is drawn). Redraws the shown phase afterwards.
 function phasePicture(i, { width, height, scale, css, cols, idPrefix }) {
-  const keep = { phase: ui.phase, selected: ui.selected, snap: ui.snap };
-  Object.assign(ui, { phase: i, selected: null, snap: null });
+  const keep = { phase: ui.phase, selected: ui.selected, snap: ui.snap, snapTo: ui.snapTo, layers: ui.layers };
+  Object.assign(ui, { phase: i, selected: null, snap: null, snapTo: null, layers: { ...ui.layers, ghost: false } });
   drawScene();
   const legendOn = ui.layers.legend ? { items: legendItems(), sample: routeSample, cols } : null;
   const picture = pictureSvg(svg, { width, height, scale, css, legend: legendOn, idPrefix });
@@ -537,12 +556,10 @@ function phasePicture(i, { width, height, scale, css, cols, idPrefix }) {
   return picture;
 }
 
-// The shown phase as a PNG at twice its on-screen size. Phones and tablets get the share sheet (Save
-// Image on iPhone); if sharing isn't possible there, the picture opens in a dialog to save from.
+// The shown phase as a PNG at twice its on-screen size.
 async function savePng() {
   const { width, height } = svg.getBoundingClientRect();
   const cols = getComputedStyle(legend).gridTemplateColumns.split(' ').length / 2 || 1;
-  const filename = safeFileName(state.name, `-phase-${ui.phase + 1}.png`);
   let blob;
   try {
     blob = await svgToPng(phasePicture(ui.phase, { width, height, scale: 2, css: pageCss(), cols }));
@@ -550,11 +567,41 @@ async function savePng() {
     showToast(err.message);
     return;
   }
-  if (!touchScreen.matches) {
-    downloadBlob(blob, filename);
+  keepFile(new File([blob], safeFileName(state.name, `-phase-${ui.phase + 1}.png`), { type: 'image/png' }));
+}
+
+// Every phase as a PDF, one page each: the play name, "Phase n of N", the pitch picture (as in the PNG)
+// and the phase's note. Horizontal plays get landscape pages, vertical ones portrait. jsPDF is only
+// loaded the first time this runs.
+async function savePdf() {
+  const [, , vbW, vbH] = svg.getAttribute('viewBox').split(' ').map(Number);
+  const orientation = state.orientation === 'vertical' ? 'portrait' : 'landscape';
+  const size = pageFit(orientation, vbW / vbH);
+  const n = state.phases.length;
+  const css = pageCss();
+  const title = state.name.trim() || 'Untitled play';
+  let blob;
+  try {
+    const pages = [];
+    for (const [i, ph] of state.phases.entries()) {
+      const picture = phasePicture(i, { width: size.px.w, height: size.px.h, scale: PDF_SCALE, css, cols: 1 });
+      pages.push({ title, caption: `Phase ${i + 1} of ${n}`, note: ph.note.trim(), png: await svgToPng(picture) });
+    }
+    blob = await makePdf(pages, orientation, size);
+  } catch (err) {
+    showToast(err.message);
     return;
   }
-  const file = new File([blob], filename, { type: 'image/png' });
+  keepFile(new File([blob], safeFileName(state.name, '.pdf'), { type: 'application/pdf' }));
+}
+
+// Hands a made file to the user. Computers download it. Phones and tablets get the share sheet (Save
+// Image or Save to Files on iPhone); if sharing isn't possible there, the file opens in a dialog to save from.
+async function keepFile(file) {
+  if (!touchScreen.matches) {
+    downloadBlob(file, file.name);
+    return;
+  }
   if (navigator.canShare?.({ files: [file] })) {
     try {
       await navigator.share({ files: [file] });
@@ -563,37 +610,27 @@ async function savePng() {
       if (err.name === 'AbortError') return; // the user closed the share sheet
     }
   }
-  showImage(file);
+  showFile(file);
 }
 
-// Fallback for phones that can't share the file straight away: the picture, with ways to keep it.
-function showImage(file) {
-  const dialog = $('image-dialog');
+// Fallback for phones that can't share the file straight away: the file, with ways to keep it.
+function showFile(file) {
+  const dialog = $('save-dialog');
+  const isImage = file.type.startsWith('image/');
   const url = URL.createObjectURL(file);
-  $('image-preview').src = url;
-  const open = $('image-open');
-  open.href = url;
-  const share = $('image-share');
+  $('save-title').textContent = isImage ? 'Save image' : 'Save PDF';
+  $('save-tip').textContent = isImage
+    ? 'Press and hold the picture to save it, or open it in a new tab.'
+    : 'Open the PDF in a new tab, then use Share to save it to Files.';
+  const preview = $('save-preview');
+  preview.hidden = !isImage;
+  if (isImage) preview.src = url; else preview.removeAttribute('src');
+  $('save-open').href = url;
+  const share = $('save-share');
   share.hidden = !navigator.canShare?.({ files: [file] });
   share.onclick = () => navigator.share({ files: [file] }).catch(() => {});
   dialog.addEventListener('close', () => URL.revokeObjectURL(url), { once: true });
   dialog.showModal();
-}
-
-// One printed page per phase, with the play name, "Phase n of N" and the note. Horizontal plays print
-// landscape, vertical ones portrait. The user picks "Save as PDF" in the print dialog.
-function printAllPhases() {
-  const [, , vbW, vbH] = svg.getAttribute('viewBox').split(' ').map(Number);
-  const orientation = state.orientation === 'vertical' ? 'portrait' : 'landscape';
-  const size = pageFit(orientation, vbW / vbH);
-  const n = state.phases.length;
-  const pages = state.phases.map((ph, i) => ({
-    title: state.name.trim() || 'Untitled play',
-    picture: phasePicture(i, { width: size.px.w, height: size.px.h, cols: 1, idPrefix: `p${i + 1}-` }),
-    caption: `Phase ${i + 1} of ${n}`,
-    note: ph.note.trim(),
-  }));
-  printPages(pages, orientation, size);
 }
 
 function undo() {
