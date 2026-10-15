@@ -6,19 +6,26 @@ import { BOUNDS, toMetres } from './pitch.js';
 const DOUBLE_TAP_MS = 400;
 const MIN_ROUTE_LENGTH = 1; // metres; shorter drags are treated as a mis-tap
 const MOVE_THRESHOLD = 0.3; // metres a press must travel before it counts as a drag
-const SNAP_RADIUS = 2; // metres from a player's centre: a route starting this close attaches to them
+const SNAP_RADIUS = 2; // metres from a player's centre: a route starting (or a pass ending) this close attaches to them
 const HANDLE_MODES = ['start', 'end', 'bend'];
 
 const round = v => Math.round(v * 10) / 10;
 const clampX = x => Math.min(BOUNDS.maxX, Math.max(BOUNDS.minX, x));
 const clampY = y => Math.min(BOUNDS.maxY, Math.max(BOUNDS.minY, y));
 
-// Moves a player (clamped to the pitch) and the start of every route that belongs to them.
+// Moves a player (clamped to the pitch), the start of every route that belongs to them and the end of
+// every pass to them.
 export function movePlayer(phase, id, x, y) {
   const pos = { x: round(clampX(x)), y: round(clampY(y)) };
   phase.positions[id] = pos;
-  for (const r of phase.routes) if (r.from === id) r.points[0] = [pos.x, pos.y];
+  for (const r of phase.routes) {
+    if (r.from === id) r.points[0] = [pos.x, pos.y];
+    if (r.to === id) r.points[r.points.length - 1] = [pos.x, pos.y];
+  }
 }
+
+// A route that follows a player at either end can't be dragged by its line.
+export const isAttached = r => !!(r.from || r.to);
 
 // Order number for a new route: one more than the highest so far. Deleting a route leaves the others as they are.
 const nextOrder = routes => routes.reduce((max, r) => Math.max(max, r.order || 0), 0) + 1;
@@ -35,7 +42,9 @@ export function nextId(prefix, items) {
 // A route is a quadratic bezier from its first to its last point.
 // "curve" is how far (metres) the route's midpoint is pushed sideways from the
 // straight line; the bezier control point sits at twice that offset.
-export function routeGeometry(route) {
+// endGap (metres) stops the drawn line that far short of its end, so a pass's arrowhead touches the
+// receiver's disc instead of hiding under it. Handles still use the full route.
+export function routeGeometry(route, { endGap = 0 } = {}) {
   const [x1, y1] = route.points[0];
   const [x2, y2] = route.points[route.points.length - 1];
   const len = Math.hypot(x2 - x1, y2 - y1) || 1;
@@ -44,8 +53,27 @@ export function routeGeometry(route) {
   const c = route.curve || 0;
   const cx = mid.x + 2 * normal.x * c;
   const cy = mid.y + 2 * normal.y * c;
+  let d = `M${x1} ${y1} Q${cx} ${cy} ${x2} ${y2}`;
+  if (endGap && len > endGap * 1.5) {
+    // Find t where the curve is endGap from the end, then keep the part of the curve before it.
+    const at = t => ({
+      x: (1 - t) ** 2 * x1 + 2 * (1 - t) * t * cx + t * t * x2,
+      y: (1 - t) ** 2 * y1 + 2 * (1 - t) * t * cy + t * t * y2,
+    });
+    let lo = 0;
+    let hi = 1;
+    for (let i = 0; i < 24; i++) {
+      const t = (lo + hi) / 2;
+      const q = at(t);
+      if (Math.hypot(q.x - x2, q.y - y2) > endGap) lo = t; else hi = t;
+    }
+    const t = lo;
+    const e = at(t);
+    const k = v => Math.round(v * 1000) / 1000;
+    d = `M${x1} ${y1} Q${k(x1 + (cx - x1) * t)} ${k(y1 + (cy - y1) * t)} ${k(e.x)} ${k(e.y)}`;
+  }
   return {
-    d: `M${x1} ${y1} Q${cx} ${cy} ${x2} ${y2}`,
+    d,
     handle: { x: mid.x + normal.x * c, y: mid.y + normal.y * c },
     control: { x: cx, y: cy },
     mid,
@@ -56,24 +84,38 @@ export function routeGeometry(route) {
 // `space` is the group that holds the pitch: its transform includes the vertical rotation, so pointer
 // positions converted through it land under the finger in either orientation.
 // While a drag is in progress ui.dragging is true, so the app records one undo step when it ends.
-// ui.snap is the player a route being drawn (or about to be, or whose start is being dragged) attaches to.
+// ui.snap is the player a route being drawn (or about to be, or whose start is being dragged) attaches to;
+// ui.snapTo is the receiver a pass being drawn (or whose end is being dragged) will end on.
 export function initEditor(svg, space, { state, ui, phase, render, editLabel, editOrder, moveObject }) {
   let drag = null;
   let lastTap = { id: null, time: 0 };
   const findRoute = id => phase().routes.find(r => r.id === id);
   const findObject = id => phase().objects.find(o => o.id === id);
 
-  // Nearest player whose centre is within SNAP_RADIUS of p, or null.
-  const playerAt = p => {
+  // Nearest player whose centre is within SNAP_RADIUS of p (and for whom ok(player) holds), or null.
+  const playerAt = (p, ok = () => true) => {
     let best = null;
     let bestD = SNAP_RADIUS;
     for (const pl of state.players) {
       const pos = phase().positions[pl.id];
-      if (!pos) continue;
+      if (!pos || !ok(pl)) continue;
       const d = Math.hypot(pos.x - p.x, pos.y - p.y);
       if (d <= bestD) { best = pl.id; bestD = d; }
     }
     return best;
+  };
+  const teamOf = id => state.players.find(p => p.id === id)?.team;
+  // Who a pass ending at p is caught by: a team-mate of the passer (anyone, for a pass from open grass).
+  const receiverAt = (r, p) => playerAt(p, pl => pl.id !== r.from && (!r.from || pl.team === teamOf(r.from)));
+  // Puts the end of route r at p. A pass's end snaps onto a receiver within 2 m and attaches to them.
+  const setEnd = (r, p) => {
+    let pos = { x: clampX(p.x), y: clampY(p.y) };
+    if (r.type === 'pass') {
+      r.to = receiverAt(r, p);
+      ui.snapTo = r.to;
+      if (r.to) pos = phase().positions[r.to];
+    }
+    r.points[r.points.length - 1] = [round(pos.x), round(pos.y)];
   };
 
   svg.addEventListener('pointerdown', e => {
@@ -105,6 +147,7 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
         curve: 0,
         order: nextOrder(phase().routes),
       };
+      if (ui.tool === 'pass') route.to = null;
       phase().routes.push(route);
       ui.snap = from;
       drag = { mode: 'route', id: route.id };
@@ -115,7 +158,7 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
     } else if (kind === 'route') {
       ui.selected = { kind, id };
       // A route that isn't attached to a player can be moved by dragging its line.
-      if (!findRoute(id).from) drag = { mode: 'shift', id, last: p, start: p, moved: false };
+      if (!isAttached(findRoute(id))) drag = { mode: 'shift', id, last: p, start: p, moved: false };
     } else {
       ui.selected = null;
     }
@@ -136,7 +179,6 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
     }
     const p = toMetres(space, e);
     const r = drag.mode === 'move' ? null : findRoute(drag.id);
-    const last = r ? r.points.length - 1 : 0;
     if (HANDLE_MODES.includes(drag.mode) && !drag.moved) {
       if (Math.hypot(p.x - drag.start.x, p.y - drag.start.y) <= MOVE_THRESHOLD) return;
       drag.moved = true;
@@ -150,13 +192,15 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
       if (drag.kind === 'player') movePlayer(phase(), drag.id, x, y); // routes from this player follow it
       else moveObject(findObject(drag.id), x, y);
     } else if (drag.mode === 'route' || drag.mode === 'end') {
-      r.points[last] = [round(clampX(p.x)), round(clampY(p.y))];
+      setEnd(r, p);
     } else if (drag.mode === 'start') {
       // Over a player: snap to them and attach. Over open grass: detach and follow the pointer.
-      const onto = playerAt(p);
+      // A pass can't start on its own receiver; moving it to the other team drops the receiver.
+      const onto = playerAt(p, pl => pl.id !== r.to);
       const pos = onto ? phase().positions[onto] : { x: clampX(p.x), y: clampY(p.y) };
       r.from = onto;
       ui.snap = onto;
+      if (r.to && onto && teamOf(onto) !== teamOf(r.to)) r.to = null;
       r.points[0] = [round(pos.x), round(pos.y)];
     } else if (drag.mode === 'bend') {
       const g = routeGeometry(r);
@@ -181,6 +225,7 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
     drag = null;
     ui.dragging = false;
     ui.snap = null;
+    ui.snapTo = null;
 
     if (done.mode === 'route') {
       const r = findRoute(done.id);

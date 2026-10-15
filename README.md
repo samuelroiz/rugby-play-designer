@@ -2,7 +2,7 @@
 
 A browser whiteboard for drawing rugby plays: put attackers and defenders on a pitch, drag them around, draw runs, passes, kicks and other routes, and drop ball, ruck, scrum and lineout markers.
 
-It is plain HTML, CSS, JavaScript (ES modules) and SVG. There is no framework, no build step and no npm. This is **Stage 2a**: a play has several phases, and it is autosaved in the browser and can be saved to and loaded from `.json` files. Phases can be saved as a PNG or printed to a PDF. Every change can be undone. Animation comes later.
+It is plain HTML, CSS, JavaScript (ES modules) and SVG. There is no framework, no build step and no npm. This is **Stage 2a**: a play has several phases, and it is autosaved in the browser and can be saved to and loaded from `.json` files. A phase can be saved as a PNG, and the whole play as a PDF. Every change can be undone. Animation comes later.
 
 ## Using it
 
@@ -10,11 +10,12 @@ It is plain HTML, CSS, JavaScript (ES modules) and SVG. There is no framework, n
 - **Drag** players and markers with a mouse, finger or pen.
 - **Double-click (or double-tap)** a player to change its label, e.g. `10` or `FH`.
 - **Routes**: pick a route type, then press on the pitch and drag to where it ends. If you press within 2 m of a player's centre, the route starts from the nearest one: its start snaps onto them, it belongs to them and follows them when they move. That player gets a white ring while you draw (and, with a mouse, while you hover with a route tool), so you can see who it will attach to. Each type has its own colour as well as its line style: run yellow, pass white, kick orange, decoy grey, drift purple, blitz pink. Red and blue are kept for the teams.
+- **Passes attach at both ends.** If you let go of a pass within 2 m of a team-mate of the passer, its end snaps onto them and they become the receiver (`to`). The receiver is ringed while you draw, as the passer is. A pass ending near an opponent or in open grass has a loose end. When the passer or the receiver moves, the pass follows at both ends. The line stops at the edge of the receiver's disc so the arrowhead shows.
 - **Editing a route**: tap or click a route to select it and show its handles. These have large invisible touch areas, so they're easy to grab with a finger.
-  - Drag the **end** dot to move where the route ends.
+  - Drag the **end** dot to move where the route ends. For a pass, dropping it within 2 m of a team-mate attaches it to them (ringed while you drag), and dropping it further from everyone detaches it.
   - Drag the **start** dot to move where it begins. Dropping it within 2 m of a player attaches the route to the nearest one (they're ringed while you drag). Dropping it further from everyone detaches it.
   - Drag the yellow **middle** dot to bend the route.
-  - Drag the **line** to move the whole route. This only works for routes not attached to a player; attached routes move with their player.
+  - Drag the **line** to move the whole route. This only works for routes not attached to a player at either end; attached routes move with their player.
 
   A tap on a handle that doesn't drag goes through to whatever is under it, such as a player or a badge.
 - **Route order**: each route shows a small numbered badge near its start. New routes get the next number (1, 2, 3 …). Tap or click a badge to change its number. Deleting a route doesn't renumber the others. Stage 3 animation will use this order.
@@ -26,7 +27,7 @@ It is plain HTML, CSS, JavaScript (ES modules) and SVG. There is no framework, n
   - *Distances* labels the lines like a real pitch (5m, 22, 10, 50).
   - *Grid* adds a faint 5 m grid.
   - *Legend* shows or hides the route key.
-  - *Previous phase* draws the last phase's players as faint dashed outlines with their numbers, so you can see who moved where. They can't be clicked.
+  - *Previous phase* draws the last phase's players as faint dashed outlines with their numbers, and its routes as faint lines in their usual colours, so you can see who moved where. None of it can be clicked, and the ghost routes have no order badges or handles, so they can't be mistaken for the current phase's. Saved images and PDFs never include it.
 
   Everything except Grid starts on.
 
@@ -34,13 +35,16 @@ It is plain HTML, CSS, JavaScript (ES modules) and SVG. There is no framework, n
 
 The bar under the pitch shows the phase tabs (**1 2 3 … +**), **Prev** and **Next**, and "Phase 2 of 4". The **←** and **→** keys also go back and forward.
 
-- **+** adds a phase straight after the current one, built from it:
+- **+** (after the tabs) adds a phase at the end, built from the last phase, whichever phase is shown.
+- **Insert after** adds a phase straight after the current one, built from it. The phases after it are kept exactly as they were (positions, routes, notes, markers); only their numbers move up by one.
+- A new phase is built the same way either way:
   - Each player with a run, drift, blitz or decoy starting on them moves to the end of that route. If a player has several, the highest order number wins.
-  - If there are passes, the ball moves to the receiver of the highest-order pass. The receiver is the nearest team-mate of the passer within 5 m of where the pass ends, after their own run. If nobody is that close, the ball goes to the end of the pass. Otherwise the ball stays where it is.
+  - If there are passes, the ball moves to the receiver of the highest-order pass, where they stand after their own run. The receiver is the pass's `to` player. If the pass has none, it's the nearest team-mate of the passer within 5 m of where the pass ends; if nobody is that close, the ball goes to the end of the pass. With no passes the ball stays where it is.
   - Routes aren't copied, so the new phase starts with none. Markers (ruck, scrum, lineout, ball) are copied.
-- **◂ Move / Move ▸** moves the current phase left or right. **Delete phase** asks first.
+- **◂ Move / Move ▸** swaps the current phase with its neighbour. It never changes what is in any phase. **Delete phase** asks first.
+- Adding, inserting, moving and deleting a phase are each one undo step.
 - The **note** box beside them belongs to the current phase.
-- Players belong to the whole play: deleting a player removes them from every phase.
+- Players belong to the whole play: deleting a player removes them from every phase, along with their routes and any passes to them.
 
 ### Undo, autosave and files
 
@@ -50,8 +54,10 @@ The bar under the pitch shows the phase tabs (**1 2 3 … +**), **Prev** and **N
   - **New play**: asks first, then starts a blank play.
   - **Save file**: downloads the play as `<play name>.json`. The name is cleaned of characters that aren't allowed in file names, and the JSON is pretty-printed.
   - **Load file…**: reads a `.json` play. It checks the file has `schemaVersion`, `players` and `phases`, and shows a short error if not. Loading replaces the current play after asking, and can be undone.
-  - **Save image (PNG)**: the phase being shown, at twice its size on screen, in the current view and orientation, with the layers that are on (distances, grid, legend, previous phase). Selection highlights and handles are left out. It is named `<play name>-phase-<n>.png`. On a phone or tablet it opens the share sheet instead of downloading (on iPhone, *Save Image* puts it in Photos). If the share sheet can't open, the picture is shown in a box: press and hold it to save, or use *Open in new tab* or *Share…*.
-  - **Save PDF (all phases)**: opens the browser's print dialog with one page per phase: the play name, the pitch, "Phase n of N" and the phase's note. Choose *Save as PDF* as the printer. Horizontal plays print landscape and vertical ones portrait. No library is used: it is a print-only view of the page.
+  - **Save image (PNG)**: the phase being shown, at twice its size on screen, in the current view and orientation, with the layers that are on (distances, grid, legend). The previous-phase ghost, selection highlights and handles are always left out. It is named `<play name>-phase-<n>.png`. On a phone or tablet it opens the share sheet instead of downloading (on iPhone, *Save Image* puts it in Photos). If the share sheet can't open, the picture is shown in a box: press and hold it to save, or use *Open in new tab* or *Share…*.
+  - **Save PDF (all phases)**: downloads `<play name>.pdf` straight away (no print dialog), with one A4 page per phase: the play name, "Phase n of N", the pitch picture (made the same way as the PNG, so no ghost or handles) and the phase's note under it. Horizontal plays get landscape pages and vertical ones portrait. A very long note is cut short with "…". The PDF's built-in font only covers Western European letters, so a name or note with anything else (macrons such as *ā*, other alphabets, emoji) is drawn as a picture of the text instead. On a phone or tablet it goes to the share sheet like the PNG (*Save to Files* on iPhone); if that can't open, a box offers *Open in new tab* and *Share…*.
+
+    The PDF is made with [jsPDF](https://github.com/parallax/jsPDF) **4.2.1** (MIT licence), kept in the repo as `vendor/jspdf.umd.min.js` with its licence in `vendor/jspdf.LICENSE`. It isn't fetched from a CDN, and it is only loaded the first time you save a PDF, so ordinary page loads don't download it. To update it, replace both files from the `dist/jspdf.umd.min.js` and `LICENSE` of the new npm package and change the version here.
 
   Loading a play (from a file or the autosave) also repairs it: a player missing from a phase is given their spot from the nearest earlier phase, or the nearest later one if there is no earlier one. Older versions could leave a player out of some phases, e.g. one deleted and added back while on phase 1.
 
@@ -64,6 +70,16 @@ python3 -m http.server
 ```
 
 Then open <http://localhost:8000>.
+
+## Tests
+
+The phase logic (building, adding, inserting and moving phases) has tests that need nothing but Node 22 or newer:
+
+```sh
+node --test tests/*.test.js
+```
+
+They check, among other things, that every phase after an insert or a move is exactly what it was before.
 
 ## Deploying to GitHub Pages
 
@@ -83,10 +99,12 @@ js/app.js        play state, toolbar and phase bar wiring, redraw (which also re
 js/pitch.js      pitch markings and screen-to-metre conversion
 js/editor.js     dragging, drawing routes and editing them with handles, selecting
 js/setpiece.js   scrum preset: formation, snapping the mark, moving the pack and ball together
-js/phases.js     building the next phase (players follow their runs, ball follows the last pass)
+js/phases.js     building the next phase (players follow their runs, ball goes to the receiver); add, insert, move
 js/history.js    undo/redo by snapshots of the play
 js/storage.js    autosave, saving and loading .json files, checking and repairing loaded plays
-js/export.js     PNG of a phase, print view for the PDF
+js/export.js     PNG of a phase, PDF of all phases (loads jsPDF on first use)
+vendor/          jsPDF 4.2.1 (jspdf.umd.min.js) and its licence
+tests/           Node tests for the phase logic
 plays/<category>/  for saved plays (later stages)
 ```
 
@@ -115,13 +133,16 @@ The whole play is a single state object, exposed as `window.playState` for debug
       { "id": "o1", "type": "ball", "x": 60, "y": 25 },
       { "id": "o2", "type": "scrum", "x": 40, "y": 15, "putIn": "attack", "pack": ["a1", "a2", "…", "d8"] }
     ],
-    "routes": [{ "id": "r1", "type": "run", "from": "a10", "points": [[58, 25], [66, 29]], "curve": 0, "order": 1 }]
+    "routes": [
+      { "id": "r1", "type": "run", "from": "a10", "points": [[58, 25], [66, 29]], "curve": 0, "order": 1 },
+      { "id": "r2", "type": "pass", "from": "a10", "to": "a12", "points": [[58, 25], [60, 35]], "curve": 0, "order": 2 }
+    ]
   }]
 }
 ```
 
 - Player ids are `a1`–`a15` (attack) and `d1`–`d15` (defense). `label` is what gets drawn.
-- A route's `from` is a player id, or `null` if it was drawn from open grass.
+- A route's `from` is a player id, or `null` if it was drawn from open grass. A pass also has `to`: the receiver's id, or `null` for a loose end. Its last point sits on the receiver. Loading a play sets a `from` or `to` that names a player who isn't in the play to `null`.
 - `curve` is how far, in metres, the middle of the route is pushed sideways from the straight line between its first and last point. Positive bends to the right of the direction of travel, as seen on screen. The route is drawn as a quadratic Bézier.
 - A route's `order` is a whole number from 1 to 99 and sets the order routes run in. New routes get one more than the highest existing order. Numbers can repeat, and gaps are fine. Routes without `order` (older data) simply show no badge.
 - `orientation` is `"horizontal"` or `"vertical"`. It only changes how the pitch is drawn: all coordinates stay in the same pitch metres. Vertical is a quarter turn anticlockwise, so pitch (x, y) is drawn at SVG (y, −x).
