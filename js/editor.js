@@ -10,6 +10,16 @@ const round = v => Math.round(v * 10) / 10;
 const clampX = x => Math.min(BOUNDS.maxX, Math.max(BOUNDS.minX, x));
 const clampY = y => Math.min(BOUNDS.maxY, Math.max(BOUNDS.minY, y));
 
+// Moves a player (clamped to the pitch) and the start of every route that belongs to them.
+export function movePlayer(phase, id, x, y) {
+  const pos = { x: round(clampX(x)), y: round(clampY(y)) };
+  phase.positions[id] = pos;
+  for (const r of phase.routes) if (r.from === id) r.points[0] = [pos.x, pos.y];
+}
+
+// Order number for a new route: one more than the highest so far. Deleting a route leaves the others as they are.
+const nextOrder = routes => routes.reduce((max, r) => Math.max(max, r.order || 0), 0) + 1;
+
 // Next free id like "r3" given existing items with ids "r1", "r2".
 export function nextId(prefix, items) {
   let max = 0;
@@ -34,12 +44,15 @@ export function routeGeometry(route) {
   return {
     d: `M${x1} ${y1} Q${cx} ${cy} ${x2} ${y2}`,
     handle: { x: mid.x + normal.x * c, y: mid.y + normal.y * c },
+    control: { x: cx, y: cy },
     mid,
     normal,
   };
 }
 
-export function initEditor(svg, { state, ui, render, editLabel }) {
+// `space` is the group that holds the pitch: its transform includes the vertical rotation, so pointer
+// positions converted through it land under the finger in either orientation.
+export function initEditor(svg, space, { state, ui, render, editLabel, editOrder, moveObject }) {
   let drag = null;
   let lastTap = { id: null, time: 0 };
   const phase = () => state.phases[0];
@@ -49,7 +62,7 @@ export function initEditor(svg, { state, ui, render, editLabel }) {
   svg.addEventListener('pointerdown', e => {
     if (!e.isPrimary || e.button !== 0 || drag) return;
     document.activeElement?.blur(); // so Delete/Escape reach the editor, not the name field
-    const p = toMetres(svg, e);
+    const p = toMetres(space, e);
     const hit = e.target.closest('[data-kind]');
     const kind = hit?.dataset.kind;
     const id = hit?.dataset.id;
@@ -57,6 +70,10 @@ export function initEditor(svg, { state, ui, render, editLabel }) {
     if (kind === 'handle') {
       ui.selected = { kind: 'route', id };
       drag = { mode: 'bend', id };
+    } else if (kind === 'badge') {
+      // Tapping a route's order badge edits the number (on release, see endDrag).
+      ui.selected = { kind: 'route', id };
+      drag = { mode: 'badge', id };
     } else if (ui.tool) {
       // Start a new route, from a player if we pressed on one.
       const from = kind === 'player' ? id : null;
@@ -67,6 +84,7 @@ export function initEditor(svg, { state, ui, render, editLabel }) {
         from,
         points: [[round(start.x), round(start.y)], [round(start.x), round(start.y)]],
         curve: 0,
+        order: nextOrder(phase().routes),
       };
       phase().routes.push(route);
       drag = { mode: 'route', id: route.id };
@@ -87,19 +105,14 @@ export function initEditor(svg, { state, ui, render, editLabel }) {
 
   svg.addEventListener('pointermove', e => {
     if (!drag) return;
-    const p = toMetres(svg, e);
+    const p = toMetres(space, e);
 
     if (drag.mode === 'move') {
       const x = round(clampX(p.x + drag.dx));
       const y = round(clampY(p.y + drag.dy));
       if (Math.hypot(p.x - drag.start.x, p.y - drag.start.y) > 0.3) drag.moved = true;
-      if (drag.kind === 'player') {
-        phase().positions[drag.id] = { x, y };
-        // Routes that start at this player follow it.
-        for (const r of phase().routes) if (r.from === drag.id) r.points[0] = [x, y];
-      } else {
-        Object.assign(findObject(drag.id), { x, y });
-      }
+      if (drag.kind === 'player') movePlayer(phase(), drag.id, x, y); // routes from this player follow it
+      else moveObject(findObject(drag.id), x, y);
     } else if (drag.mode === 'route') {
       const r = findRoute(drag.id);
       r.points[r.points.length - 1] = [round(clampX(p.x)), round(clampY(p.y))];
@@ -125,6 +138,8 @@ export function initEditor(svg, { state, ui, render, editLabel }) {
         ui.selected = { kind: 'route', id: r.id };
       }
     }
+
+    if (done.mode === 'badge' && e.type === 'pointerup') setTimeout(() => editOrder(done.id));
 
     // Double-click / double-tap on a player (without dragging) edits its label.
     if (done.mode === 'move' && done.kind === 'player' && !done.moved && e.type === 'pointerup') {

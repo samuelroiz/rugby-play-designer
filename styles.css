@@ -49,6 +49,38 @@ body {
 
 .segmented { display: flex; flex: none; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .segmented button { border: 0; border-radius: 0; }
+.segmented button + button { border-left: 1px solid var(--border); }
+.orient-icon { width: 1.2rem; height: 1.2rem; fill: none; stroke: currentColor; stroke-width: 1.8; }
+
+/* Layers panel: a <details> that drops down under its button */
+.layers { position: relative; flex: none; }
+.layers summary {
+  list-style: none;
+  padding: .45rem .6rem;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.layers summary::-webkit-details-marker { display: none; }
+.layers[open] summary { background: #eef3ee; }
+.layers-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + .3rem);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+  padding: .6rem .75rem;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .15);
+  white-space: nowrap;
+}
+.layers-panel label { display: flex; align-items: center; gap: .45rem; cursor: pointer; }
 
 /* Buttons */
 button {
@@ -74,7 +106,7 @@ button.danger { color: #b71c1c; }
 .swatch.attack { background: #d32f2f; }
 .swatch.defense { background: #1565c0; }
 
-.route-sample { width: 2.4rem; height: .9rem; flex: none; background: #3d8b40; border-radius: 3px; }
+.route-sample { width: 2.4rem; height: .9rem; flex: none; background: #3d8b40; border-radius: 3px; overflow: visible; }
 
 /* Left toolbar */
 .toolbar {
@@ -97,7 +129,8 @@ button.danger { color: #b71c1c; }
 }
 .tip { margin: .25rem 0 0; font-size: .75rem; color: var(--muted); }
 
-/* Pitch area */
+/* Pitch area. The SVG is sized to the view's exact aspect ratio (--ar, set by setView) and as large
+   as fits, so the viewBox fills it with no extra field around it at any screen shape. */
 .pitch-wrap {
   grid-area: pitch;
   position: relative;
@@ -105,11 +138,15 @@ button.danger { color: #b71c1c; }
   min-height: 0;
   padding: .5rem;
   background: var(--surround);
+  container-type: size;
+  display: grid;
+  place-items: center;
 }
 #pitch {
   display: block;
-  width: 100%;
-  height: 100%;
+  width: min(100cqw, 100cqh * var(--ar, 1.714));
+  height: min(100cqh, 100cqw / var(--ar, 1.714));
+  overflow: hidden;
   touch-action: none; /* stop the page scrolling/zooming while dragging */
   user-select: none;
   -webkit-user-select: none;
@@ -130,16 +167,41 @@ button.danger { color: #b71c1c; }
   border-radius: 6px;
   pointer-events: none;
 }
+.legend.hidden { display: none; }
+
+/* Set piece dialog */
+dialog {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+  max-width: min(22rem, calc(100vw - 2rem));
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .25);
+}
+dialog::backdrop { background: rgba(0, 0, 0, .35); }
+dialog h2 { margin: 0 0 .6rem; font-size: 1.05rem; }
+dialog fieldset { margin: 0; padding: 0; border: 0; }
+dialog legend { padding: 0; margin-bottom: .45rem; font-weight: 600; }
+dialog .choices { display: flex; gap: .5rem; }
+dialog .choices button { flex: 1; justify-content: center; padding: .6rem; }
+dialog .cancel { margin: .75rem 0 0 auto; }
 
 /* SVG: pitch. All sizes are in metres (SVG user units). */
 .grass { fill: #3d8b40; }
 .stripe { fill: #43944a; }
 .ingoal { fill: #357a38; }
 .line { fill: none; stroke: #fff; stroke-width: .15; }
+.line.edge { stroke-width: .3; }
 .line.dash { stroke-dasharray: 2 1.5; }
 .line.short { stroke-dasharray: 1 4; }
 .crossbar { stroke: #fff; stroke-width: .35; }
 .post { fill: #fff; stroke: #333; stroke-width: .08; }
+.grid line { stroke: rgba(255, 255, 255, .13); stroke-width: .06; }
+.distance {
+  fill: rgba(255, 255, 255, .6);
+  font-family: system-ui, sans-serif;
+  font-weight: 700;
+  pointer-events: none;
+}
 
 /* SVG: players */
 .player { cursor: grab; }
@@ -160,13 +222,20 @@ button.danger { color: #b71c1c; }
 .marker .hit { fill: transparent; }
 .marker .outline { fill: rgba(0, 0, 0, .15); stroke: #fff; stroke-width: .25; }
 .marker .ball { fill: #8d5524; stroke: #fff; stroke-width: .1; }
+.scrum-mark { stroke: #fff; stroke-width: .15; stroke-dasharray: .5 .4; }
 .select-ring { fill: none; stroke: #ffeb3b; stroke-width: .25; stroke-dasharray: .6 .4; }
 
 /* SVG: routes */
 .route-hit { fill: none; stroke: transparent; stroke-width: 1.6; cursor: pointer; }
-.route-highlight { fill: none; stroke: #ffeb3b; stroke-linecap: round; opacity: .7; }
+.route-casing { stroke: rgba(0, 0, 0, .4); }
+.arrowhead { stroke: rgba(0, 0, 0, .45); stroke-width: .8; }
+/* Selection is a soft white halo: yellow would vanish behind a yellow run. */
+.route-highlight { fill: none; stroke: #fff; stroke-linecap: round; opacity: .45; }
 .handle { fill: #fff; stroke: #333; stroke-width: .1; opacity: .7; cursor: move; }
 .route.selected .handle { fill: #ffeb3b; opacity: 1; }
+.badge { cursor: pointer; }
+.badge circle { fill: #1d1d1d; stroke-width: .2; }
+.badge text { fill: #fff; font-family: system-ui, sans-serif; font-weight: 700; pointer-events: none; }
 
 /* Phone: toolbar moves to the bottom and scrolls sideways */
 @media (max-width: 700px) {
@@ -186,6 +255,9 @@ button.danger { color: #b71c1c; }
   }
   .group { flex-direction: row; }
   .group + .group { padding-left: .5rem; border-left: 1px solid var(--border); }
-  .group h2, .tip, .legend { display: none; }
-  .segmented button { padding: .45rem .5rem; }
+  .group h2, .toolbar .tip, .long { display: none; }
+  .topbar { gap: .4rem; padding: .4rem .5rem; }
+  .segmented button, .layers summary { padding: .4rem .45rem; }
+  .legend { left: .75rem; bottom: .75rem; grid-template-columns: repeat(3, auto auto); font-size: .7rem; }
+  .legend .route-sample { width: 1.8rem; }
 }
