@@ -19,9 +19,9 @@
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7h5V2"/><path d="M19.5 7A8 8 0 1 0 20 13"/></svg>
       </button>
     </div>
-    <details class="menu" id="play-menu">
-      <summary>Play</summary>
-      <div class="menu-panel play-panel">
+    <details class="menu" id="file-menu">
+      <summary>File</summary>
+      <div class="menu-panel file-panel">
         <label>Category
           <select id="play-category">
             <option value="attack">Attack</option>
@@ -37,6 +37,10 @@
           <button type="button" data-file="new">New play</button>
           <button type="button" data-file="save">Save file</button>
           <button type="button" data-file="load">Load file…</button>
+        </div>
+        <div class="menu-actions">
+          <button type="button" data-file="png">Save image (PNG)</button>
+          <button type="button" data-file="pdf">Save PDF (all phases)</button>
         </div>
         <input id="load-input" type="file" accept=".json,application/json" hidden>
       </div>
@@ -138,6 +142,19 @@
       </fieldset>
       <p class="tip">Places players 1–8 of both teams and the ball. Select the scrum or one of its players, then drag the S to move the whole scrum.</p>
       <button value="" class="cancel">Cancel</button>
+    </form>
+  </dialog>
+
+  <dialog id="image-dialog" aria-labelledby="image-title">
+    <form method="dialog">
+      <h2 id="image-title">Save image</h2>
+      <img id="image-preview" alt="Picture of the current phase">
+      <p class="tip">Press and hold the picture to save it, or open it in a new tab.</p>
+      <div class="choices">
+        <button type="button" id="image-share" hidden>Share…</button>
+        <a id="image-open" class="button" target="_blank" rel="noopener">Open in new tab</a>
+        <button value="">Close</button>
+      </div>
     </form>
   </dialog>
 </body>

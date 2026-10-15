@@ -45,6 +45,12 @@ export function viewCentre(view) {
   return view === 'half' ? { x: 77.5, y: 35 } : { x: 50, y: 35 };
 }
 
+// Where a new player number n starts: each team lined up across the pitch either side of the view centre.
+export function startSpot(team, n, view) {
+  const c = viewCentre(view);
+  return { x: c.x + (team === 'attack' ? -6 : 6), y: Math.round((5 + (n - 1) * 4.3) * 10) / 10 };
+}
+
 // Pointer event -> pitch coordinates in metres. `space` is the element whose user space is in metres.
 export function toMetres(space, evt) {
   const p = new DOMPoint(evt.clientX, evt.clientY).matrixTransform(space.getScreenCTM().inverse());

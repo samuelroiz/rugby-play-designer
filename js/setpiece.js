@@ -36,7 +36,7 @@ const putInSide = putIn => (putIn === 'defense' ? 1 : -1);
 const ballNear = (objects, mark) => objects.find(o => o.type === 'ball' && Math.hypot(o.x - mark.x, o.y - mark.y) <= BALL_AT_SCRUM);
 
 // Puts players 1-8 of both teams in formation on a new scrum. Players that already exist are moved
-// rather than duplicated; missing ones are added (ids a1-a8/d1-d8 are always within the 15 limit).
+// rather than duplicated; missing ones are added to every phase (ids a1-a8/d1-d8 are always within the 15 limit).
 // An earlier scrum preset in the phase is replaced, so no player belongs to two. The ball is an ordinary
 // ball object on the put-in side; a ball already at the old or new mark is reused rather than adding another.
 export function placeScrum(state, phase, at, putIn) {
@@ -48,8 +48,14 @@ export function placeScrum(state, phase, at, putIn) {
   for (const [team, prefix, dir] of TEAMS) {
     for (const [n, along, across] of PACK) {
       const id = prefix + n;
-      if (!state.players.some(p => p.id === id)) state.players.push({ id, team, label: String(n) });
-      movePlayer(phase, id, mark.x + dir * along, mark.y + dir * across);
+      const x = Math.round((mark.x + dir * along) * 10) / 10;
+      const y = Math.round((mark.y + dir * across) * 10) / 10;
+      if (!state.players.some(p => p.id === id)) {
+        // A new player is in every phase, at the same spot.
+        state.players.push({ id, team, label: String(n) });
+        for (const each of state.phases) each.positions[id] = { x, y };
+      }
+      movePlayer(phase, id, x, y);
       pack.push(id);
     }
   }

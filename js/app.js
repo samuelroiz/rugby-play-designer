@@ -2,12 +2,13 @@
 // render() is also where changes are recorded: it commits an undo step (unless a drag is in progress)
 // and schedules the autosave, so every change to the play is undoable and saved without extra wiring.
 
-import { drawPitch, setView, viewCentre, svgEl, uprightTurn, PLAYER_R } from './pitch.js';
+import { drawPitch, setView, viewCentre, startSpot, svgEl, uprightTurn, PLAYER_R } from './pitch.js';
 import { initEditor, routeGeometry, nextId } from './editor.js';
 import { placeScrum, moveScrum } from './setpiece.js';
 import { nextPhase } from './phases.js';
 import { createHistory } from './history.js';
-import { blankPlay, loadAutosave, saveAutosave, downloadPlay, readPlayFile } from './storage.js';
+import { blankPlay, loadAutosave, saveAutosave, downloadPlay, downloadBlob, readPlayFile, safeFileName } from './storage.js';
+import { pictureSvg, pageCss, svgToPng, pageFit, printPages } from './export.js';
 
 const MAX_PER_TEAM = 15;
 const BADGE_R = 0.9;
@@ -29,6 +30,8 @@ const ROUTE_TYPES = {
 
 // A phone held upright gets the vertical pitch; anything else starts horizontal.
 const portraitPhone = matchMedia('(max-width: 700px) and (orientation: portrait)');
+// Phones and tablets: a saved picture goes to the share sheet rather than a download.
+const touchScreen = matchMedia('(pointer: coarse)');
 
 // The play. Always the same object (window.playState): undo, load and New play replace its contents.
 const state = blankPlay({ orientation: portraitPhone.matches ? 'vertical' : 'horizontal' });
@@ -40,6 +43,7 @@ const ui = {
   tool: null,
   selected: null,
   dragging: false,
+  snap: null, // player a route being drawn will attach to (highlighted)
   layers: { distances: true, grid: false, legend: true, ghost: true },
   orientationChosen: false, // once the user picks one, stop following the phone's rotation
 };
@@ -120,6 +124,19 @@ let pitchKey = '';
 
 // `commitKey` groups typing in one text box into a single undo step.
 function render(commitKey = null) {
+  if (!ui.tool && !ui.dragging) ui.snap = null;
+  drawScene();
+  updateToolbar();
+  updatePhaseBar();
+  syncInputs();
+
+  if (!ui.dragging) history.commit(commitKey);
+  updateHistoryButtons();
+  scheduleAutosave();
+}
+
+// Draws the pitch and the current phase (players, routes, markers) without touching anything else.
+function drawScene() {
   // The pitch only changes with the view and layers, so it isn't redrawn on every drag.
   const key = [state.view, state.orientation, ui.layers.distances, ui.layers.grid].join();
   if (key !== pitchKey) {
@@ -134,13 +151,6 @@ function render(commitKey = null) {
   renderObjects();
   renderRoutes();
   renderPlayers();
-  updateToolbar();
-  updatePhaseBar();
-  syncInputs();
-
-  if (!ui.dragging) history.commit(commitKey);
-  updateHistoryButtons();
-  scheduleAutosave();
 }
 
 // Selection can point at something that's gone after undo, delete or a phase change.
@@ -226,6 +236,7 @@ function renderPlayers() {
     const cls = `player ${p.team}${isSelected('player', p.id) ? ' selected' : ''}`;
     const g = svgEl('g', { class: cls, 'data-kind': 'player', 'data-id': p.id, transform: `translate(${pos.x} ${pos.y})${turn()}` }, layer);
     svgEl('circle', { r: PLAYER_R * 1.6, class: 'hit' }, g); // bigger touch target
+    if (ui.snap === p.id) svgEl('circle', { r: PLAYER_R + 0.55, class: 'snap-ring' }, g);
     svgEl('circle', { r: PLAYER_R, class: 'body' }, g);
     playerText(g, p.label);
   }
@@ -376,10 +387,9 @@ function addPlayer(team) {
   while (n <= MAX_PER_TEAM && state.players.some(p => p.id === prefix + n)) n++;
   if (n > MAX_PER_TEAM) return;
   const id = prefix + n;
-  const c = viewCentre(state.view);
   state.players.push({ id, team, label: String(n) });
-  // Line each team up across the pitch either side of the view centre.
-  phase().positions[id] = { x: c.x + (team === 'attack' ? -6 : 6), y: Math.round((5 + (n - 1) * 4.3) * 10) / 10 };
+  // A player is one person across the whole play: they're in every phase, at the same spot.
+  for (const each of state.phases) each.positions[id] = startSpot(team, n, state.view);
   ui.selected = { kind: 'player', id };
 }
 
@@ -478,9 +488,13 @@ function phaseAction(action, index) {
 }
 
 async function fileAction(action) {
-  $('play-menu').open = false;
+  $('file-menu').open = false;
   if (action === 'save') {
     downloadPlay(state);
+  } else if (action === 'png') {
+    savePng();
+  } else if (action === 'pdf') {
+    printAllPhases();
   } else if (action === 'load') {
     $('load-input').click();
   } else if (action === 'new') {
@@ -504,6 +518,82 @@ async function loadFromInput(input) {
   if (!confirm(`Load "${play.name}"? It replaces the current play (you can undo).`)) return;
   replacePlay(play);
   render();
+}
+
+// --- Export ---
+
+const legendItems = () => Object.entries(ROUTE_TYPES).map(([type, st]) => [type, st.label]);
+
+// Phase i as a standalone picture: drawn with nothing selected (no highlights or handles), in the
+// current view, orientation and layers. Redraws the shown phase afterwards.
+function phasePicture(i, { width, height, scale, css, cols, idPrefix }) {
+  const keep = { phase: ui.phase, selected: ui.selected, snap: ui.snap };
+  Object.assign(ui, { phase: i, selected: null, snap: null });
+  drawScene();
+  const legendOn = ui.layers.legend ? { items: legendItems(), sample: routeSample, cols } : null;
+  const picture = pictureSvg(svg, { width, height, scale, css, legend: legendOn, idPrefix });
+  Object.assign(ui, keep);
+  drawScene();
+  return picture;
+}
+
+// The shown phase as a PNG at twice its on-screen size. Phones and tablets get the share sheet (Save
+// Image on iPhone); if sharing isn't possible there, the picture opens in a dialog to save from.
+async function savePng() {
+  const { width, height } = svg.getBoundingClientRect();
+  const cols = getComputedStyle(legend).gridTemplateColumns.split(' ').length / 2 || 1;
+  const filename = safeFileName(state.name, `-phase-${ui.phase + 1}.png`);
+  let blob;
+  try {
+    blob = await svgToPng(phasePicture(ui.phase, { width, height, scale: 2, css: pageCss(), cols }));
+  } catch (err) {
+    showToast(err.message);
+    return;
+  }
+  if (!touchScreen.matches) {
+    downloadBlob(blob, filename);
+    return;
+  }
+  const file = new File([blob], filename, { type: 'image/png' });
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') return; // the user closed the share sheet
+    }
+  }
+  showImage(file);
+}
+
+// Fallback for phones that can't share the file straight away: the picture, with ways to keep it.
+function showImage(file) {
+  const dialog = $('image-dialog');
+  const url = URL.createObjectURL(file);
+  $('image-preview').src = url;
+  const open = $('image-open');
+  open.href = url;
+  const share = $('image-share');
+  share.hidden = !navigator.canShare?.({ files: [file] });
+  share.onclick = () => navigator.share({ files: [file] }).catch(() => {});
+  dialog.addEventListener('close', () => URL.revokeObjectURL(url), { once: true });
+  dialog.showModal();
+}
+
+// One printed page per phase, with the play name, "Phase n of N" and the note. Horizontal plays print
+// landscape, vertical ones portrait. The user picks "Save as PDF" in the print dialog.
+function printAllPhases() {
+  const [, , vbW, vbH] = svg.getAttribute('viewBox').split(' ').map(Number);
+  const orientation = state.orientation === 'vertical' ? 'portrait' : 'landscape';
+  const size = pageFit(orientation, vbW / vbH);
+  const n = state.phases.length;
+  const pages = state.phases.map((ph, i) => ({
+    title: state.name.trim() || 'Untitled play',
+    picture: phasePicture(i, { width: size.px.w, height: size.px.h, cols: 1, idPrefix: `p${i + 1}-` }),
+    caption: `Phase ${i + 1} of ${n}`,
+    note: ph.note.trim(),
+  }));
+  printPages(pages, orientation, size);
 }
 
 function undo() {
