@@ -4,6 +4,7 @@
 const NS = 'http://www.w3.org/2000/svg';
 
 export const BOUNDS = { minX: -10, maxX: 110, minY: 0, maxY: 70 };
+export const PLAYER_R = 1.2; // radius of a player disc
 
 // Length of pitch each view shows. The full width (y 0..70) is always shown, and nothing outside it.
 const VIEWS = {

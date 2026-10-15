@@ -1,12 +1,20 @@
 // App state, toolbar wiring and redraw. The editor changes state, then render() redraws the SVG from it.
+// render() is also where changes are recorded: it commits an undo step (unless a drag is in progress)
+// and schedules the autosave, so every change to the play is undoable and saved without extra wiring.
 
-import { drawPitch, setView, viewCentre, svgEl, uprightTurn } from './pitch.js';
+import { drawPitch, setView, viewCentre, svgEl, uprightTurn, PLAYER_R } from './pitch.js';
 import { initEditor, routeGeometry, nextId } from './editor.js';
-import { placeScrum, moveScrum, putInSide } from './setpiece.js';
+import { placeScrum, moveScrum } from './setpiece.js';
+import { nextPhase } from './phases.js';
+import { createHistory } from './history.js';
+import { blankPlay, loadAutosave, saveAutosave, downloadPlay, readPlayFile } from './storage.js';
 
 const MAX_PER_TEAM = 15;
-const PLAYER_R = 1.2;
 const BADGE_R = 0.9;
+const AUTOSAVE_MS = 400;
+// Smallest touch target for route handles and lines, in screen pixels (converted to metres at draw time).
+const HANDLE_HIT_PX = 22;
+const LINE_HIT_PX = 14;
 
 // Look of each route type. Widths and dashes are in metres. No reds or blues: those are the team colours.
 // Every route also gets a thin dark casing (see routePaths) so the light colours read on grass and on the white lines.
@@ -22,47 +30,80 @@ const ROUTE_TYPES = {
 // A phone held upright gets the vertical pitch; anything else starts horizontal.
 const portraitPhone = matchMedia('(max-width: 700px) and (orientation: portrait)');
 
-const state = {
-  schemaVersion: 1,
-  name: 'Untitled play',
-  category: 'attack',
-  view: 'full',
-  orientation: portraitPhone.matches ? 'vertical' : 'horizontal',
-  players: [],
-  phases: [{ note: '', positions: {}, objects: [], routes: [] }],
-};
+// The play. Always the same object (window.playState): undo, load and New play replace its contents.
+const state = blankPlay({ orientation: portraitPhone.matches ? 'vertical' : 'horizontal' });
 window.playState = state;
 
 // UI-only state, not part of the saved play.
 const ui = {
+  phase: 0, // index of the phase being shown
   tool: null,
   selected: null,
-  layers: { distances: true, grid: false, legend: true },
+  dragging: false,
+  layers: { distances: true, grid: false, legend: true, ghost: true },
   orientationChosen: false, // once the user picks one, stop following the phone's rotation
 };
 
-const svg = document.getElementById('pitch');
-const world = document.getElementById('world');
-const legend = document.getElementById('legend');
+const $ = id => document.getElementById(id);
+const svg = $('pitch');
+const world = $('world');
+const legend = $('legend');
 const layers = {
-  pitch: document.getElementById('pitch-layer'),
-  objects: document.getElementById('objects-layer'),
-  routes: document.getElementById('routes-layer'),
-  players: document.getElementById('players-layer'),
+  pitch: $('pitch-layer'),
+  ghost: $('ghost-layer'),
+  objects: $('objects-layer'),
+  routes: $('routes-layer'),
+  players: $('players-layer'),
+  badges: $('badges-layer'),
+  handles: $('handles-layer'),
 };
-const phase = () => state.phases[0];
+const inputs = { name: $('play-name'), category: $('play-category'), tags: $('play-tags'), note: $('phase-note') };
+
+const phase = () => state.phases[ui.phase];
 const isSelected = (kind, id) => ui.selected?.kind === kind && ui.selected.id === id;
 const turn = () => uprightTurn(state.orientation);
 
+function replacePlay(play, phaseIndex = 0) {
+  for (const key of Object.keys(state)) delete state[key];
+  Object.assign(state, structuredClone(play));
+  ui.phase = Math.min(Math.max(0, phaseIndex), state.phases.length - 1);
+  ui.selected = null;
+  ui.tool = null;
+}
+
+const history = createHistory({
+  read: () => ({ play: JSON.stringify(state), phase: ui.phase }),
+  write: (json, phaseIndex) => replacePlay(JSON.parse(json), phaseIndex),
+});
+
+let autosaveTimer = null;
+function scheduleAutosave() {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(flushAutosave, AUTOSAVE_MS);
+}
+function flushAutosave() {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = null;
+  saveAutosave(state, ui.phase);
+}
+
+function showToast(message) {
+  const toast = $('toast');
+  toast.textContent = message;
+  toast.hidden = false;
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => { toast.hidden = true; }, 5000);
+}
+
 function strokeAttrs(type) {
-  const st = ROUTE_TYPES[type];
+  const st = ROUTE_TYPES[type] ?? ROUTE_TYPES.run;
   return {
     fill: 'none',
     stroke: st.color,
     'stroke-width': st.width,
     'stroke-dasharray': st.dash ?? 'none',
     'stroke-linecap': st.cap ?? 'butt',
-    'marker-end': `url(#arrow-${type})`,
+    'marker-end': `url(#arrow-${ROUTE_TYPES[type] ? type : 'run'})`,
   };
 }
 
@@ -77,7 +118,8 @@ function routePaths(parent, tag, geometry, type) {
 
 let pitchKey = '';
 
-function render() {
+// `commitKey` groups typing in one text box into a single undo step.
+function render(commitKey = null) {
   // The pitch only changes with the view and layers, so it isn't redrawn on every drag.
   const key = [state.view, state.orientation, ui.layers.distances, ui.layers.grid].join();
   if (key !== pitchKey) {
@@ -85,11 +127,36 @@ function render() {
     setView(svg, world, state.view, state.orientation);
     drawPitch(layers.pitch, { view: state.view, orientation: state.orientation, ...ui.layers });
   }
+  if (ui.phase >= state.phases.length) ui.phase = state.phases.length - 1;
+  dropMissingSelection();
   legend.classList.toggle('hidden', !ui.layers.legend);
+  renderGhost();
   renderObjects();
   renderRoutes();
   renderPlayers();
   updateToolbar();
+  updatePhaseBar();
+  syncInputs();
+
+  if (!ui.dragging) history.commit(commitKey);
+  updateHistoryButtons();
+  scheduleAutosave();
+}
+
+// Selection can point at something that's gone after undo, delete or a phase change.
+function dropMissingSelection() {
+  const sel = ui.selected;
+  if (!sel) return;
+  const exists = sel.kind === 'player' ? !!phase().positions[sel.id]
+    : sel.kind === 'route' ? phase().routes.some(r => r.id === sel.id)
+    : phase().objects.some(o => o.id === sel.id);
+  if (!exists) ui.selected = null;
+}
+
+// Screen pixels per metre, for sizing touch targets.
+function pxPerMetre() {
+  const m = world.getScreenCTM();
+  return m ? Math.hypot(m.a, m.b) || 1 : 1;
 }
 
 // Badge sits beside the start of the route, just clear of a player disc, on the side the route doesn't bend to.
@@ -109,23 +176,44 @@ function badgePosition(r, geometry) {
 function renderRoutes() {
   const layer = layers.routes;
   layer.replaceChildren();
+  layers.badges.replaceChildren();
+  layers.handles.replaceChildren();
+  const ppm = pxPerMetre();
+  const lineHit = Math.max(1.6, LINE_HIT_PX / ppm);
   for (const r of phase().routes) {
     const selected = isSelected('route', r.id);
-    const g = svgEl('g', { class: selected ? 'route selected' : 'route', 'data-kind': 'route', 'data-id': r.id }, layer);
+    const cls = `route${selected ? ' selected' : ''}${r.from ? '' : ' loose'}`;
+    const g = svgEl('g', { class: cls, 'data-kind': 'route', 'data-id': r.id }, layer);
     const geometry = routeGeometry(r);
-    const { d, handle } = geometry;
-    if (selected) svgEl('path', { d, class: 'route-highlight', 'stroke-width': ROUTE_TYPES[r.type].width + 0.9 }, g);
-    svgEl('path', { d, class: 'route-hit' }, g);
+    const { d } = geometry;
+    if (selected) svgEl('path', { d, class: 'route-highlight', 'stroke-width': (ROUTE_TYPES[r.type]?.width ?? 0.3) + 0.9 }, g);
+    svgEl('path', { d, class: 'route-hit', 'stroke-width': lineHit }, g);
     routePaths(g, 'path', { d }, r.type);
-    svgEl('circle', { cx: handle.x, cy: handle.y, r: 0.6, class: 'handle', 'data-kind': 'handle', 'data-id': r.id }, g);
 
+    // Badges go in their own layer above the players, so a nearby player can't cover them.
     if (Number.isFinite(r.order)) {
       const b = badgePosition(r, geometry);
-      const badge = svgEl('g', { class: 'badge', 'data-kind': 'badge', 'data-id': r.id, transform: `translate(${b.x} ${b.y})${turn()}` }, g);
-      svgEl('circle', { r: BADGE_R, stroke: ROUTE_TYPES[r.type].color }, badge);
+      const badge = svgEl('g', { class: 'badge', 'data-kind': 'badge', 'data-id': r.id, transform: `translate(${b.x} ${b.y})${turn()}` }, layers.badges);
+      svgEl('circle', { r: BADGE_R, stroke: ROUTE_TYPES[r.type]?.color ?? '#fff' }, badge);
       const text = String(r.order);
       svgEl('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': text.length > 1 ? 0.85 : 1.1 }, badge).textContent = text;
     }
+
+    // While a route tool is active the handles are hidden, so pressing on a player always starts a new route.
+    if (selected && !ui.tool) renderHandles(r, geometry, ppm);
+  }
+}
+
+// Start, bend and end handles for the selected route. They sit above the players so they can be grabbed,
+// with invisible hit circles at least HANDLE_HIT_PX across on screen for fingers.
+function renderHandles(r, geometry, ppm) {
+  const hitR = Math.max(1.4, HANDLE_HIT_PX / ppm);
+  const [sx, sy] = r.points[0];
+  const [ex, ey] = r.points[r.points.length - 1];
+  for (const [handle, x, y] of [['start', sx, sy], ['end', ex, ey], ['bend', geometry.handle.x, geometry.handle.y]]) {
+    const g = svgEl('g', { class: `handle ${handle}`, 'data-kind': 'handle', 'data-handle': handle, 'data-id': r.id, transform: `translate(${x} ${y})` }, layers.handles);
+    svgEl('circle', { r: hitR, class: 'handle-hit' }, g);
+    svgEl('circle', { r: handle === 'bend' ? 0.6 : 0.75, class: 'handle-dot' }, g);
   }
 }
 
@@ -139,12 +227,30 @@ function renderPlayers() {
     const g = svgEl('g', { class: cls, 'data-kind': 'player', 'data-id': p.id, transform: `translate(${pos.x} ${pos.y})${turn()}` }, layer);
     svgEl('circle', { r: PLAYER_R * 1.6, class: 'hit' }, g); // bigger touch target
     svgEl('circle', { r: PLAYER_R, class: 'body' }, g);
-    const text = svgEl('text', {
-      'text-anchor': 'middle',
-      'dominant-baseline': 'central',
-      'font-size': p.label.length > 2 ? 0.85 : 1.2,
-    }, g);
-    text.textContent = p.label;
+    playerText(g, p.label);
+  }
+}
+
+function playerText(g, label) {
+  svgEl('text', {
+    'text-anchor': 'middle',
+    'dominant-baseline': 'central',
+    'font-size': label.length > 2 ? 0.85 : 1.2,
+  }, g).textContent = label;
+}
+
+// The previous phase's players as faint outlines, so you can see who moved where. Not clickable.
+function renderGhost() {
+  const layer = layers.ghost;
+  layer.replaceChildren();
+  const prev = state.phases[ui.phase - 1];
+  if (!ui.layers.ghost || !prev) return;
+  for (const p of state.players) {
+    const pos = prev.positions[p.id];
+    if (!pos) continue;
+    const g = svgEl('g', { class: `ghost ${p.team}`, 'data-ghost': p.id, transform: `translate(${pos.x} ${pos.y})${turn()}` }, layer);
+    svgEl('circle', { r: PLAYER_R }, g);
+    playerText(g, p.label);
   }
 }
 
@@ -158,6 +264,12 @@ function label(g, text, x = 0, y = 0) {
   }, g).textContent = text;
 }
 
+// The scrum's "S" block shows only while the scrum or one of its players is selected.
+function scrumActive(o) {
+  const sel = ui.selected;
+  return !!sel && ((sel.kind === 'object' && sel.id === o.id) || (sel.kind === 'player' && o.pack.includes(sel.id)));
+}
+
 function renderObjects() {
   const layer = layers.objects;
   layer.replaceChildren();
@@ -166,12 +278,12 @@ function renderObjects() {
     const selected = isSelected('object', o.id);
 
     if (o.type === 'scrum' && o.pack) {
-      // Scrum preset: the mark between the front rows, the ball on the put-in side, and an "S" tab
-      // clear of the packs (which cover the mark) to drag the whole scrum by.
-      const side = putInSide(o.putIn);
+      // Scrum preset: the mark between the front rows, and (when active) an "S" block clear of the
+      // packs, which cover the mark, to drag the whole scrum by. The ball is its own object.
       svgEl('line', { x1: 0, y1: -3.8, x2: 0, y2: 3.8, class: 'scrum-mark' }, g);
-      svgEl('ellipse', { cx: 0, cy: side * 4.7, rx: 0.7, ry: 0.45, class: 'ball', transform: `rotate(-25 0 ${side * 4.7})` }, g);
-      const tab = svgEl('g', { transform: `translate(0 ${-side * 6.5})` }, g);
+      if (!scrumActive(o)) continue;
+      const side = o.putIn === 'defense' ? 1 : -1; // the ball's side; the block goes on the other
+      const tab = svgEl('g', { transform: `translate(0 ${-side * 6.5})`, class: 'scrum-tab' }, g);
       svgEl('circle', { r: 1.9, class: 'hit' }, tab);
       if (selected) svgEl('circle', { r: 1.9, class: 'select-ring' }, tab);
       svgEl('rect', { x: -1.2, y: -1.2, width: 2.4, height: 2.4, rx: 0.4, class: 'outline' }, tab);
@@ -210,6 +322,50 @@ function updateToolbar() {
   for (const b of document.querySelectorAll('[data-route]')) b.setAttribute('aria-pressed', b.dataset.route === ui.tool);
   for (const c of document.querySelectorAll('[data-layer]')) c.checked = ui.layers[c.dataset.layer];
   svg.classList.toggle('drawing', !!ui.tool);
+}
+
+function updateHistoryButtons() {
+  document.querySelector('[data-action="undo"]').disabled = !history.canUndo;
+  document.querySelector('[data-action="redo"]').disabled = !history.canRedo;
+}
+
+let shownPhase = -1;
+
+function updatePhaseBar() {
+  const n = state.phases.length;
+  const tabs = $('phase-tabs');
+  if (tabs.children.length !== n) {
+    tabs.replaceChildren(...state.phases.map((_, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.phase = 'goto';
+      b.dataset.index = i;
+      b.textContent = i + 1;
+      b.setAttribute('aria-label', `Phase ${i + 1}`);
+      return b;
+    }));
+  }
+  [...tabs.children].forEach((b, i) => b.setAttribute('aria-current', i === ui.phase ? 'step' : 'false'));
+  if (shownPhase !== ui.phase) {
+    shownPhase = ui.phase;
+    tabs.children[ui.phase]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+  $('phase-count').textContent = `Phase ${ui.phase + 1} of ${n}`;
+  const btn = name => document.querySelector(`[data-phase="${name}"]`);
+  btn('prev').disabled = ui.phase === 0;
+  btn('next').disabled = ui.phase === n - 1;
+  btn('left').disabled = ui.phase === 0;
+  btn('right').disabled = ui.phase === n - 1;
+  btn('delete').disabled = n === 1;
+}
+
+// Text boxes follow the state (after undo, load or a phase change), except the one being typed in.
+function syncInputs() {
+  const set = (el, value) => { if (document.activeElement !== el && el.value !== value) el.value = value; };
+  set(inputs.name, state.name);
+  set(inputs.category, state.category);
+  set(inputs.tags, state.tags.join(', '));
+  set(inputs.note, phase().note);
 }
 
 // --- Actions ---
@@ -252,9 +408,12 @@ function deleteSelected() {
   if (!sel) return;
   const ph = phase();
   if (sel.kind === 'player') {
+    // A player is one person across the whole play, so they leave every phase.
     state.players = state.players.filter(p => p.id !== sel.id);
-    delete ph.positions[sel.id];
-    ph.routes = ph.routes.filter(r => r.from !== sel.id);
+    for (const each of state.phases) {
+      delete each.positions[sel.id];
+      each.routes = each.routes.filter(r => r.from !== sel.id);
+    }
   } else if (sel.kind === 'route') {
     ph.routes = ph.routes.filter(r => r.id !== sel.id);
   } else if (sel.kind === 'object') {
@@ -288,6 +447,77 @@ function setOrientation(orientation) {
   render();
 }
 
+function goToPhase(i) {
+  if (i < 0 || i >= state.phases.length || i === ui.phase) return;
+  ui.phase = i;
+  ui.tool = null;
+}
+
+// Phase bar actions. Each returns after changing state; the caller re-renders.
+function phaseAction(action, index) {
+  const i = ui.phase;
+  const phases = state.phases;
+  if (action === 'prev') goToPhase(i - 1);
+  else if (action === 'next') goToPhase(i + 1);
+  else if (action === 'goto') goToPhase(index);
+  else if (action === 'add') {
+    phases.splice(i + 1, 0, nextPhase(phases[i], state.players));
+    ui.phase = i + 1;
+    ui.tool = null;
+  } else if (action === 'left' || action === 'right') {
+    const j = action === 'left' ? i - 1 : i + 1;
+    if (j < 0 || j >= phases.length) return;
+    [phases[i], phases[j]] = [phases[j], phases[i]];
+    ui.phase = j;
+  } else if (action === 'delete') {
+    if (phases.length === 1) return;
+    if (!confirm(`Delete phase ${i + 1}? You can undo this.`)) return;
+    phases.splice(i, 1);
+    ui.phase = Math.min(i, phases.length - 1);
+  }
+}
+
+async function fileAction(action) {
+  $('play-menu').open = false;
+  if (action === 'save') {
+    downloadPlay(state);
+  } else if (action === 'load') {
+    $('load-input').click();
+  } else if (action === 'new') {
+    if (!confirm('Start a new blank play? The current one is replaced (you can undo).')) return;
+    replacePlay(blankPlay({ view: state.view, orientation: state.orientation }));
+    render();
+  }
+}
+
+async function loadFromInput(input) {
+  const file = input.files?.[0];
+  input.value = ''; // so picking the same file again still fires "change"
+  if (!file) return;
+  let play;
+  try {
+    play = await readPlayFile(file);
+  } catch (err) {
+    showToast(err.message);
+    return;
+  }
+  if (!confirm(`Load "${play.name}"? It replaces the current play (you can undo).`)) return;
+  replacePlay(play);
+  render();
+}
+
+function undo() {
+  if (ui.dragging) return;
+  document.activeElement?.blur?.(); // so the text boxes show the restored values
+  if (history.undo()) render();
+}
+
+function redo() {
+  if (ui.dragging) return;
+  document.activeElement?.blur?.();
+  if (history.redo()) render();
+}
+
 // --- Setup ---
 
 function buildArrowMarkers(defs) {
@@ -315,7 +545,7 @@ function routeSample(type) {
 }
 
 function buildRouteTools() {
-  const group = document.getElementById('route-tools');
+  const group = $('route-tools');
   for (const [type, st] of Object.entries(ROUTE_TYPES)) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -331,9 +561,18 @@ function buildRouteTools() {
 }
 
 function initTopbar() {
-  const nameInput = document.getElementById('play-name');
-  nameInput.value = state.name;
-  nameInput.addEventListener('input', () => { state.name = nameInput.value; });
+  inputs.name.addEventListener('input', () => { state.name = inputs.name.value; render('name'); });
+  inputs.category.addEventListener('change', () => { state.category = inputs.category.value; render(); });
+  inputs.tags.addEventListener('input', () => {
+    state.tags = inputs.tags.value.split(',').map(t => t.trim()).filter(Boolean);
+    render('tags');
+  });
+  inputs.note.addEventListener('input', () => { phase().note = inputs.note.value; render(`note-${ui.phase}`); });
+
+  document.querySelector('[data-action="undo"]').addEventListener('click', undo);
+  document.querySelector('[data-action="redo"]').addEventListener('click', redo);
+  for (const b of document.querySelectorAll('[data-file]')) b.addEventListener('click', () => fileAction(b.dataset.file));
+  $('load-input').addEventListener('change', e => loadFromInput(e.target));
 
   for (const b of document.querySelectorAll('[data-view]')) {
     b.addEventListener('click', () => { state.view = b.dataset.view; render(); });
@@ -345,19 +584,30 @@ function initTopbar() {
     if (!ui.orientationChosen) setOrientation(e.matches ? 'vertical' : 'horizontal');
   });
 
-  const layersPanel = document.getElementById('layers');
-  layersPanel.addEventListener('change', e => {
+  $('layers').addEventListener('change', e => {
     const key = e.target.dataset.layer;
     if (key) { ui.layers[key] = e.target.checked; render(); }
   });
-  // Close the layers panel when tapping anywhere else.
+  // Close the drop-down menus when tapping anywhere else.
+  const menus = [...document.querySelectorAll('details.menu')];
   document.addEventListener('pointerdown', e => {
-    if (layersPanel.open && !layersPanel.contains(e.target)) layersPanel.open = false;
+    for (const m of menus) if (m.open && !m.contains(e.target)) m.open = false;
+  });
+  // Only one menu open at a time.
+  for (const m of menus) m.addEventListener('toggle', () => { if (m.open) for (const o of menus) if (o !== m) o.open = false; });
+}
+
+function initPhaseBar() {
+  document.querySelector('.phasebar').addEventListener('click', e => {
+    const b = e.target.closest('[data-phase]');
+    if (!b || b.disabled) return;
+    phaseAction(b.dataset.phase, Number(b.dataset.index));
+    render();
   });
 }
 
 function initSetPieceDialog() {
-  const dialog = document.getElementById('set-piece-dialog');
+  const dialog = $('set-piece-dialog');
   dialog.addEventListener('close', () => {
     const [kind, putIn] = dialog.returnValue.split('-');
     if (kind === 'scrum') { addScrum(putIn); render(); }
@@ -365,10 +615,47 @@ function initSetPieceDialog() {
   return () => { dialog.returnValue = ''; dialog.showModal(); };
 }
 
+function initKeys() {
+  document.addEventListener('keydown', e => {
+    const mod = e.metaKey || e.ctrlKey;
+    const typing = e.target.closest('input, textarea, select, dialog');
+    // Undo/redo. In a text box the browser's own text undo handles it.
+    if (mod && !typing && (e.key === 'z' || e.key === 'Z' || e.key === 'y')) {
+      e.preventDefault();
+      if (e.key === 'y' || e.shiftKey) redo();
+      else undo();
+      return;
+    }
+    if (typing || mod || e.altKey) return;
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (!ui.selected) return;
+      e.preventDefault();
+      deleteSelected();
+      render();
+    } else if (e.key === 'Escape') {
+      ui.selected = null;
+      ui.tool = null;
+      render();
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      if (ui.dragging) return;
+      e.preventDefault();
+      phaseAction(e.key === 'ArrowLeft' ? 'prev' : 'next');
+      render();
+    }
+  });
+}
+
 function init() {
-  buildArrowMarkers(document.getElementById('defs'));
+  // Bring back the last play from this browser, if there is one.
+  const saved = loadAutosave();
+  if (saved) replacePlay(saved.play, saved.phase);
+  history.reset();
+
+  buildArrowMarkers($('defs'));
   buildRouteTools();
   initTopbar();
+  initPhaseBar();
+  initKeys();
   const openSetPiece = initSetPieceDialog();
 
   document.querySelector('.toolbar').addEventListener('click', e => {
@@ -384,21 +671,11 @@ function init() {
     render();
   });
 
-  document.addEventListener('keydown', e => {
-    if (e.target.closest('input, textarea, dialog')) return;
-    if (e.key === 'Delete' || e.key === 'Backspace') {
-      if (!ui.selected) return;
-      e.preventDefault();
-      deleteSelected();
-      render();
-    } else if (e.key === 'Escape') {
-      ui.selected = null;
-      ui.tool = null;
-      render();
-    }
-  });
+  // Save straight away when the page is hidden or closed, rather than waiting for the timer.
+  addEventListener('pagehide', flushAutosave);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) flushAutosave(); });
 
-  initEditor(svg, world, { state, ui, render, editLabel, editOrder, moveObject });
+  initEditor(svg, world, { state, ui, phase, render, editLabel, editOrder, moveObject });
   render();
 }
 

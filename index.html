@@ -11,26 +11,60 @@
 <body>
   <header class="topbar">
     <input id="play-name" type="text" value="Untitled play" aria-label="Play name" spellcheck="false" maxlength="60">
-    <div class="segmented" role="group" aria-label="Pitch view">
-      <button type="button" data-view="full"><span>Full<span class="long"> pitch</span></span></button>
-      <button type="button" data-view="half"><span>Half<span class="long"> pitch</span></span></button>
-    </div>
-    <div class="segmented" role="group" aria-label="Orientation">
-      <button type="button" data-orientation="horizontal" aria-label="Horizontal" title="Horizontal: try lines left and right">
-        <svg class="orient-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="1"/><line x1="12" y1="6" x2="12" y2="18"/></svg>
+    <div class="segmented" role="group" aria-label="History">
+      <button type="button" data-action="undo" aria-label="Undo" title="Undo (Ctrl/Cmd+Z)">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7H4V2"/><path d="M4.5 7A8 8 0 1 1 4 13"/></svg>
       </button>
-      <button type="button" data-orientation="vertical" aria-label="Vertical" title="Vertical: try lines top and bottom">
-        <svg class="orient-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="1"/><line x1="6" y1="12" x2="18" y2="12"/></svg>
+      <button type="button" data-action="redo" aria-label="Redo" title="Redo (Ctrl/Cmd+Shift+Z)">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7h5V2"/><path d="M19.5 7A8 8 0 1 0 20 13"/></svg>
       </button>
     </div>
-    <details class="layers" id="layers">
-      <summary>Layers</summary>
-      <div class="layers-panel">
-        <label><input type="checkbox" data-layer="distances"> Distances</label>
-        <label><input type="checkbox" data-layer="grid"> Grid (5 m)</label>
-        <label><input type="checkbox" data-layer="legend"> Legend</label>
+    <details class="menu" id="play-menu">
+      <summary>Play</summary>
+      <div class="menu-panel play-panel">
+        <label>Category
+          <select id="play-category">
+            <option value="attack">Attack</option>
+            <option value="defense">Defense</option>
+            <option value="lineout">Lineout</option>
+            <option value="scrum">Scrum</option>
+          </select>
+        </label>
+        <label>Tags
+          <input id="play-tags" type="text" placeholder="e.g. backs, set move" spellcheck="false">
+        </label>
+        <div class="menu-actions">
+          <button type="button" data-file="new">New play</button>
+          <button type="button" data-file="save">Save file</button>
+          <button type="button" data-file="load">Load file…</button>
+        </div>
+        <input id="load-input" type="file" accept=".json,application/json" hidden>
       </div>
     </details>
+
+    <div class="view-controls">
+      <div class="segmented" role="group" aria-label="Pitch view">
+        <button type="button" data-view="full"><span>Full<span class="long"> pitch</span></span></button>
+        <button type="button" data-view="half"><span>Half<span class="long"> pitch</span></span></button>
+      </div>
+      <div class="segmented" role="group" aria-label="Orientation">
+        <button type="button" data-orientation="horizontal" aria-label="Horizontal" title="Horizontal: try lines left and right">
+          <svg class="orient-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="1"/><line x1="12" y1="6" x2="12" y2="18"/></svg>
+        </button>
+        <button type="button" data-orientation="vertical" aria-label="Vertical" title="Vertical: try lines top and bottom">
+          <svg class="orient-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="1"/><line x1="6" y1="12" x2="18" y2="12"/></svg>
+        </button>
+      </div>
+      <details class="menu" id="layers">
+        <summary>Layers</summary>
+        <div class="menu-panel">
+          <label><input type="checkbox" data-layer="distances"> Distances</label>
+          <label><input type="checkbox" data-layer="grid"> Grid (5 m)</label>
+          <label><input type="checkbox" data-layer="legend"> Legend</label>
+          <label><input type="checkbox" data-layer="ghost"> Previous phase</label>
+        </div>
+      </details>
+    </div>
   </header>
 
   <nav class="toolbar" aria-label="Tools">
@@ -53,7 +87,7 @@
     <div class="group">
       <h2>Edit</h2>
       <button type="button" data-action="delete" class="danger">Delete</button>
-      <p class="tip">Double-click a player to rename. Drag a route's dot to bend it. Tap a route's number to change its order. Esc clears.</p>
+      <p class="tip">Double-click a player to rename. Tap a route to edit it: drag its end dots, its middle dot to bend it, or the line to move it. Tap a route's number to change its order. Esc clears.</p>
     </div>
   </nav>
 
@@ -62,13 +96,35 @@
       <defs id="defs"></defs>
       <g id="world">
         <g id="pitch-layer"></g>
+        <g id="ghost-layer" pointer-events="none"></g>
         <g id="objects-layer"></g>
         <g id="routes-layer"></g>
         <g id="players-layer"></g>
+        <g id="badges-layer"></g>
+        <g id="handles-layer"></g>
       </g>
     </svg>
     <div class="legend" id="legend" aria-hidden="true"></div>
+    <div class="toast" id="toast" role="alert" hidden></div>
   </main>
+
+  <section class="phasebar" aria-label="Phases">
+    <div class="phase-nav">
+      <button type="button" data-phase="prev" aria-label="Previous phase" title="Previous phase (←)">‹<span class="long">&nbsp;Prev</span></button>
+      <div class="phase-tabs" id="phase-tabs" role="group" aria-label="Phase"></div>
+      <button type="button" data-phase="add" class="add-phase" aria-label="Add phase" title="Add phase: players move to the end of their runs, the ball follows the last pass">+</button>
+      <button type="button" data-phase="next" aria-label="Next phase" title="Next phase (→)"><span class="long">Next&nbsp;</span>›</button>
+    </div>
+    <div class="phase-tools">
+      <strong id="phase-count" aria-live="polite">Phase 1 of 1</strong>
+      <div class="segmented" role="group" aria-label="Move phase">
+        <button type="button" data-phase="left" aria-label="Move phase left" title="Move phase left">◂<span class="long">&nbsp;Move</span></button>
+        <button type="button" data-phase="right" aria-label="Move phase right" title="Move phase right"><span class="long">Move&nbsp;</span>▸</button>
+      </div>
+      <button type="button" data-phase="delete" class="danger">Delete<span class="long">&nbsp;phase</span></button>
+      <textarea id="phase-note" rows="1" placeholder="Note for this phase" aria-label="Phase note"></textarea>
+    </div>
+  </section>
 
   <dialog id="set-piece-dialog" aria-labelledby="set-piece-title">
     <form method="dialog">
@@ -80,7 +136,7 @@
           <button value="scrum-defense"><span class="swatch defense"></span>Defense</button>
         </div>
       </fieldset>
-      <p class="tip">Places players 1–8 of both teams in formation. Drag the S to move the whole scrum.</p>
+      <p class="tip">Places players 1–8 of both teams and the ball. Select the scrum or one of its players, then drag the S to move the whole scrum.</p>
       <button value="" class="cancel">Cancel</button>
     </form>
   </dialog>
