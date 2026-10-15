@@ -12,9 +12,25 @@
   <header class="topbar">
     <input id="play-name" type="text" value="Untitled play" aria-label="Play name" spellcheck="false" maxlength="60">
     <div class="segmented" role="group" aria-label="Pitch view">
-      <button type="button" data-view="full">Full pitch</button>
-      <button type="button" data-view="half">Half pitch</button>
+      <button type="button" data-view="full"><span>Full<span class="long"> pitch</span></span></button>
+      <button type="button" data-view="half"><span>Half<span class="long"> pitch</span></span></button>
     </div>
+    <div class="segmented" role="group" aria-label="Orientation">
+      <button type="button" data-orientation="horizontal" aria-label="Horizontal" title="Horizontal: try lines left and right">
+        <svg class="orient-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="1"/><line x1="12" y1="6" x2="12" y2="18"/></svg>
+      </button>
+      <button type="button" data-orientation="vertical" aria-label="Vertical" title="Vertical: try lines top and bottom">
+        <svg class="orient-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="1"/><line x1="6" y1="12" x2="18" y2="12"/></svg>
+      </button>
+    </div>
+    <details class="layers" id="layers">
+      <summary>Layers</summary>
+      <div class="layers-panel">
+        <label><input type="checkbox" data-layer="distances"> Distances</label>
+        <label><input type="checkbox" data-layer="grid"> Grid (5 m)</label>
+        <label><input type="checkbox" data-layer="legend"> Legend</label>
+      </div>
+    </details>
   </header>
 
   <nav class="toolbar" aria-label="Tools">
@@ -27,8 +43,8 @@
       <h2>Markers</h2>
       <button type="button" data-object="ball">Ball</button>
       <button type="button" data-object="ruck">Ruck</button>
-      <button type="button" data-object="scrum">Scrum</button>
       <button type="button" data-object="lineout">Lineout</button>
+      <button type="button" data-action="set-piece" aria-haspopup="dialog">Set piece…</button>
     </div>
     <div class="group" id="route-tools">
       <h2>Routes</h2>
@@ -37,19 +53,36 @@
     <div class="group">
       <h2>Edit</h2>
       <button type="button" data-action="delete" class="danger">Delete</button>
-      <p class="tip">Double-click a player to rename. Drag a route's dot to bend it. Esc clears.</p>
+      <p class="tip">Double-click a player to rename. Drag a route's dot to bend it. Tap a route's number to change its order. Esc clears.</p>
     </div>
   </nav>
 
   <main class="pitch-wrap">
-    <svg id="pitch" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Rugby pitch">
+    <svg id="pitch" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Rugby pitch" preserveAspectRatio="xMidYMid slice">
       <defs id="defs"></defs>
-      <g id="pitch-layer"></g>
-      <g id="objects-layer"></g>
-      <g id="routes-layer"></g>
-      <g id="players-layer"></g>
+      <g id="world">
+        <g id="pitch-layer"></g>
+        <g id="objects-layer"></g>
+        <g id="routes-layer"></g>
+        <g id="players-layer"></g>
+      </g>
     </svg>
     <div class="legend" id="legend" aria-hidden="true"></div>
   </main>
+
+  <dialog id="set-piece-dialog" aria-labelledby="set-piece-title">
+    <form method="dialog">
+      <h2 id="set-piece-title">Set piece</h2>
+      <fieldset>
+        <legend>Scrum: who has the put-in?</legend>
+        <div class="choices">
+          <button value="scrum-attack"><span class="swatch attack"></span>Attack</button>
+          <button value="scrum-defense"><span class="swatch defense"></span>Defense</button>
+        </div>
+      </fieldset>
+      <p class="tip">Places players 1–8 of both teams in formation. Drag the S to move the whole scrum.</p>
+      <button value="" class="cancel">Cancel</button>
+    </form>
+  </dialog>
 </body>
 </html>
