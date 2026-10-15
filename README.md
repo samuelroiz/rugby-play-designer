@@ -2,17 +2,17 @@
 
 A browser whiteboard for drawing rugby plays: put attackers and defenders on a pitch, drag them around, draw runs, passes, kicks and other routes, and drop ball, ruck, scrum and lineout markers.
 
-It is plain HTML, CSS, JavaScript (ES modules) and SVG. There is no framework, no build step and no npm. This is **Stage 2a**: a play has several phases, and it is autosaved in the browser and can be saved to and loaded from `.json` files. Every change can be undone. Animation comes later.
+It is plain HTML, CSS, JavaScript (ES modules) and SVG. There is no framework, no build step and no npm. This is **Stage 2a**: a play has several phases, and it is autosaved in the browser and can be saved to and loaded from `.json` files. Phases can be saved as a PNG or printed to a PDF. Every change can be undone. Animation comes later.
 
 ## Using it
 
-- **Add attack / Add defender**: adds the next free number (1–15) near the middle of the current view. Each team can have up to 15.
+- **Add attack / Add defender**: adds the next free number (1–15) near the middle of the current view. Each team can have up to 15. The new player is put in every phase, at the same spot, whichever phase is shown.
 - **Drag** players and markers with a mouse, finger or pen.
 - **Double-click (or double-tap)** a player to change its label, e.g. `10` or `FH`.
-- **Routes**: pick a route type, then press on the pitch and drag to where it ends. If you start on a player, the route belongs to that player and follows them when they move. Each type has its own colour as well as its line style: run yellow, pass white, kick orange, decoy grey, drift purple, blitz pink. Red and blue are kept for the teams.
+- **Routes**: pick a route type, then press on the pitch and drag to where it ends. If you press within 2 m of a player's centre, the route starts from the nearest one: its start snaps onto them, it belongs to them and follows them when they move. That player gets a white ring while you draw (and, with a mouse, while you hover with a route tool), so you can see who it will attach to. Each type has its own colour as well as its line style: run yellow, pass white, kick orange, decoy grey, drift purple, blitz pink. Red and blue are kept for the teams.
 - **Editing a route**: tap or click a route to select it and show its handles. These have large invisible touch areas, so they're easy to grab with a finger.
   - Drag the **end** dot to move where the route ends.
-  - Drag the **start** dot to move where it begins. Dropping it on a player attaches the route to that player. Dropping it on open pitch detaches it.
+  - Drag the **start** dot to move where it begins. Dropping it within 2 m of a player attaches the route to the nearest one (they're ringed while you drag). Dropping it further from everyone detaches it.
   - Drag the yellow **middle** dot to bend the route.
   - Drag the **line** to move the whole route. This only works for routes not attached to a player; attached routes move with their player.
 
@@ -46,10 +46,14 @@ The bar under the pitch shows the phase tabs (**1 2 3 … +**), **Prev** and **N
 
 - **Undo / Redo** (top bar, or Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z) covers every change to the play, including phases, labels, order numbers, name, note, details, New play and Load. A whole drag is one step, and so is a burst of typing in one box. At least 100 steps are kept. History is cleared on refresh.
 - The play is **autosaved** in this browser (`localStorage`) shortly after every change, and straight away when the page is hidden or closed. It comes back when you reload. If storage is blocked (some private modes), everything else still works; it just isn't kept.
-- The **Play** menu holds the play's details (*category*: attack, defense, lineout or scrum; *tags*, comma separated) and:
+- The **File** menu holds the play's details (*category*: attack, defense, lineout or scrum; *tags*, comma separated) and:
   - **New play**: asks first, then starts a blank play.
   - **Save file**: downloads the play as `<play name>.json`. The name is cleaned of characters that aren't allowed in file names, and the JSON is pretty-printed.
   - **Load file…**: reads a `.json` play. It checks the file has `schemaVersion`, `players` and `phases`, and shows a short error if not. Loading replaces the current play after asking, and can be undone.
+  - **Save image (PNG)**: the phase being shown, at twice its size on screen, in the current view and orientation, with the layers that are on (distances, grid, legend, previous phase). Selection highlights and handles are left out. It is named `<play name>-phase-<n>.png`. On a phone or tablet it opens the share sheet instead of downloading (on iPhone, *Save Image* puts it in Photos). If the share sheet can't open, the picture is shown in a box: press and hold it to save, or use *Open in new tab* or *Share…*.
+  - **Save PDF (all phases)**: opens the browser's print dialog with one page per phase: the play name, the pitch, "Phase n of N" and the phase's note. Choose *Save as PDF* as the printer. Horizontal plays print landscape and vertical ones portrait. No library is used: it is a print-only view of the page.
+
+  Loading a play (from a file or the autosave) also repairs it: a player missing from a phase is given their spot from the nearest earlier phase, or the nearest later one if there is no earlier one. Older versions could leave a player out of some phases, e.g. one deleted and added back while on phase 1.
 
 ## Running it locally
 
@@ -81,7 +85,8 @@ js/editor.js     dragging, drawing routes and editing them with handles, selecti
 js/setpiece.js   scrum preset: formation, snapping the mark, moving the pack and ball together
 js/phases.js     building the next phase (players follow their runs, ball follows the last pass)
 js/history.js    undo/redo by snapshots of the play
-js/storage.js    autosave, saving and loading .json files, checking loaded plays
+js/storage.js    autosave, saving and loading .json files, checking and repairing loaded plays
+js/export.js     PNG of a phase, print view for the PDF
 plays/<category>/  for saved plays (later stages)
 ```
 
@@ -122,6 +127,6 @@ The whole play is a single state object, exposed as `window.playState` for debug
 - `orientation` is `"horizontal"` or `"vertical"`. It only changes how the pitch is drawn: all coordinates stay in the same pitch metres. Vertical is a quarter turn anticlockwise, so pitch (x, y) is drawn at SVG (y, −x).
 - A scrum made with the preset has `putIn` (`"attack"` or `"defense"`) and `pack`, the ids of the players that move with it. Its `x, y` is the mark between the front rows, with `y` always 15, 35 or 55. A plain `scrum` object without `pack` (older data) still draws as an "S" marker.
 - `category` is one of `attack`, `defense`, `lineout` and `scrum`. `tags` is a list of strings.
-- `phases` is in play order. Each phase has its own `note`, player `positions`, `objects` (markers) and `routes`. Players are listed once, in `players`. A player with no position in a phase isn't on the pitch in that phase.
+- `phases` is in play order. Each phase has its own `note`, player `positions`, `objects` (markers) and `routes`. Players are listed once, in `players`, and every player has a position in every phase (loading fills in any that are missing).
 - Which phase is being shown, the layer checkboxes, and the undo history are view settings and aren't part of the play. The autosave stores the shown phase alongside the play.
 - `schemaVersion` is still 1: `tags` and the newer fields are optional, and older plays load as they are.

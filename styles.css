@@ -54,7 +54,7 @@ body {
 .icon { stroke-linecap: round; stroke-linejoin: round; }
 .view-controls { display: flex; align-items: center; gap: .75rem; }
 
-/* Drop-down menus (Layers, Play): a <details> that opens a panel under its button */
+/* Drop-down menus (Layers, File): a <details> that opens a panel under its button */
 .menu { position: relative; flex: none; }
 .menu summary {
   list-style: none;
@@ -84,9 +84,9 @@ body {
   white-space: nowrap;
 }
 .menu-panel label { display: flex; align-items: center; gap: .45rem; cursor: pointer; }
-.play-panel { gap: .6rem; min-width: 14rem; }
-.play-panel label { flex-direction: column; align-items: stretch; gap: .2rem; font-size: .8rem; color: var(--muted); cursor: default; }
-.play-panel select, .play-panel input[type="text"] {
+.file-panel { gap: .6rem; min-width: 14rem; }
+.file-panel label { flex-direction: column; align-items: stretch; gap: .2rem; font-size: .8rem; color: var(--muted); cursor: default; }
+.file-panel select, .file-panel input[type="text"] {
   font: inherit;
   font-size: .95rem;
   color: var(--ink);
@@ -112,7 +112,19 @@ button {
   text-align: left;
   white-space: nowrap;
 }
-button:hover:not(:disabled) { background: #eef3ee; }
+a.button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: .45rem .6rem;
+  color: inherit;
+  text-decoration: none;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  white-space: nowrap;
+}
+button:hover:not(:disabled), a.button:hover { background: #eef3ee; }
 button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 button:disabled { opacity: .45; cursor: default; }
 button.danger { color: #b71c1c; }
@@ -247,6 +259,11 @@ dialog legend { padding: 0; margin-bottom: .45rem; font-weight: 600; }
 dialog .choices { display: flex; gap: .5rem; }
 dialog .choices button { flex: 1; justify-content: center; padding: .6rem; }
 dialog .cancel { margin: .75rem 0 0 auto; }
+#image-dialog { max-width: min(30rem, calc(100vw - 2rem)); }
+#image-preview { display: block; max-width: 100%; max-height: 60dvh; margin: 0 auto; border-radius: 4px; }
+#image-dialog .choices { flex-wrap: wrap; margin-top: .6rem; }
+#image-dialog .choices > * { flex: 1; justify-content: center; }
+#image-dialog [hidden] { display: none; }
 
 /* SVG: pitch. All sizes are in metres (SVG user units). */
 .grass { fill: #3d8b40; }
@@ -273,6 +290,8 @@ dialog .cancel { margin: .75rem 0 0 auto; }
 .player.attack .body { fill: #d32f2f; }
 .player.defense .body { fill: #1565c0; }
 .player.selected .body { stroke: #ffeb3b; stroke-width: .45; }
+/* The player a route being drawn will start from */
+.snap-ring { fill: rgba(255, 255, 255, .25); stroke: #fff; stroke-width: .25; }
 .player text, .marker text {
   fill: #fff;
   font-family: system-ui, sans-serif;
@@ -308,6 +327,20 @@ dialog .cancel { margin: .75rem 0 0 auto; }
 .badge { cursor: pointer; }
 .badge circle { fill: #1d1d1d; stroke-width: .2; }
 .badge text { fill: #fff; font-family: system-ui, sans-serif; font-weight: 700; pointer-events: none; }
+
+/* Print view for "Save PDF": one page per phase. Only shown while printing it. */
+.print-view { display: none; }
+@media print {
+  body.printing { display: block; height: auto; background: #fff; }
+  body.printing > :not(.print-view) { display: none !important; }
+  body.printing .print-view { display: block; }
+  .print-page { break-after: page; text-align: center; color: #000; }
+  .print-page:last-child { break-after: auto; }
+  .print-page h1 { margin: 0 0 4mm; font-size: 16pt; }
+  .print-page svg { display: block; margin: 0 auto; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .print-phase { margin: 4mm 0 1mm; font-size: 12pt; font-weight: 600; }
+  .print-note { margin: 0 auto; max-width: 180mm; font-size: 11pt; white-space: pre-wrap; }
+}
 
 /* Phone: toolbar moves to the bottom and scrolls sideways */
 @media (max-width: 700px) {

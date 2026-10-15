@@ -1,12 +1,12 @@
 // Pointer interaction: drag players/markers, draw, edit and move routes, select.
 // Mouse, touch and pen all go through the same pointer events.
 
-import { BOUNDS, PLAYER_R, toMetres } from './pitch.js';
+import { BOUNDS, toMetres } from './pitch.js';
 
 const DOUBLE_TAP_MS = 400;
 const MIN_ROUTE_LENGTH = 1; // metres; shorter drags are treated as a mis-tap
 const MOVE_THRESHOLD = 0.3; // metres a press must travel before it counts as a drag
-const ATTACH_RADIUS = PLAYER_R * 1.6; // dropping a route's start this close to a player attaches it
+const SNAP_RADIUS = 2; // metres from a player's centre: a route starting this close attaches to them
 const HANDLE_MODES = ['start', 'end', 'bend'];
 
 const round = v => Math.round(v * 10) / 10;
@@ -56,16 +56,17 @@ export function routeGeometry(route) {
 // `space` is the group that holds the pitch: its transform includes the vertical rotation, so pointer
 // positions converted through it land under the finger in either orientation.
 // While a drag is in progress ui.dragging is true, so the app records one undo step when it ends.
+// ui.snap is the player a route being drawn (or about to be, or whose start is being dragged) attaches to.
 export function initEditor(svg, space, { state, ui, phase, render, editLabel, editOrder, moveObject }) {
   let drag = null;
   let lastTap = { id: null, time: 0 };
   const findRoute = id => phase().routes.find(r => r.id === id);
   const findObject = id => phase().objects.find(o => o.id === id);
 
-  // Nearest player whose disc (with its touch margin) is under p, or null.
+  // Nearest player whose centre is within SNAP_RADIUS of p, or null.
   const playerAt = p => {
     let best = null;
-    let bestD = ATTACH_RADIUS;
+    let bestD = SNAP_RADIUS;
     for (const pl of state.players) {
       const pos = phase().positions[pl.id];
       if (!pos) continue;
@@ -93,8 +94,8 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
       ui.selected = { kind: 'route', id };
       drag = { mode: 'badge', id };
     } else if (ui.tool) {
-      // Start a new route, from a player if we pressed on one.
-      const from = kind === 'player' ? id : null;
+      // Start a new route, from the nearest player if we pressed on or next to one.
+      const from = playerAt(p);
       const start = from ? phase().positions[from] : { x: clampX(p.x), y: clampY(p.y) };
       const route = {
         id: nextId('r', phase().routes),
@@ -105,6 +106,7 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
         order: nextOrder(phase().routes),
       };
       phase().routes.push(route);
+      ui.snap = from;
       drag = { mode: 'route', id: route.id };
     } else if (kind === 'player' || kind === 'object') {
       const pos = kind === 'player' ? phase().positions[id] : findObject(id);
@@ -127,7 +129,11 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
   });
 
   svg.addEventListener('pointermove', e => {
-    if (!drag) return;
+    if (!drag) {
+      // With a route tool and a mouse or pen hovering, show which player a press here would attach to.
+      if (ui.tool && e.pointerType !== 'touch') setSnap(playerAt(toMetres(space, e)));
+      return;
+    }
     const p = toMetres(space, e);
     const r = drag.mode === 'move' ? null : findRoute(drag.id);
     const last = r ? r.points.length - 1 : 0;
@@ -150,6 +156,7 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
       const onto = playerAt(p);
       const pos = onto ? phase().positions[onto] : { x: clampX(p.x), y: clampY(p.y) };
       r.from = onto;
+      ui.snap = onto;
       r.points[0] = [round(pos.x), round(pos.y)];
     } else if (drag.mode === 'bend') {
       const g = routeGeometry(r);
@@ -173,6 +180,7 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
     const done = drag;
     drag = null;
     ui.dragging = false;
+    ui.snap = null;
 
     if (done.mode === 'route') {
       const r = findRoute(done.id);
@@ -222,6 +230,12 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
       lastTap = { id, time: now };
     }
   }
+  function setSnap(id) {
+    if (ui.snap === id) return;
+    ui.snap = id;
+    render();
+  }
+  svg.addEventListener('pointerleave', () => { if (!drag) setSnap(null); });
   svg.addEventListener('pointerup', endDrag);
   svg.addEventListener('pointercancel', endDrag);
 }

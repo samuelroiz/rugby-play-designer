@@ -1,3 +1,5 @@
+import { startSpot } from './pitch.js';
+
 // Autosave to localStorage, and saving/loading plays as .json files.
 // Storage can be missing or throw (private mode, blocked site data, full quota), so every access is
 // wrapped and the app carries on without it.
@@ -45,22 +47,26 @@ export function saveAutosave(play, phase) {
 
 // --- Files ---
 
-// "My play: v2?" -> "My play v2". Keeps spaces, drops characters that are unsafe in file names.
-export function safeFileName(name) {
+// "My play: v2?" -> "My play v2.json". Keeps spaces, drops characters that are unsafe in file names.
+export function safeFileName(name, ext = '.json') {
   const cleaned = String(name ?? '')
     .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '')
     .replace(/\s+/g, ' ')
     .replace(/^[\s.]+|[\s.]+$/g, '')
     .slice(0, 80);
-  return `${cleaned || 'play'}.json`;
+  return `${cleaned || 'play'}${ext}`;
 }
 
 export function downloadPlay(play) {
   const blob = new Blob([JSON.stringify(play, null, 2) + '\n'], { type: 'application/json' });
+  downloadBlob(blob, safeFileName(play.name));
+}
+
+export function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = safeFileName(play.name);
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -122,6 +128,24 @@ export function parsePlay(data) {
     view: data.view === 'half' ? 'half' : 'full',
     orientation: data.orientation === 'vertical' ? 'vertical' : 'horizontal',
     players,
-    phases,
+    phases: fillMissingPositions(players, phases),
   };
+}
+
+// Every player is on the pitch in every phase. Older plays can miss a player in some phases (e.g. one
+// re-added on a later phase): copy their spot from the nearest earlier phase, or the nearest later one if
+// there is no earlier one. A player with no spot anywhere gets their usual starting spot.
+export function fillMissingPositions(players, phases) {
+  const out = phases.map(ph => ({ ...ph, positions: { ...ph.positions } }));
+  for (const p of players) {
+    const has = out.map(ph => ph.positions[p.id]);
+    if (has.every(Boolean)) continue;
+    const spare = startSpot(p.team, Number(p.id.slice(1)) || 1, 'full');
+    out.forEach((ph, i) => {
+      if (has[i]) return;
+      const from = has.slice(0, i).findLast(Boolean) ?? has.slice(i + 1).find(Boolean) ?? spare;
+      ph.positions[p.id] = { x: from.x, y: from.y };
+    });
+  }
+  return out;
 }
