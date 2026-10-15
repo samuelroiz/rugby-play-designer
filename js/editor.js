@@ -81,11 +81,19 @@ export function routeGeometry(route, { endGap = 0 } = {}) {
   };
 }
 
+// Click-to-draw: with a route tool on and a player selected, each click on the pitch adds a route from
+// that player. Returns that player's id, or null when drawing is by press-and-drag instead.
+export function drawingFrom(ui, phase) {
+  const sel = ui.selected;
+  return ui.tool && sel?.kind === 'player' && phase.positions[sel.id] ? sel.id : null;
+}
+
 // `space` is the group that holds the pitch: its transform includes the vertical rotation, so pointer
 // positions converted through it land under the finger in either orientation.
 // While a drag is in progress ui.dragging is true, so the app records one undo step when it ends.
 // ui.snap is the player a route being drawn (or about to be, or whose start is being dragged) attaches to;
 // ui.snapTo is the receiver a pass being drawn (or whose end is being dragged) will end on.
+// ui.preview is where a click-to-draw route would end if the pointer were pressed (or released) now.
 export function initEditor(svg, space, { state, ui, phase, render, editLabel, editOrder, moveObject }) {
   let drag = null;
   let lastTap = { id: null, time: 0 };
@@ -118,6 +126,48 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
     r.points[r.points.length - 1] = [round(pos.x), round(pos.y)];
   };
 
+  // A new route of the current tool's type, with both ends at `start`, to be dragged out.
+  const startRoute = (from, start) => {
+    const route = {
+      id: nextId('r', phase().routes),
+      type: ui.tool,
+      from,
+      points: [[round(start.x), round(start.y)], [round(start.x), round(start.y)]],
+      curve: 0,
+      order: nextOrder(phase().routes),
+    };
+    if (ui.tool === 'pass') route.to = null;
+    phase().routes.push(route);
+    return route;
+  };
+
+  // Click-to-draw: aim the preview at p, ringing the receiver a pass would end on.
+  const aim = p => {
+    const from = drawingFrom(ui, phase());
+    ui.snapTo = ui.tool === 'pass' ? receiverAt({ from }, p) : null;
+    ui.preview = { x: round(clampX(p.x)), y: round(clampY(p.y)) };
+  };
+  // Click-to-draw, on release: a pass on a team-mate ends on them; another player becomes the new start;
+  // anywhere else ends the route there. The player stays selected and the tool stays on for the next one.
+  function finishAim(e) {
+    const from = drawingFrom(ui, phase());
+    if (!from) return;
+    const p = toMetres(space, e);
+    const to = ui.tool === 'pass' ? receiverAt({ from }, p) : null;
+    const onPlayer = document.elementsFromPoint(e.clientX, e.clientY)
+      .map(el => el.closest('[data-kind="player"]')).find(Boolean)?.dataset.id;
+    if (!to && onPlayer) {
+      ui.selected = { kind: 'player', id: onPlayer };
+      return;
+    }
+    const start = phase().positions[from];
+    const end = to ? phase().positions[to] : { x: clampX(p.x), y: clampY(p.y) };
+    if (Math.hypot(end.x - start.x, end.y - start.y) < MIN_ROUTE_LENGTH) return;
+    const route = startRoute(from, start);
+    route.points[1] = [round(end.x), round(end.y)];
+    if (ui.tool === 'pass') route.to = to;
+  }
+
   svg.addEventListener('pointerdown', e => {
     if (!e.isPrimary || e.button !== 0 || drag) return;
     document.activeElement?.blur(); // so Delete/Escape reach the editor, not a text field
@@ -126,7 +176,21 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
     const kind = hit?.dataset.kind;
     const id = hit?.dataset.id;
 
-    if (kind === 'handle') {
+    const clickFrom = drawingFrom(ui, phase());
+    const passTo = clickFrom && ui.tool === 'pass' && kind === 'player' && teamOf(id) === teamOf(clickFrom);
+    if (clickFrom && !(kind === 'player' && id !== clickFrom && !passTo)) {
+      // Click-to-draw: nothing is made until release, so a press can still be moved to aim (and on a
+      // phone, where there's no hover, that's how the preview shows).
+      drag = { mode: 'aim' };
+      aim(p);
+    } else if (clickFrom) {
+      // Pressing another player switches the start to them. Dragging from there draws a route from them
+      // as usual; either way they stay selected, so click-to-draw carries on from them.
+      ui.selected = { kind: 'player', id };
+      ui.preview = null;
+      drag = { mode: 'route', id: startRoute(id, phase().positions[id]).id, keepPlayer: id };
+      ui.snap = id;
+    } else if (kind === 'handle') {
       // Route handles: start, end, or bend (the midpoint). Nothing changes until the pointer has moved,
       // so a tap on a start handle sitting on a player can still select that player (see endDrag).
       ui.selected = { kind: 'route', id };
@@ -139,18 +203,8 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
       // Start a new route, from the nearest player if we pressed on or next to one.
       const from = playerAt(p);
       const start = from ? phase().positions[from] : { x: clampX(p.x), y: clampY(p.y) };
-      const route = {
-        id: nextId('r', phase().routes),
-        type: ui.tool,
-        from,
-        points: [[round(start.x), round(start.y)], [round(start.x), round(start.y)]],
-        curve: 0,
-        order: nextOrder(phase().routes),
-      };
-      if (ui.tool === 'pass') route.to = null;
-      phase().routes.push(route);
+      drag = { mode: 'route', id: startRoute(from, start).id };
       ui.snap = from;
-      drag = { mode: 'route', id: route.id };
     } else if (kind === 'player' || kind === 'object') {
       const pos = kind === 'player' ? phase().positions[id] : findObject(id);
       ui.selected = { kind, id };
@@ -173,8 +227,19 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
 
   svg.addEventListener('pointermove', e => {
     if (!drag) {
-      // With a route tool and a mouse or pen hovering, show which player a press here would attach to.
-      if (ui.tool && e.pointerType !== 'touch') setSnap(playerAt(toMetres(space, e)));
+      if (drawingFrom(ui, phase())) {
+        // Click-to-draw: the preview line follows a hovering mouse or pen.
+        aim(toMetres(space, e));
+        render();
+      } else if (ui.tool && e.pointerType !== 'touch') {
+        // With a route tool and a mouse or pen hovering, show which player a press here would attach to.
+        setSnap(playerAt(toMetres(space, e)));
+      }
+      return;
+    }
+    if (drag.mode === 'aim') {
+      aim(toMetres(space, e));
+      render();
       return;
     }
     const p = toMetres(space, e);
@@ -227,13 +292,17 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
     ui.snap = null;
     ui.snapTo = null;
 
+    if (done.mode === 'aim' && e.type === 'pointerup') finishAim(e);
+
     if (done.mode === 'route') {
       const r = findRoute(done.id);
       const [a, b] = [r.points[0], r.points[r.points.length - 1]];
       if (e.type === 'pointercancel' || Math.hypot(b[0] - a[0], b[1] - a[1]) < MIN_ROUTE_LENGTH) {
         phase().routes = phase().routes.filter(x => x !== r);
+        // A tap on a player (no drag) with a route tool on selects them, which starts click-to-draw.
+        if (e.type === 'pointerup' && r.from) ui.selected = { kind: 'player', id: r.from };
       } else {
-        ui.selected = { kind: 'route', id: r.id };
+        ui.selected = done.keepPlayer ? { kind: 'player', id: done.keepPlayer } : { kind: 'route', id: r.id };
       }
     }
 
@@ -280,7 +349,15 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
     ui.snap = id;
     render();
   }
-  svg.addEventListener('pointerleave', () => { if (!drag) setSnap(null); });
+  svg.addEventListener('pointerleave', () => {
+    if (drag) return;
+    if (ui.preview) {
+      ui.preview = null;
+      ui.snapTo = null;
+      render();
+    }
+    setSnap(null);
+  });
   svg.addEventListener('pointerup', endDrag);
   svg.addEventListener('pointercancel', endDrag);
 }

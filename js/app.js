@@ -3,7 +3,7 @@
 // and schedules the autosave, so every change to the play is undoable and saved without extra wiring.
 
 import { drawPitch, setView, viewCentre, startSpot, svgEl, uprightTurn, PLAYER_R } from './pitch.js';
-import { initEditor, routeGeometry, nextId, isAttached } from './editor.js';
+import { initEditor, routeGeometry, nextId, isAttached, drawingFrom } from './editor.js';
 import { placeScrum, moveScrum } from './setpiece.js';
 import { appendPhase, insertPhaseAfter, movePhase } from './phases.js';
 import { createHistory } from './history.js';
@@ -49,6 +49,7 @@ const ui = {
   dragging: false,
   snap: null, // player a route being drawn will attach to (highlighted)
   snapTo: null, // receiver a pass being drawn will end on (highlighted)
+  preview: null, // click-to-draw: where the next route would end, { x, y }
   layers: { distances: true, grid: false, legend: true, ghost: true },
   orientationChosen: false, // once the user picks one, stop following the phone's rotation
 };
@@ -72,18 +73,22 @@ const phase = () => state.phases[ui.phase];
 const isSelected = (kind, id) => ui.selected?.kind === kind && ui.selected.id === id;
 const turn = () => uprightTurn(state.orientation);
 
-function replacePlay(play, phaseIndex = 0) {
+// keepTools (undo/redo) keeps the route tool and the selection, so undoing one click-drawn route doesn't
+// stop click-to-draw. A selection that no longer exists is dropped at the next redraw.
+function replacePlay(play, phaseIndex = 0, { keepTools = false } = {}) {
   for (const key of Object.keys(state)) delete state[key];
   Object.assign(state, structuredClone(play));
   ui.phase = Math.min(Math.max(0, phaseIndex), state.phases.length - 1);
-  ui.selected = null;
-  ui.tool = null;
+  if (!keepTools) {
+    ui.selected = null;
+    ui.tool = null;
+  }
   inputsStale = true;
 }
 
 const history = createHistory({
   read: () => ({ play: JSON.stringify(state), phase: ui.phase }),
-  write: (json, phaseIndex) => replacePlay(JSON.parse(json), phaseIndex),
+  write: (json, phaseIndex) => replacePlay(JSON.parse(json), phaseIndex, { keepTools: true }),
 });
 
 let autosaveTimer = null;
@@ -131,7 +136,7 @@ let pitchKey = '';
 // `commitKey` groups typing in one text box into a single undo step.
 function render(commitKey = null) {
   if (!ui.tool && !ui.dragging) ui.snap = null;
-  if (!ui.dragging) ui.snapTo = null;
+  if (!ui.dragging && !ui.preview) ui.snapTo = null;
   drawScene();
   updateToolbar();
   updatePhaseBar();
@@ -153,6 +158,7 @@ function drawScene() {
   }
   if (ui.phase >= state.phases.length) ui.phase = state.phases.length - 1;
   dropMissingSelection();
+  if (!drawingFrom(ui, phase())) ui.preview = null;
   legend.classList.toggle('hidden', !ui.layers.legend);
   renderGhost();
   renderObjects();
@@ -222,6 +228,20 @@ function renderRoutes() {
     // While a route tool is active the handles are hidden, so pressing on a player always starts a new route.
     if (selected && !ui.tool) renderHandles(r, geometry, ppm);
   }
+  renderPreview(layer);
+}
+
+// Click-to-draw: a faint line from the selected player to where the next click would end the route.
+// A pass aimed at a team-mate ends on them (they're ringed too).
+function renderPreview(layer) {
+  const from = drawingFrom(ui, phase());
+  if (!from || !ui.preview) return;
+  const start = phase().positions[from];
+  const end = ui.snapTo ? phase().positions[ui.snapTo] : ui.preview;
+  if (Math.hypot(end.x - start.x, end.y - start.y) < 0.5) return;
+  const r = { points: [[start.x, start.y], [end.x, end.y]], curve: 0, to: ui.snapTo };
+  const g = svgEl('g', { class: 'route-preview', 'pointer-events': 'none' }, layer);
+  routePaths(g, 'path', { d: drawnGeometry(r).d }, ui.tool);
 }
 
 // Start, bend and end handles for the selected route. They sit above the players so they can be grabbed,
@@ -346,6 +366,26 @@ function updateToolbar() {
   for (const b of document.querySelectorAll('[data-route]')) b.setAttribute('aria-pressed', b.dataset.route === ui.tool);
   for (const c of document.querySelectorAll('[data-layer]')) c.checked = ui.layers[c.dataset.layer];
   svg.classList.toggle('drawing', !!ui.tool);
+  updateDrawHint();
+}
+
+// "Click where 12's run ends", while click-to-draw is on.
+function updateDrawHint() {
+  const hint = $('draw-hint');
+  const from = drawingFrom(ui, phase());
+  hint.hidden = !from;
+  if (!from) return;
+  const player = state.players.find(p => p.id === from);
+  // "12", or "defender 1" when both teams have a 1.
+  const shared = state.players.some(p => p !== player && p.label === player.label);
+  const who = shared ? `${player.team === 'attack' ? 'attacker' : 'defender'} ${player.label}` : player.label;
+  const verb = touchScreen.matches ? 'Tap' : 'Click';
+  const type = ROUTE_TYPES[ui.tool]?.label.toLowerCase() ?? 'route';
+  const text = ui.tool === 'pass'
+    ? `${verb} where ${who}'s pass goes, or on a team-mate to pass to them.`
+    : `${verb} where ${who}'s ${type} ends.`;
+  const more = touchScreen.matches ? '' : ' Esc to stop.';
+  if (hint.textContent !== text + more) hint.textContent = text + more;
 }
 
 function updateHistoryButtons() {

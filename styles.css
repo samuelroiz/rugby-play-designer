@@ -212,6 +212,22 @@ button.danger { color: #b71c1c; }
   box-shadow: 0 4px 14px rgba(0, 0, 0, .2);
 }
 .toast[hidden] { display: none; }
+/* Click-to-draw hint, top left of the pitch next to the toolbar */
+.draw-hint {
+  position: absolute;
+  top: .6rem;
+  left: .6rem;
+  z-index: 4;
+  max-width: calc(100% - 1.2rem);
+  margin: 0;
+  padding: .4rem .65rem;
+  background: rgba(29, 29, 29, .85);
+  color: #fff;
+  font-size: .85rem;
+  border-radius: 6px;
+  pointer-events: none;
+}
+.draw-hint[hidden] { display: none; }
 
 /* Phase bar under the pitch */
 .phasebar {
@@ -314,6 +330,7 @@ dialog .cancel { margin: .75rem 0 0 auto; }
 /* Selection is a soft white halo: yellow would vanish behind a yellow run. */
 .route-highlight { fill: none; stroke: #fff; stroke-linecap: round; opacity: .45; }
 .route.loose .route-hit { cursor: move; }
+.route-preview { opacity: .6; }
 .handle { cursor: move; }
 .handle-hit { fill: transparent; }
 .handle-dot { fill: #fff; stroke: #1d1d1d; stroke-width: .15; }

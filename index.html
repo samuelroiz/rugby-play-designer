@@ -91,7 +91,7 @@
     <div class="group">
       <h2>Edit</h2>
       <button type="button" data-action="delete" class="danger">Delete</button>
-      <p class="tip">Double-click a player to rename. Tap a route to edit it: drag its end dots, its middle dot to bend it, or the line to move it. Tap a route's number to change its order. Esc clears.</p>
+      <p class="tip">Double-click a player to rename. Tap a route to edit it: drag its end dots, its middle dot to bend it, or the line to move it. Tap a route's number to change its order. Select a player, then pick a route type and click to draw routes from them. Esc clears.</p>
     </div>
   </nav>
 
@@ -109,6 +109,7 @@
       </g>
     </svg>
     <div class="legend" id="legend" aria-hidden="true"></div>
+    <p class="draw-hint" id="draw-hint" aria-live="polite" hidden></p>
     <div class="toast" id="toast" role="alert" hidden></div>
   </main>
 
