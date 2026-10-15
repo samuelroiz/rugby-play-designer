@@ -17,9 +17,9 @@ body {
   background: var(--panel);
   height: 100dvh;
   display: grid;
-  grid-template-columns: 10rem 1fr;
-  grid-template-rows: auto 1fr;
-  grid-template-areas: "top top" "tools pitch";
+  grid-template-columns: 10rem minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: "top top" "tools pitch" "tools phases";
 }
 
 /* Top bar */
@@ -50,11 +50,13 @@ body {
 .segmented { display: flex; flex: none; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .segmented button { border: 0; border-radius: 0; }
 .segmented button + button { border-left: 1px solid var(--border); }
-.orient-icon { width: 1.2rem; height: 1.2rem; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.orient-icon, .icon { width: 1.2rem; height: 1.2rem; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.icon { stroke-linecap: round; stroke-linejoin: round; }
+.view-controls { display: flex; align-items: center; gap: .75rem; }
 
-/* Layers panel: a <details> that drops down under its button */
-.layers { position: relative; flex: none; }
-.layers summary {
+/* Drop-down menus (Layers, Play): a <details> that opens a panel under its button */
+.menu { position: relative; flex: none; }
+.menu summary {
   list-style: none;
   padding: .45rem .6rem;
   background: #fff;
@@ -63,9 +65,10 @@ body {
   cursor: pointer;
   user-select: none;
 }
-.layers summary::-webkit-details-marker { display: none; }
-.layers[open] summary { background: #eef3ee; }
-.layers-panel {
+.menu summary::-webkit-details-marker { display: none; }
+.menu summary::after { content: " ▾"; font-size: .75em; color: var(--muted); }
+.menu[open] summary { background: #eef3ee; }
+.menu-panel {
   position: absolute;
   right: 0;
   top: calc(100% + .3rem);
@@ -80,7 +83,19 @@ body {
   box-shadow: 0 4px 14px rgba(0, 0, 0, .15);
   white-space: nowrap;
 }
-.layers-panel label { display: flex; align-items: center; gap: .45rem; cursor: pointer; }
+.menu-panel label { display: flex; align-items: center; gap: .45rem; cursor: pointer; }
+.play-panel { gap: .6rem; min-width: 14rem; }
+.play-panel label { flex-direction: column; align-items: stretch; gap: .2rem; font-size: .8rem; color: var(--muted); cursor: default; }
+.play-panel select, .play-panel input[type="text"] {
+  font: inherit;
+  font-size: .95rem;
+  color: var(--ink);
+  padding: .35rem .45rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+}
+.menu-actions { display: flex; flex-direction: column; gap: .35rem; padding-top: .5rem; border-top: 1px solid var(--border); }
 
 /* Buttons */
 button {
@@ -169,6 +184,54 @@ button.danger { color: #b71c1c; }
 }
 .legend.hidden { display: none; }
 
+.toast {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  width: max-content;
+  max-width: calc(100% - 2rem);
+  padding: .55rem .8rem;
+  background: #fff3f3;
+  color: #8a1c1c;
+  border: 1px solid #f0b4b4;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .2);
+}
+.toast[hidden] { display: none; }
+
+/* Phase bar under the pitch */
+.phasebar {
+  grid-area: phases;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem 1rem;
+  padding: .5rem .75rem;
+  background: #fff;
+  border-top: 1px solid var(--border);
+}
+.phasebar button { gap: 0; }
+.phase-nav, .phase-tools { display: flex; align-items: center; gap: .4rem; min-width: 0; }
+.phase-tools { flex: 1 1 22rem; }
+.phase-tabs { display: flex; gap: .3rem; overflow-x: auto; min-width: 0; max-width: 22rem; scrollbar-width: none; }
+.phase-tabs button { min-width: 2.2rem; justify-content: center; font-variant-numeric: tabular-nums; }
+.phase-tabs button[aria-current="step"] { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.add-phase { min-width: 2.2rem; justify-content: center; font-weight: 700; }
+#phase-count { white-space: nowrap; font-size: .9rem; }
+#phase-note {
+  flex: 1;
+  min-width: 8rem;
+  font: inherit;
+  padding: .4rem .5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  resize: vertical;
+  min-height: 2.1rem;
+  max-height: 8rem;
+}
+
 /* Set piece dialog */
 dialog {
   border: 1px solid var(--border);
@@ -231,19 +294,24 @@ dialog .cancel { margin: .75rem 0 0 auto; }
 .arrowhead { stroke: rgba(0, 0, 0, .45); stroke-width: .8; }
 /* Selection is a soft white halo: yellow would vanish behind a yellow run. */
 .route-highlight { fill: none; stroke: #fff; stroke-linecap: round; opacity: .45; }
-.handle { fill: #fff; stroke: #333; stroke-width: .1; opacity: .7; cursor: move; }
-.route.selected .handle { fill: #ffeb3b; opacity: 1; }
+.route.loose .route-hit { cursor: move; }
+.handle { cursor: move; }
+.handle-hit { fill: transparent; }
+.handle-dot { fill: #fff; stroke: #1d1d1d; stroke-width: .15; }
+.handle.bend .handle-dot { fill: #ffeb3b; }
+
+/* SVG: previous phase shown faintly */
+.ghost circle { fill: none; stroke-width: .18; stroke-dasharray: .45 .3; opacity: .75; }
+.ghost.attack circle { stroke: #ffb3b3; }
+.ghost.defense circle { stroke: #b3d1ff; }
+.ghost text { fill: rgba(255, 255, 255, .55); font-family: system-ui, sans-serif; font-weight: 700; }
 .badge { cursor: pointer; }
 .badge circle { fill: #1d1d1d; stroke-width: .2; }
 .badge text { fill: #fff; font-family: system-ui, sans-serif; font-weight: 700; pointer-events: none; }
 
 /* Phone: toolbar moves to the bottom and scrolls sideways */
 @media (max-width: 700px) {
-  body {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto 1fr auto;
-    grid-template-areas: "top" "pitch" "tools";
-  }
+  body { grid-template-columns: minmax(0, 1fr); }
   .toolbar {
     flex-direction: row;
     gap: .5rem;
@@ -255,9 +323,20 @@ dialog .cancel { margin: .75rem 0 0 auto; }
   }
   .group { flex-direction: row; }
   .group + .group { padding-left: .5rem; border-left: 1px solid var(--border); }
+  body {
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "top" "pitch" "phases" "tools";
+  }
   .group h2, .toolbar .tip, .long { display: none; }
-  .topbar { gap: .4rem; padding: .4rem .5rem; }
-  .segmented button, .layers summary { padding: .4rem .45rem; }
+  .topbar { flex-wrap: wrap; gap: .4rem; padding: .4rem .5rem; }
+  .view-controls { flex-basis: 100%; gap: .4rem; }
+  .view-controls .menu { margin-left: auto; }
+  .segmented button, .menu summary { padding: .4rem .45rem; }
+  .phasebar { gap: .4rem; padding: .4rem .5rem; }
+  .phase-nav { flex-basis: 100%; }
+  .phase-tabs { flex: 1; max-width: none; }
+  .phase-tools { flex-basis: 100%; }
+  #phase-note { min-width: 0; resize: none; }
   .legend { left: .75rem; bottom: .75rem; grid-template-columns: repeat(3, auto auto); font-size: .7rem; }
   .legend .route-sample { width: 1.8rem; }
 }

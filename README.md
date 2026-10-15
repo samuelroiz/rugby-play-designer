@@ -2,20 +2,54 @@
 
 A browser whiteboard for drawing rugby plays: put attackers and defenders on a pitch, drag them around, draw runs, passes, kicks and other routes, and drop ball, ruck, scrum and lineout markers.
 
-It is plain HTML, CSS, JavaScript (ES modules) and SVG. There is no framework, no build step and no npm. This is **Stage 1 ("Whiteboard")**: one phase per play. Phases, save/load and animation come later.
+It is plain HTML, CSS, JavaScript (ES modules) and SVG. There is no framework, no build step and no npm. This is **Stage 2a**: a play has several phases, and it is autosaved in the browser and can be saved to and loaded from `.json` files. Every change can be undone. Animation comes later.
 
 ## Using it
 
 - **Add attack / Add defender**: adds the next free number (1–15) near the middle of the current view. Each team can have up to 15.
 - **Drag** players and markers with a mouse, finger or pen.
 - **Double-click (or double-tap)** a player to change its label, e.g. `10` or `FH`.
-- **Routes**: pick a route type, then press on the pitch and drag to where it ends. If you start on a player, the route belongs to that player and follows them when they move. Drag the dot in the middle of a route to bend it. Each type has its own colour as well as its line style: run yellow, pass white, kick orange, decoy grey, drift purple, blitz pink. Red and blue are kept for the teams.
+- **Routes**: pick a route type, then press on the pitch and drag to where it ends. If you start on a player, the route belongs to that player and follows them when they move. Each type has its own colour as well as its line style: run yellow, pass white, kick orange, decoy grey, drift purple, blitz pink. Red and blue are kept for the teams.
+- **Editing a route**: tap or click a route to select it and show its handles. These have large invisible touch areas, so they're easy to grab with a finger.
+  - Drag the **end** dot to move where the route ends.
+  - Drag the **start** dot to move where it begins. Dropping it on a player attaches the route to that player. Dropping it on open pitch detaches it.
+  - Drag the yellow **middle** dot to bend the route.
+  - Drag the **line** to move the whole route. This only works for routes not attached to a player; attached routes move with their player.
+
+  A tap on a handle that doesn't drag goes through to whatever is under it, such as a player or a badge.
 - **Route order**: each route shows a small numbered badge near its start. New routes get the next number (1, 2, 3 …). Tap or click a badge to change its number. Deleting a route doesn't renumber the others. Stage 3 animation will use this order.
-- **Set piece → Scrum**: asks which team has the put-in, then puts players 1–8 of both teams in a scrum formation: front row 1-2-3, locks 4-5, flankers 6-7, 8 at the back, each loosehead facing the opposing tighthead. Players 1–8 that already exist are moved rather than duplicated, so a team never goes over 15. The ball shows on the put-in side. Drag the **S** tab to move the whole scrum. Across the pitch it snaps to the nearest of the left 15 m line, the middle or the right 15 m line. Along the pitch it can go anywhere in the field of play. Players can still be dragged one at a time afterwards. Running the preset again moves the same players to the new scrum.
+- **Set piece → Scrum**: asks which team has the put-in, then puts players 1–8 of both teams in a scrum formation: front row 1-2-3, locks 4-5, flankers 6-7, 8 at the back, each loosehead facing the opposing tighthead. Players 1–8 that already exist are moved rather than duplicated, so a team never goes over 15. The ball is placed on the put-in side as an ordinary ball you can select, move or delete. Running the preset again reuses a ball already at the scrum instead of adding another. The **S** block only shows while the scrum or one of its players is selected. Drag it to move the whole scrum, along with a ball at the scrum. Across the pitch it snaps to the nearest of the left 15 m line, the middle or the right 15 m line. Along the pitch it can go anywhere in the field of play. Players can still be dragged one at a time afterwards. Running the preset again moves the same players to the new scrum.
 - **Select** by clicking a player, route or marker. **Delete** (key or button) removes it. **Esc** clears the selection and the route tool.
 - **Full / Half** switches the view. Half shows exactly halfway (x = 50) to the dead ball line (x = 110), touchline to touchline, and the pitch is sized to fill the space without showing any extra field.
 - **Horizontal / Vertical** turns the pitch. Vertical puts the try lines at the top and bottom, with x = 110 at the top. Only the view turns: the data stays the same, and numbers, labels and badges stay upright. It starts vertical on a phone held upright and horizontal otherwise.
-- **Layers**: *Distances* labels the lines like a real pitch (5m, 22, 10, 50). *Grid* adds a faint 5 m grid. *Legend* shows or hides the route key. Distances and Legend start on.
+- **Layers**:
+  - *Distances* labels the lines like a real pitch (5m, 22, 10, 50).
+  - *Grid* adds a faint 5 m grid.
+  - *Legend* shows or hides the route key.
+  - *Previous phase* draws the last phase's players as faint dashed outlines with their numbers, so you can see who moved where. They can't be clicked.
+
+  Everything except Grid starts on.
+
+### Phases
+
+The bar under the pitch shows the phase tabs (**1 2 3 … +**), **Prev** and **Next**, and "Phase 2 of 4". The **←** and **→** keys also go back and forward.
+
+- **+** adds a phase straight after the current one, built from it:
+  - Each player with a run, drift, blitz or decoy starting on them moves to the end of that route. If a player has several, the highest order number wins.
+  - If there are passes, the ball moves to the receiver of the highest-order pass. The receiver is the nearest team-mate of the passer within 5 m of where the pass ends, after their own run. If nobody is that close, the ball goes to the end of the pass. Otherwise the ball stays where it is.
+  - Routes aren't copied, so the new phase starts with none. Markers (ruck, scrum, lineout, ball) are copied.
+- **◂ Move / Move ▸** moves the current phase left or right. **Delete phase** asks first.
+- The **note** box beside them belongs to the current phase.
+- Players belong to the whole play: deleting a player removes them from every phase.
+
+### Undo, autosave and files
+
+- **Undo / Redo** (top bar, or Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z) covers every change to the play, including phases, labels, order numbers, name, note, details, New play and Load. A whole drag is one step, and so is a burst of typing in one box. At least 100 steps are kept. History is cleared on refresh.
+- The play is **autosaved** in this browser (`localStorage`) shortly after every change, and straight away when the page is hidden or closed. It comes back when you reload. If storage is blocked (some private modes), everything else still works; it just isn't kept.
+- The **Play** menu holds the play's details (*category*: attack, defense, lineout or scrum; *tags*, comma separated) and:
+  - **New play**: asks first, then starts a blank play.
+  - **Save file**: downloads the play as `<play name>.json`. The name is cleaned of characters that aren't allowed in file names, and the JSON is pretty-printed.
+  - **Load file…**: reads a `.json` play. It checks the file has `schemaVersion`, `players` and `phases`, and shows a short error if not. Loading replaces the current play after asking, and can be undone.
 
 ## Running it locally
 
@@ -41,10 +75,13 @@ All paths are relative, so the site also works from a project sub-path.
 ```
 index.html       page shell: top bar, toolbar, SVG
 styles.css       layout (the toolbar moves to the bottom on phones) and SVG styling
-js/app.js        play state, toolbar wiring, redraw
+js/app.js        play state, toolbar and phase bar wiring, redraw (which also records undo steps and autosaves)
 js/pitch.js      pitch markings and screen-to-metre conversion
-js/editor.js     dragging, drawing and bending routes, editing route order, selecting
-js/setpiece.js   scrum preset: formation, snapping the mark, moving the pack together
+js/editor.js     dragging, drawing routes and editing them with handles, selecting
+js/setpiece.js   scrum preset: formation, snapping the mark, moving the pack and ball together
+js/phases.js     building the next phase (players follow their runs, ball follows the last pass)
+js/history.js    undo/redo by snapshots of the play
+js/storage.js    autosave, saving and loading .json files, checking loaded plays
 plays/<category>/  for saved plays (later stages)
 ```
 
@@ -62,6 +99,7 @@ The whole play is a single state object, exposed as `window.playState` for debug
   "schemaVersion": 1,
   "name": "Untitled play",
   "category": "attack",
+  "tags": ["backs", "set move"],
   "view": "full",
   "orientation": "horizontal",
   "players": [{ "id": "a10", "team": "attack", "label": "10" }],
@@ -83,4 +121,7 @@ The whole play is a single state object, exposed as `window.playState` for debug
 - A route's `order` is a whole number from 1 to 99 and sets the order routes run in. New routes get one more than the highest existing order. Numbers can repeat, and gaps are fine. Routes without `order` (older data) simply show no badge.
 - `orientation` is `"horizontal"` or `"vertical"`. It only changes how the pitch is drawn: all coordinates stay in the same pitch metres. Vertical is a quarter turn anticlockwise, so pitch (x, y) is drawn at SVG (y, −x).
 - A scrum made with the preset has `putIn` (`"attack"` or `"defense"`) and `pack`, the ids of the players that move with it. Its `x, y` is the mark between the front rows, with `y` always 15, 35 or 55. A plain `scrum` object without `pack` (older data) still draws as an "S" marker.
-- The layer checkboxes (distances, grid, legend) are view settings and aren't part of the play.
+- `category` is one of `attack`, `defense`, `lineout` and `scrum`. `tags` is a list of strings.
+- `phases` is in play order. Each phase has its own `note`, player `positions`, `objects` (markers) and `routes`. Players are listed once, in `players`. A player with no position in a phase isn't on the pitch in that phase.
+- Which phase is being shown, the layer checkboxes, and the undo history are view settings and aren't part of the play. The autosave stores the shown phase alongside the play.
+- `schemaVersion` is still 1: `tags` and the newer fields are optional, and older plays load as they are.

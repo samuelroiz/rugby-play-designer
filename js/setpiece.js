@@ -19,6 +19,9 @@ const PACK = [
 
 const TEAMS = [['attack', 'a', 1], ['defense', 'd', -1]];
 
+// A ball within this distance of the mark counts as "at the scrum": the preset reuses it and it moves with the scrum.
+const BALL_AT_SCRUM = 8;
+
 // Nearest legal mark: x anywhere in the field of play, y snapped to the closest of the three spots.
 export function snapScrum(x, y) {
   return {
@@ -28,11 +31,14 @@ export function snapScrum(x, y) {
 }
 
 // The put-in team's scrum-half feeds on that team's loosehead side: -y for attack, +y for defense.
-export const putInSide = putIn => (putIn === 'defense' ? 1 : -1);
+const putInSide = putIn => (putIn === 'defense' ? 1 : -1);
+
+const ballNear = (objects, mark) => objects.find(o => o.type === 'ball' && Math.hypot(o.x - mark.x, o.y - mark.y) <= BALL_AT_SCRUM);
 
 // Puts players 1-8 of both teams in formation on a new scrum. Players that already exist are moved
 // rather than duplicated; missing ones are added (ids a1-a8/d1-d8 are always within the 15 limit).
-// An earlier scrum preset in the phase is replaced, so no player belongs to two.
+// An earlier scrum preset in the phase is replaced, so no player belongs to two. The ball is an ordinary
+// ball object on the put-in side; a ball already at the old or new mark is reused rather than adding another.
 export function placeScrum(state, phase, at, putIn) {
   const previous = phase.objects.find(o => o.type === 'scrum' && o.pack);
   const mark = snapScrum(previous?.x ?? at.x, previous?.y ?? at.y);
@@ -49,16 +55,25 @@ export function placeScrum(state, phase, at, putIn) {
   }
   const scrum = { id: nextId('o', phase.objects), type: 'scrum', ...mark, putIn, pack };
   phase.objects.push(scrum);
+
+  let ball = (previous && ballNear(phase.objects, previous)) || ballNear(phase.objects, mark);
+  if (!ball) {
+    ball = { id: nextId('o', phase.objects), type: 'ball' };
+    phase.objects.push(ball);
+  }
+  Object.assign(ball, { x: mark.x, y: mark.y + putInSide(putIn) * 4.7 });
   return scrum;
 }
 
-// Moves a scrum to the snapped mark nearest (x, y), taking its pack along by the same amount,
-// so players that were dragged out of formation keep their offset.
+// Moves a scrum to the snapped mark nearest (x, y), taking its pack and a ball at the scrum along by the
+// same amount, so players that were dragged out of formation keep their offset.
 export function moveScrum(phase, scrum, x, y) {
   const to = snapScrum(x, y);
   const dx = to.x - scrum.x;
   const dy = to.y - scrum.y;
   if (!dx && !dy) return;
+  const ball = ballNear(phase.objects, scrum);
+  if (ball) Object.assign(ball, { x: Math.round((ball.x + dx) * 10) / 10, y: Math.round((ball.y + dy) * 10) / 10 });
   for (const id of scrum.pack ?? []) {
     const pos = phase.positions[id];
     if (pos) movePlayer(phase, id, pos.x + dx, pos.y + dy);
