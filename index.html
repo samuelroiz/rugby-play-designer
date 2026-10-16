@@ -39,12 +39,13 @@
           <button type="button" data-file="load">Load file…</button>
         </div>
         <div class="menu-actions">
-          <button type="button" data-file="png">Save image (PNG)</button>
+          <button type="button" data-file="png" aria-haspopup="dialog">Save image (PNG)…</button>
           <button type="button" data-file="pdf">Save PDF (all phases)</button>
         </div>
         <input id="load-input" type="file" accept=".json,application/json" hidden>
       </div>
     </details>
+    <button type="button" id="templates-button" aria-haspopup="dialog">Templates</button>
 
     <div class="view-controls">
       <div class="segmented" role="group" aria-label="Pitch view">
@@ -143,6 +144,27 @@
         </div>
       </fieldset>
       <p class="tip">Places players 1–8 of both teams and the ball. Select the scrum or one of its players, then drag the S to move the whole scrum.</p>
+      <button value="" class="cancel">Cancel</button>
+    </form>
+  </dialog>
+
+  <dialog id="image-dialog" aria-labelledby="image-title">
+    <form method="dialog">
+      <h2 id="image-title">Save image</h2>
+      <div class="choices">
+        <button type="button" data-image="phase">This phase</button>
+        <button type="button" data-image="all">All phases</button>
+      </div>
+      <p class="tip">All phases puts every phase on one picture, in a grid, with its note.</p>
+      <button value="" class="cancel">Cancel</button>
+    </form>
+  </dialog>
+
+  <dialog id="templates-dialog" aria-labelledby="templates-title">
+    <form method="dialog">
+      <h2 id="templates-title">Start from a template</h2>
+      <p class="tip" id="templates-status" aria-live="polite"></p>
+      <div class="template-grid" id="template-grid"></div>
       <button value="" class="cancel">Cancel</button>
     </form>
   </dialog>

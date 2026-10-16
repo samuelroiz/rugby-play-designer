@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "name": "Untitled play",
+  "category": "attack",
+  "tags": [],
+  "view": "full",
+  "orientation": "horizontal",
+  "players": [],
+  "phases": [
+    {
+      "note": "",
+      "positions": {},
+      "objects": [],
+      "routes": []
+    }
+  ]
+}

@@ -1,0 +1,302 @@
+{
+  "schemaVersion": 1,
+  "name": "Lineout",
+  "category": "lineout",
+  "tags": [],
+  "view": "full",
+  "orientation": "horizontal",
+  "players": [
+    {
+      "id": "a1",
+      "team": "attack",
+      "label": "1"
+    },
+    {
+      "id": "a2",
+      "team": "attack",
+      "label": "2"
+    },
+    {
+      "id": "a3",
+      "team": "attack",
+      "label": "3"
+    },
+    {
+      "id": "a4",
+      "team": "attack",
+      "label": "4"
+    },
+    {
+      "id": "a5",
+      "team": "attack",
+      "label": "5"
+    },
+    {
+      "id": "a6",
+      "team": "attack",
+      "label": "6"
+    },
+    {
+      "id": "a7",
+      "team": "attack",
+      "label": "7"
+    },
+    {
+      "id": "a8",
+      "team": "attack",
+      "label": "8"
+    },
+    {
+      "id": "a9",
+      "team": "attack",
+      "label": "9"
+    },
+    {
+      "id": "a10",
+      "team": "attack",
+      "label": "10"
+    },
+    {
+      "id": "a11",
+      "team": "attack",
+      "label": "11"
+    },
+    {
+      "id": "a12",
+      "team": "attack",
+      "label": "12"
+    },
+    {
+      "id": "a13",
+      "team": "attack",
+      "label": "13"
+    },
+    {
+      "id": "a14",
+      "team": "attack",
+      "label": "14"
+    },
+    {
+      "id": "a15",
+      "team": "attack",
+      "label": "15"
+    },
+    {
+      "id": "d1",
+      "team": "defense",
+      "label": "1"
+    },
+    {
+      "id": "d2",
+      "team": "defense",
+      "label": "2"
+    },
+    {
+      "id": "d3",
+      "team": "defense",
+      "label": "3"
+    },
+    {
+      "id": "d4",
+      "team": "defense",
+      "label": "4"
+    },
+    {
+      "id": "d5",
+      "team": "defense",
+      "label": "5"
+    },
+    {
+      "id": "d6",
+      "team": "defense",
+      "label": "6"
+    },
+    {
+      "id": "d7",
+      "team": "defense",
+      "label": "7"
+    },
+    {
+      "id": "d8",
+      "team": "defense",
+      "label": "8"
+    },
+    {
+      "id": "d9",
+      "team": "defense",
+      "label": "9"
+    },
+    {
+      "id": "d10",
+      "team": "defense",
+      "label": "10"
+    },
+    {
+      "id": "d11",
+      "team": "defense",
+      "label": "11"
+    },
+    {
+      "id": "d12",
+      "team": "defense",
+      "label": "12"
+    },
+    {
+      "id": "d13",
+      "team": "defense",
+      "label": "13"
+    },
+    {
+      "id": "d14",
+      "team": "defense",
+      "label": "14"
+    },
+    {
+      "id": "d15",
+      "team": "defense",
+      "label": "15"
+    }
+  ],
+  "phases": [
+    {
+      "note": "",
+      "positions": {
+        "a1": {
+          "x": 38.8,
+          "y": 6.2
+        },
+        "a4": {
+          "x": 38.8,
+          "y": 8.65
+        },
+        "a3": {
+          "x": 38.8,
+          "y": 11.100000000000001
+        },
+        "a6": {
+          "x": 38.8,
+          "y": 13.55
+        },
+        "a5": {
+          "x": 38.8,
+          "y": 16
+        },
+        "a8": {
+          "x": 38.8,
+          "y": 18.45
+        },
+        "a7": {
+          "x": 38.8,
+          "y": 20.900000000000002
+        },
+        "d1": {
+          "x": 41.2,
+          "y": 6.2
+        },
+        "d4": {
+          "x": 41.2,
+          "y": 8.65
+        },
+        "d3": {
+          "x": 41.2,
+          "y": 11.100000000000001
+        },
+        "d6": {
+          "x": 41.2,
+          "y": 13.55
+        },
+        "d5": {
+          "x": 41.2,
+          "y": 16
+        },
+        "d8": {
+          "x": 41.2,
+          "y": 18.45
+        },
+        "d7": {
+          "x": 41.2,
+          "y": 20.900000000000002
+        },
+        "a2": {
+          "x": 39.5,
+          "y": 1.2
+        },
+        "a9": {
+          "x": 37,
+          "y": 24.5
+        },
+        "a10": {
+          "x": 29,
+          "y": 28
+        },
+        "a12": {
+          "x": 28,
+          "y": 35
+        },
+        "a13": {
+          "x": 27,
+          "y": 42
+        },
+        "a14": {
+          "x": 26,
+          "y": 54
+        },
+        "a11": {
+          "x": 24,
+          "y": 14
+        },
+        "a15": {
+          "x": 18,
+          "y": 40
+        },
+        "d2": {
+          "x": 42.4,
+          "y": 2.6
+        },
+        "d9": {
+          "x": 43,
+          "y": 24.5
+        },
+        "d10": {
+          "x": 51,
+          "y": 28
+        },
+        "d12": {
+          "x": 52,
+          "y": 35
+        },
+        "d13": {
+          "x": 53,
+          "y": 42
+        },
+        "d11": {
+          "x": 54,
+          "y": 54
+        },
+        "d14": {
+          "x": 58,
+          "y": 12
+        },
+        "d15": {
+          "x": 70,
+          "y": 40
+        }
+      },
+      "objects": [
+        {
+          "id": "o1",
+          "type": "lineout",
+          "x": 40,
+          "y": 5
+        },
+        {
+          "id": "o2",
+          "type": "ball",
+          "x": 40.6,
+          "y": 2.2
+        }
+      ],
+      "routes": []
+    }
+  ]
+}
