@@ -1,7 +1,9 @@
-// Building the next phase from the current one: players finish their runs, the ball follows the last pass.
-// Also adding, inserting and moving phases. None of these change the contents of any existing phase.
+// Building the next phase from the current one: players finish their runs, the ball follows the last pass
+// (or kick). Only option A of a player's pass/kick options counts. Also adding, inserting and moving
+// phases. None of these change the contents of any existing phase.
 
 import { nextId } from './editor.js';
+import { isOtherOption } from './options.js';
 
 // Route types that carry their player to the end of the route.
 const MOVING_ROUTES = new Set(['run', 'drift', 'blitz', 'decoy']);
@@ -43,8 +45,10 @@ export function nextPhase(phase, players) {
     }
   }
 
-  const pass = routes.filter(r => r.type === 'pass').at(-1);
-  if (pass) moveBallAlongPass(pass, players, positions, objects);
+  // The ball follows the highest-order pass or kick, leaving out options other than A.
+  const ballRoute = routes.filter(r => (r.type === 'pass' || r.type === 'kick') && !isOtherOption(r)).at(-1);
+  if (ballRoute?.type === 'pass') moveBallAlongPass(ballRoute, players, positions, objects);
+  else if (ballRoute) placeBall(objects, ballRoute.points[0], ballRoute.points[ballRoute.points.length - 1]);
 
   return { note: '', positions, objects, routes: [] };
 }
@@ -65,16 +69,19 @@ function moveBallAlongPass(pass, players, positions, objects) {
     if (d <= best) { best = d; receiver = p; }
   }
   const at = receiver
-    ? { x: positions[receiver.id].x + BALL_OFFSET.x, y: positions[receiver.id].y + BALL_OFFSET.y }
-    : { x: ex, y: ey };
+    ? [positions[receiver.id].x + BALL_OFFSET.x, positions[receiver.id].y + BALL_OFFSET.y]
+    : [ex, ey];
+  placeBall(objects, [sx, sy], at);
+}
 
-  // Move the ball nearest the start of the pass; if there's no ball yet, add one.
+// Moves the ball nearest `from` to `at`; if there's no ball yet, adds one.
+function placeBall(objects, [sx, sy], [x, y]) {
   const balls = objects.filter(o => o.type === 'ball');
   let ball = balls.sort((a, b) => Math.hypot(a.x - sx, a.y - sy) - Math.hypot(b.x - sx, b.y - sy))[0];
   if (!ball) {
     ball = { id: nextId('o', objects), type: 'ball' };
     objects.push(ball);
   }
-  ball.x = Math.round(at.x * 10) / 10;
-  ball.y = Math.round(at.y * 10) / 10;
+  ball.x = Math.round(x * 10) / 10;
+  ball.y = Math.round(y * 10) / 10;
 }

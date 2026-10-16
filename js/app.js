@@ -10,6 +10,7 @@ import { createHistory } from './history.js';
 import { blankPlay, loadAutosave, saveAutosave, downloadPlay, downloadBlob, readPlayFile, safeFileName } from './storage.js';
 import { pictureSvg, allPhasesSvg, pageCss, svgToPng, pageFit, makePdf } from './export.js';
 import { loadTemplates, thumbnail, isEmptyPlay } from './templates.js';
+import { syncOptions, makeMainOption, optionGroup, isOtherOption, OPTION_LABEL_MAX } from './options.js';
 
 const MAX_PER_TEAM = 15;
 const BADGE_R = 0.9;
@@ -212,7 +213,7 @@ function renderRoutes() {
   const lineHit = Math.max(1.6, LINE_HIT_PX / ppm);
   for (const r of phase().routes) {
     const selected = isSelected('route', r.id);
-    const cls = `route${selected ? ' selected' : ''}${isAttached(r) ? '' : ' loose'}`;
+    const cls = `route${selected ? ' selected' : ''}${isAttached(r) ? '' : ' loose'}${isOtherOption(r) ? ' option-alt' : ''}`;
     const g = svgEl('g', { class: cls, 'data-kind': 'route', 'data-id': r.id }, layer);
     const geometry = routeGeometry(r);
     const { d } = drawnGeometry(r);
@@ -225,15 +226,41 @@ function renderRoutes() {
       const b = badgePosition(r, geometry);
       const badge = svgEl('g', { class: 'badge', 'data-kind': 'badge', 'data-id': r.id, transform: `translate(${b.x} ${b.y})${turn()}` }, layers.badges);
       svgEl('circle', { r: BADGE_R, stroke: ROUTE_TYPES[r.type]?.color ?? '#fff' }, badge);
-      const text = String(r.order);
-      svgEl('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': text.length > 1 ? 0.85 : 1.1 }, badge).textContent = text;
+      // "2", or "2A" / "2B" for options.
+      const text = `${r.order}${r.option ?? ''}`;
+      svgEl('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': [1.1, 0.85, 0.7][Math.min(text.length, 3) - 1] }, badge).textContent = text;
     }
+    optionLabel(layers.badges, r);
 
     // While a route tool is active the handles are hidden, so pressing on a player always starts a new route.
     if (selected && !ui.tool) renderHandles(r, geometry, ppm);
   }
   renderPreview(layer);
 }
+
+// An option's label (e.g. "if 13 bites"), small, just past the end of the route, kept upright and
+// anchored so it reads away from the route. Past the receiver's disc for a pass to a team-mate.
+function optionLabel(parent, r) {
+  const text = r.option && r.optionLabel?.trim();
+  if (!text) return;
+  const { control } = routeGeometry(r);
+  const [ex, ey] = r.points[r.points.length - 1];
+  let [tx, ty] = [ex - control.x, ey - control.y];
+  const len = Math.hypot(tx, ty) || 1;
+  [tx, ty] = [tx / len, ty / len];
+  const gap = r.to ? PLAYER_R + 0.7 : 1;
+  // Direction on screen: vertical turns the pitch a quarter turn anticlockwise, (x, y) -> (y, -x).
+  const [sx, sy] = state.orientation === 'vertical' ? [ty, -tx] : [tx, ty];
+  const across = Math.abs(sx) >= Math.abs(sy);
+  svgEl('text', {
+    class: 'option-label',
+    transform: `translate(${round1(ex + tx * gap)} ${round1(ey + ty * gap)})${turn()}`,
+    'text-anchor': across ? (sx > 0 ? 'start' : 'end') : 'middle',
+    'dominant-baseline': across ? 'central' : sy > 0 ? 'hanging' : 'alphabetic',
+    'font-size': 1.1,
+  }, parent).textContent = text;
+}
+const round1 = v => Math.round(v * 100) / 100;
 
 // Click-to-draw: a faint line from the selected player to where the next click would end the route.
 // A pass aimed at a team-mate ends on them (they're ringed too).
@@ -292,7 +319,12 @@ function renderGhost() {
   const prev = state.phases[ui.phase - 1];
   if (!ui.layers.ghost || !prev) return;
   const routes = svgEl('g', { class: 'ghost-routes' }, layer);
-  for (const r of prev.routes) routePaths(routes, 'path', { d: drawnGeometry(r).d }, r.type);
+  for (const r of prev.routes) {
+    // Options look as they do on screen: B, C … fainter, labels by their ends.
+    const g = isOtherOption(r) ? svgEl('g', { class: 'option-alt' }, routes) : routes;
+    routePaths(g, 'path', { d: drawnGeometry(r).d }, r.type);
+    optionLabel(routes, r);
+  }
   for (const p of state.players) {
     const pos = prev.positions[p.id];
     if (!pos) continue;
@@ -488,10 +520,16 @@ function deleteSelected() {
     state.players = state.players.filter(p => p.id !== sel.id);
     for (const each of state.phases) {
       delete each.positions[sel.id];
+      // Passers who lose a pass to this player may be down to one option.
+      const passers = each.routes.filter(r => r.to === sel.id).map(r => r.from);
       each.routes = each.routes.filter(r => r.from !== sel.id && r.to !== sel.id);
+      syncOptions(each.routes, passers);
     }
   } else if (sel.kind === 'route') {
+    const route = ph.routes.find(r => r.id === sel.id);
     ph.routes = ph.routes.filter(r => r.id !== sel.id);
+    // The remaining options close up their letters; a single one left is a normal route again.
+    if (route) syncOptions(ph.routes, [route.from]);
   } else if (sel.kind === 'object') {
     ph.objects = ph.objects.filter(o => o.id !== sel.id);
   }
@@ -511,11 +549,45 @@ function editLabel(id) {
 function editOrder(id) {
   const route = phase().routes.find(r => r.id === id);
   if (!route) return;
+  if (route.option) {
+    editOption(route);
+    return;
+  }
   const value = prompt('Route order number (1-99)', route.order ?? '');
   if (value === null) return;
   const n = Number(value.trim());
   if (Number.isInteger(n) && n >= 1 && n <= 99) route.order = n;
   render();
+}
+
+// An option's badge opens a box for its order number (shared by all its options), its label, and
+// "Make this the main option". Saving is one undo step.
+function editOption(route) {
+  const dialog = $('option-dialog');
+  dialog.dataset.route = route.id;
+  $('option-title').textContent = `Option ${route.option}`;
+  $('option-order').value = route.order ?? '';
+  $('option-label').value = route.optionLabel ?? '';
+  $('option-main').hidden = route.option === 'A';
+  dialog.returnValue = '';
+  dialog.showModal();
+}
+
+function initOptionDialog() {
+  const dialog = $('option-dialog');
+  $('option-label').maxLength = OPTION_LABEL_MAX;
+  dialog.addEventListener('close', () => {
+    const route = phase().routes.find(r => r.id === dialog.dataset.route);
+    const action = dialog.returnValue;
+    if (!route || !action) return;
+    const n = Number($('option-order').value);
+    if (Number.isInteger(n) && n >= 1 && n <= 99) for (const r of optionGroup(phase().routes, route.from)) r.order = n;
+    const label = $('option-label').value.trim().slice(0, OPTION_LABEL_MAX);
+    if (label) route.optionLabel = label;
+    else delete route.optionLabel;
+    if (action === 'main') makeMainOption(phase().routes, route);
+    render();
+  });
 }
 
 function setOrientation(orientation) {
@@ -918,6 +990,7 @@ function init() {
   initPhaseBar();
   initKeys();
   initImageDialog();
+  initOptionDialog();
   initTemplatesDialog();
   const openSetPiece = initSetPieceDialog();
 

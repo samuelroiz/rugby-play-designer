@@ -25,6 +25,12 @@ It is plain HTML, CSS, JavaScript (ES modules) and SVG. There is no framework an
 
   A tap on a handle that doesn't drag goes through to whatever is under it, such as a player or a badge.
 - **Route order**: each route shows a small numbered badge near its start. New routes get the next number (1, 2, 3 …). Tap or click a badge to change its number. Deleting a route doesn't renumber the others. Stage 3 animation will use this order.
+- **Pass and kick options**: when a player has two or more passes and/or kicks in the same phase, they are alternatives, not a sequence. Drawing a second pass or kick from a player who already has one makes both options: the one already there is **A**, the new one **B**, the next **C**, and so on. They all take the order number of the first, and their badges read e.g. *2A*, *2B*. Runs and the other route types are never options.
+  - **A is the main plan** and draws as normal. B, C … draw a little fainter, in their usual colours.
+  - Tap an option's badge to open its box: the **order number** (shared by all of that player's options, so changing it changes them all), a short **label** of up to 25 characters (e.g. *if 13 bites*), shown small just past the end of the route, and **Make this the main option**, which makes it A and re-letters the others in their old order. Each save is one undo step.
+  - Deleting an option closes the letters up (A, C → A, B). When only one is left it's a normal route again: its letter goes, and its label is no longer shown. Deleting a player removes passes to them, which re-letters the passer's options the same way. Moving a route's start onto another player takes it out of the first player's options and adds it to the new player's as the last letter.
+  - **Add phase** and **Insert after** follow option A only (see below). The previous-phase ghost and every export (PNG, all-phases PNG, PDF) show options and labels as the pitch does.
+  - Older plays, without option letters, load and work as before. A player in an old play who already has two passes only gets letters when another pass or kick is drawn from them.
 - **Set piece → Scrum**: asks which team has the put-in, then puts players 1–8 of both teams in a scrum formation: front row 1-2-3, locks 4-5, flankers 6-7, 8 at the back, each loosehead facing the opposing tighthead. Players 1–8 that already exist are moved rather than duplicated, so a team never goes over 15. The ball is placed on the put-in side as an ordinary ball you can select, move or delete. Running the preset again reuses a ball already at the scrum instead of adding another. The **S** block only shows while the scrum or one of its players is selected. Drag it to move the whole scrum, along with a ball at the scrum. Across the pitch it snaps to the nearest of the left 15 m line, the middle or the right 15 m line. Along the pitch it can go anywhere in the field of play. Players can still be dragged one at a time afterwards. Running the preset again moves the same players to the new scrum.
 - **Select** by clicking a player, route or marker. **Delete** (key or button) removes it. **Esc** clears the selection and the route tool.
 - **Full / Half** switches the view. Half shows exactly halfway (x = 50) to the dead ball line (x = 110), touchline to touchline, and the pitch is sized to fill the space without showing any extra field.
@@ -73,7 +79,10 @@ The bar under the pitch shows the phase tabs (**1 2 3 … +**), **Prev** and **N
 - **Insert after** adds a phase straight after the current one, built from it. The phases after it are kept exactly as they were (positions, routes, notes, markers); only their numbers move up by one.
 - A new phase is built the same way either way:
   - Each player with a run, drift, blitz or decoy starting on them moves to the end of that route. If a player has several, the highest order number wins.
-  - If there are passes, the ball moves to the receiver of the highest-order pass, where they stand after their own run. The receiver is the pass's `to` player. If the pass has none, it's the nearest team-mate of the passer within 5 m of where the pass ends; if nobody is that close, the ball goes to the end of the pass. With no passes the ball stays where it is.
+  - The ball follows the highest-order pass or kick. Options other than A (B, C …) are left out, so with options the ball follows A.
+    - For a pass, the ball moves to the receiver, where they stand after their own run. The receiver is the pass's `to` player. If the pass has none, it's the nearest team-mate of the passer within 5 m of where the pass ends; if nobody is that close, the ball goes to the end of the pass.
+    - For a kick, the ball goes to where the kick ends.
+    - With no passes or kicks the ball stays where it is.
   - Routes aren't copied, so the new phase starts with none. Markers (ruck, scrum, lineout, ball) are copied.
 - **◂ Move / Move ▸** swaps the current phase with its neighbour. It never changes what is in any phase. **Delete phase** asks first.
 - Adding, inserting, moving and deleting a phase are each one undo step.
@@ -120,9 +129,9 @@ npm test
 
 `npm test` serves the repo on a free local port, then runs:
 
-- `tests/*.test.js`: Node tests for the phase logic (building, adding, inserting and moving phases), and a check that every template in `templates/index.json` loads like a saved play. They need nothing but Node 22 or newer, so you can also run them alone with `node --test tests/*.test.js`.
+- `tests/*.test.js`: Node tests for the phase logic (building, adding, inserting and moving phases), pass/kick options, and a check that every template in `templates/index.json` loads like a saved play. They need nothing but Node 22 or newer, so you can also run them alone with `node --test tests/*.test.js`.
 - `tests/browser/suite.mjs`: headless Chrome on desktop and phone (touch). It covers dragging, routes and passes, ghost routes, phases, undo/redo, autosave, save/load, templates and the picker, and the PNG (one phase and all phases) and PDF exports.
-- `tests/browser/clickdraw.mjs`: click-to-draw routes from the selected player.
+- `tests/browser/clickdraw.mjs`: click-to-draw routes from the selected player, and pass/kick options (lettering, deleting, labels, making one main, Add Phase following A, ghost and exports).
 
 Downloads and screenshots go to a temporary folder; the path is printed at the start of each suite. To use your installed Chrome instead of puppeteer's, set `PUPPETEER_EXECUTABLE_PATH`, for example `PUPPETEER_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" npm test`.
 
@@ -144,7 +153,8 @@ js/app.js        play state, toolbar and phase bar wiring, redraw (which also re
 js/pitch.js      pitch markings and screen-to-metre conversion
 js/editor.js     dragging, drawing routes and editing them with handles, selecting
 js/setpiece.js   scrum preset: formation, snapping the mark, moving the pack and ball together
-js/phases.js     building the next phase (players follow their runs, ball goes to the receiver); add, insert, move
+js/phases.js     building the next phase (players follow their runs, ball follows option A's pass or kick); add, insert, move
+js/options.js    pass/kick options: lettering A, B, C, closing up, making one the main option
 js/history.js    undo/redo by snapshots of the play
 js/storage.js    autosave, saving and loading .json files, checking and repairing loaded plays
 js/export.js     PNG of a phase, PNG of all phases in a grid, PDF of all phases (loads jsPDF on first use)
@@ -191,6 +201,7 @@ The whole play is a single state object, exposed as `window.playState` for debug
 - Player ids are `a1`–`a15` (attack) and `d1`–`d15` (defense). `label` is what gets drawn.
 - A route's `from` is a player id, or `null` if it was drawn from open grass. A pass also has `to`: the receiver's id, or `null` for a loose end. Its last point sits on the receiver. Loading a play sets a `from` or `to` that names a player who isn't in the play to `null`.
 - `curve` is how far, in metres, the middle of the route is pushed sideways from the straight line between its first and last point. Positive bends to the right of the direction of travel, as seen on screen. The route is drawn as a quadratic Bézier.
+- A pass or kick that is one of a player's options has `option`: `"A"`, `"B"`, `"C"` …, and may have `optionLabel`, a string of up to 25 characters. Other routes have `option: null` (or no `option`, in older plays). A player's options in a phase share one `order`.
 - A route's `order` is a whole number from 1 to 99 and sets the order routes run in. New routes get one more than the highest existing order. Numbers can repeat, and gaps are fine. Routes without `order` (older data) simply show no badge.
 - `orientation` is `"horizontal"` or `"vertical"`. It only changes how the pitch is drawn: all coordinates stay in the same pitch metres. Vertical is a quarter turn anticlockwise, so pitch (x, y) is drawn at SVG (y, −x).
 - A scrum made with the preset has `putIn` (`"attack"` or `"defense"`) and `pack`, the ids of the players that move with it. Its `x, y` is the mark between the front rows, with `y` always 15, 35 or 55. A plain `scrum` object without `pack` (older data) still draws as an "S" marker.
