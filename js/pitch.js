@@ -12,8 +12,10 @@ const VIEWS = {
   half: { minX: 50, maxX: 110 },
 };
 
-// Distance labels painted beside the lines, as on a real pitch.
-const DISTANCE_LABELS = [[5, '5m'], [22, '22'], [40, '10'], [50, '50'], [60, '10'], [78, '22'], [95, '5m']];
+// Distance labels painted beside the lines, as on a real pitch: [x, text, distance in from each touchline].
+// The 10 m labels sit further along their lines than the 50, so the three don't read as one cluster.
+const DISTANCE_LABELS = [[5, '5m', 10], [22, '22', 10], [40, '10', 20], [50, '50', 10], [60, '10', 20], [78, '22', 10], [95, '5m', 10]];
+const ATTACK_COLOUR = '#d32f2f';
 
 export function svgEl(tag, attrs = {}, parent) {
   const el = document.createElementNS(NS, tag);
@@ -57,7 +59,7 @@ export function toMetres(space, evt) {
   return { x: p.x, y: p.y };
 }
 
-export function drawPitch(layer, { view, orientation, distances, grid }) {
+export function drawPitch(layer, { view, orientation, distances, grid, direction }) {
   layer.replaceChildren();
   const line = (x1, y1, x2, y2, cls = 'line', parent = layer) => svgEl('line', { x1, y1, x2, y2, class: cls }, parent);
 
@@ -93,15 +95,42 @@ export function drawPitch(layer, { view, orientation, distances, grid }) {
   }
 
   if (distances) drawDistances(layer, orientation);
+  if (direction) drawDirection(layer, view, orientation);
+}
+
+// "Attack" and an arrow in the attack's colour near the bottom edge of the view, pointing the way attack
+// plays (towards x=110): right when horizontal, up when vertical. The arrow is drawn in pitch metres along
+// +x, so it turns with the pitch; the word stays upright, to its left on screen.
+function drawDirection(layer, view, orientation) {
+  const { minX } = VIEWS[view] ?? VIEWS.full;
+  const vertical = orientation === 'vertical';
+  const len = 6;
+  // Horizontal: between the 5 m line and the near touchline, centred on the view. Vertical: in the in-goal
+  // (or just inside halfway in the half view), at the bottom of the screen, left of centre.
+  const [x, y] = vertical ? [minX + 2.5, 37] : [viewCentre(view).x + 1, 67.6];
+  const g = svgEl('g', { class: 'direction', 'aria-hidden': 'true' }, layer);
+  const shaft = { x1: x, y1: y, x2: x + len - 0.9, y2: y };
+  svgEl('line', { ...shaft, class: 'direction-casing' }, g);
+  svgEl('line', { ...shaft, class: 'direction-shaft', stroke: ATTACK_COLOUR }, g);
+  svgEl('path', { d: `M${x + len} ${y} l-1.6 -1 v2 z`, class: 'direction-head', fill: ATTACK_COLOUR }, g);
+  const [tx, ty] = vertical ? [x + len / 2, y - 1.2] : [x - 0.8, y];
+  svgEl('text', {
+    transform: `translate(${tx} ${ty})${uprightTurn(orientation)}`,
+    'text-anchor': 'end',
+    'dominant-baseline': 'central',
+    'font-size': 1.7,
+    fill: ATTACK_COLOUR,
+  }, g).textContent = 'Attack';
 }
 
 // Each label sits just beside its line on the halfway side (the 50 on the +x side, so it stays
-// inside the half view), between the 5 m and 15 m lines from each touchline, and stays upright.
+// inside the half view), between the 5 m and 15 m lines from each touchline (the 10 m labels 20 m in),
+// and stays upright.
 function drawDistances(layer, orientation) {
   const vertical = orientation === 'vertical';
-  for (const [x, text] of DISTANCE_LABELS) {
+  for (const [x, text, inFrom] of DISTANCE_LABELS) {
     const side = x <= 50 ? 1 : -1;
-    for (const y of [10, 60]) {
+    for (const y of [inFrom, 70 - inFrom]) {
       // Horizontal: the label sits to the left/right of the line. Vertical: +x is up the screen, so above/below it.
       const at = vertical ? x + side * 1.5 : x + side * 0.6;
       svgEl('text', {

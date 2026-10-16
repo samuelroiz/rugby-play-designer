@@ -1,5 +1,7 @@
-// Set-piece presets. Stage 1 has the scrum: both packs in formation on a scrum mark.
-// Attack attacks towards x=110 and defense towards x=-10, so the packs face +x and -x.
+// Set-piece presets: the scrum (both packs and 9s on a scrum mark) and the lineout (both teams' forwards
+// lined up from 5 m in from touch, hookers and 9s). Attack attacks towards x=110 and defense towards
+// x=-10, so the packs face +x and -x. Players that already exist are moved rather than duplicated;
+// missing ones are added to every phase (ids 1-9 are always within the 15 limit).
 
 import { movePlayer, nextId } from './editor.js';
 
@@ -35,40 +37,92 @@ const putInSide = putIn => (putIn === 'defense' ? 1 : -1);
 
 const ballNear = (objects, mark) => objects.find(o => o.type === 'ball' && Math.hypot(o.x - mark.x, o.y - mark.y) <= BALL_AT_SCRUM);
 
-// Puts players 1-8 of both teams in formation on a new scrum. Players that already exist are moved
-// rather than duplicated; missing ones are added to every phase (ids a1-a8/d1-d8 are always within the 15 limit).
-// An earlier scrum preset in the phase is replaced, so no player belongs to two. The ball is an ordinary
-// ball object on the put-in side; a ball already at the old or new mark is reused rather than adding another.
+const round = v => Math.round(v * 10) / 10;
+
+// Puts player `n` of `team` at (x, y) in this phase, adding them to the play (in every phase, at the same
+// spot) if they aren't in it yet. Returns their id.
+function place(state, phase, team, n, x, y) {
+  const id = (team === 'attack' ? 'a' : 'd') + n;
+  [x, y] = [round(x), round(y)];
+  if (!state.players.some(p => p.id === id)) {
+    state.players.push({ id, team, label: String(n) });
+    for (const each of state.phases) each.positions[id] = { x, y };
+  }
+  movePlayer(phase, id, x, y);
+  return id;
+}
+
+// Uses a ball within BALL_AT_SCRUM of `near` (or the one given), or adds one, and puts it at (x, y).
+function placeBall(phase, ball, near, x, y) {
+  ball ??= ballNear(phase.objects, near);
+  if (!ball) {
+    ball = { id: nextId('o', phase.objects), type: 'ball' };
+    phase.objects.push(ball);
+  }
+  Object.assign(ball, { x: round(x), y: round(y) });
+}
+
+// Puts players 1-8 of both teams in formation on a new scrum, and both 9s on the put-in side: the put-in
+// team's 9 next to the ball, the other 9 by their own pack. The 9s are part of the scrum's pack, so they
+// move with it. An earlier scrum preset in the phase is replaced, so no player belongs to two. The ball is
+// an ordinary ball object on the put-in side; a ball already at the old or new mark is reused.
 export function placeScrum(state, phase, at, putIn) {
   const previous = phase.objects.find(o => o.type === 'scrum' && o.pack);
   const mark = snapScrum(previous?.x ?? at.x, previous?.y ?? at.y);
   phase.objects = phase.objects.filter(o => o !== previous);
 
+  const side = putInSide(putIn);
+  const putInDir = putIn === 'defense' ? -1 : 1;
   const pack = [];
-  for (const [team, prefix, dir] of TEAMS) {
-    for (const [n, along, across] of PACK) {
-      const id = prefix + n;
-      const x = Math.round((mark.x + dir * along) * 10) / 10;
-      const y = Math.round((mark.y + dir * across) * 10) / 10;
-      if (!state.players.some(p => p.id === id)) {
-        // A new player is in every phase, at the same spot.
-        state.players.push({ id, team, label: String(n) });
-        for (const each of state.phases) each.positions[id] = { x, y };
-      }
-      movePlayer(phase, id, x, y);
-      pack.push(id);
-    }
+  for (const [team, , dir] of TEAMS) {
+    for (const [n, along, across] of PACK) pack.push(place(state, phase, team, n, mark.x + dir * along, mark.y + dir * across));
+    // Both 9s stand on the put-in side, 1.9 m beyond the ball: the put-in 9 just on their own side of the
+    // mark, the other 9 by their pack's flank.
+    const x = team === putIn ? mark.x - putInDir * 0.5 : mark.x + putInDir * 2.5;
+    pack.push(place(state, phase, team, 9, x, mark.y + side * 6.6));
   }
   const scrum = { id: nextId('o', phase.objects), type: 'scrum', ...mark, putIn, pack };
   phase.objects.push(scrum);
 
-  let ball = (previous && ballNear(phase.objects, previous)) || ballNear(phase.objects, mark);
-  if (!ball) {
-    ball = { id: nextId('o', phase.objects), type: 'ball' };
-    phase.objects.push(ball);
-  }
-  Object.assign(ball, { x: mark.x, y: mark.y + putInSide(putIn) * 4.7 });
+  placeBall(phase, (previous && ballNear(phase.objects, previous)) || null, mark, mark.x, mark.y + side * 4.7);
   return scrum;
+}
+
+// Lineout order from the front: lifter 1, jumper 4, lifter 3, then 6, 5, 8 and 7 at the back.
+const LINEOUT = [1, 4, 3, 6, 5, 8, 7];
+// Discs are 2.4 m across, so the two lines stand 2.4 m apart and players 2.5 m apart (wider than real
+// life, as in the scrum), starting 1.2 m beyond the 5 m line.
+const LINE_GAP = 1.2;
+const LINEOUT_STEP = 2.5;
+
+// Lines up both teams' forwards at the phase's lineout marker (one is added at the view centre if there
+// isn't one). The marker is snapped to the 5 m line on its side, and its x is the line of touch: attack
+// stands on the -x side, defense on the +x side. The throwing team's hooker is on the touchline with the
+// ball, the other hooker in the 5 m channel, and both 9s behind the lineout. A lineout restarts play, so
+// the phase's ball nearest the marker moves to the hooker (one is added if there's none). Returns the marker.
+export function placeLineout(state, phase, at, throwIn) {
+  let marker = phase.objects.find(o => o.type === 'lineout');
+  if (!marker) {
+    marker = { id: nextId('o', phase.objects), type: 'lineout', x: at.x, y: 5 };
+    phase.objects.push(marker);
+  }
+  const s = marker.y <= 35 ? 1 : -1; // into the field from the nearer touchline
+  const touch = s > 0 ? 0 : 70;
+  const x = round(Math.min(97, Math.max(3, marker.x)));
+  const y5 = touch + s * 5;
+  Object.assign(marker, { x, y: y5 });
+
+  for (const [team, , dir] of TEAMS) {
+    const line = x - dir * LINE_GAP;
+    LINEOUT.forEach((n, i) => place(state, phase, team, n, line, y5 + s * (LINE_GAP + i * LINEOUT_STEP)));
+    if (team === throwIn) place(state, phase, team, 2, x - dir * 0.5, touch + s * 1.2);
+    else place(state, phase, team, 2, x - dir * 2.4, touch + s * 2.6);
+    place(state, phase, team, 9, x - dir * 3, y5 + s * 19.5);
+  }
+  const throwDir = throwIn === 'defense' ? -1 : 1;
+  const nearest = phase.objects.filter(o => o.type === 'ball').sort((a, b) => Math.hypot(a.x - x, a.y - y5) - Math.hypot(b.x - x, b.y - y5))[0];
+  placeBall(phase, nearest ?? null, marker, x + throwDir * 0.6, touch + s * 2.2);
+  return marker;
 }
 
 // Moves a scrum to the snapped mark nearest (x, y), taking its pack and a ball at the scrum along by the

@@ -4,16 +4,17 @@
 
 import { drawPitch, setView, viewCentre, startSpot, svgEl, uprightTurn, PLAYER_R } from './pitch.js';
 import { initEditor, routeGeometry, nextId, isAttached, drawingFrom } from './editor.js';
-import { placeScrum, moveScrum } from './setpiece.js';
+import { placeScrum, moveScrum, placeLineout } from './setpiece.js';
 import { appendPhase, insertPhaseAfter, movePhase } from './phases.js';
 import { createHistory } from './history.js';
 import { blankPlay, loadAutosave, saveAutosave, downloadPlay, downloadBlob, readPlayFile, safeFileName } from './storage.js';
-import { pictureSvg, allPhasesSvg, pageCss, svgToPng, pageFit, makePdf } from './export.js';
+import { pictureSvg, allPhasesSvg, legendSvg, pageCss, svgToPng, pageFit, makePdf, PX_PER_MM } from './export.js';
 import { loadTemplates, thumbnail, isEmptyPlay } from './templates.js';
 import { syncOptions, makeMainOption, optionGroup, isOtherOption, OPTION_LABEL_MAX } from './options.js';
 
 const MAX_PER_TEAM = 15;
 const BADGE_R = 0.9;
+const BALL_R = 0.75; // the ball's drawn half-length, for keeping badges off it
 // A pass attached to a receiver stops this far from their centre, so its arrowhead touches their disc.
 const PASS_END_GAP = PLAYER_R + 0.2;
 // PDF pages: the pitch picture is drawn at this many times its size in CSS px on the page (about 190 dpi).
@@ -41,6 +42,10 @@ const ROUTE_TYPES = {
 const portraitPhone = matchMedia('(max-width: 700px) and (orientation: portrait)');
 // Phones and tablets: a saved picture goes to the share sheet rather than a download.
 const touchScreen = matchMedia('(pointer: coarse)');
+// The phone layout (toolbar at the bottom): pickers open in the middle of the screen, not by their button.
+const phoneLayout = matchMedia('(max-width: 700px)');
+const CATEGORY_LABELS = { attack: 'Attack', defense: 'Defense', lineout: 'Lineout', scrum: 'Scrum' };
+const TIPS_KEY = 'rugby-play-designer.tips';
 
 // The play. Always the same object (window.playState): undo, load and New play replace its contents.
 const state = blankPlay({ orientation: portraitPhone.matches ? 'vertical' : 'horizontal' });
@@ -55,7 +60,7 @@ const ui = {
   snap: null, // player a route being drawn will attach to (highlighted)
   snapTo: null, // receiver a pass being drawn will end on (highlighted)
   preview: null, // click-to-draw: where the next route would end, { x, y }
-  layers: { distances: true, grid: false, legend: true, ghost: true },
+  layers: { distances: true, grid: false, legend: true, ghost: true, direction: true },
   orientationChosen: false, // once the user picks one, stop following the phone's rotation
 };
 
@@ -69,6 +74,7 @@ const layers = {
   objects: $('objects-layer'),
   routes: $('routes-layer'),
   players: $('players-layer'),
+  balls: $('ball-layer'),
   badges: $('badges-layer'),
   handles: $('handles-layer'),
 };
@@ -107,8 +113,11 @@ function flushAutosave() {
   saveAutosave(state, ui.phase);
 }
 
-function showToast(message) {
+// A short message over the pitch: an error (the default), or `ok` for "Saved …".
+function showToast(message, kind = 'error') {
   const toast = $('toast');
+  toast.classList.toggle('ok', kind === 'ok');
+  toast.setAttribute('role', kind === 'ok' ? 'status' : 'alert');
   toast.textContent = message;
   toast.hidden = false;
   clearTimeout(showToast.timer);
@@ -155,7 +164,7 @@ function render(commitKey = null) {
 // Draws the pitch and the current phase (players, routes, markers) without touching anything else.
 function drawScene() {
   // The pitch only changes with the view and layers, so it isn't redrawn on every drag.
-  const key = [state.view, state.orientation, ui.layers.distances, ui.layers.grid].join();
+  const key = [state.view, state.orientation, ui.layers.distances, ui.layers.grid, ui.layers.direction].join();
   if (key !== pitchKey) {
     pitchKey = key;
     setView(svg, world, state.view, state.orientation);
@@ -187,8 +196,10 @@ function pxPerMetre() {
   return m ? Math.hypot(m.a, m.b) || 1 : 1;
 }
 
-// Badge sits beside the start of the route, just clear of a player disc, on the side the route doesn't bend to.
-function badgePosition(r, geometry) {
+// Badge sits beside the start of the route, clear of the player there, on the side the route doesn't bend
+// to. `taken` lists discs it mustn't cover ({ x, y, r }: players, balls and badges already placed); if the
+// first spot is covered it tries the other side, a little behind the start, then further out.
+function badgePosition(r, geometry, taken) {
   const [sx, sy] = r.points[0];
   const [ex, ey] = r.points[r.points.length - 1];
   let tx = geometry.control.x - sx;
@@ -197,8 +208,28 @@ function badgePosition(r, geometry) {
   const len = Math.hypot(tx, ty) || 1;
   [tx, ty] = [tx / len, ty / len];
   const side = r.curve > 0 ? -1 : 1;
-  const out = r.from ? PLAYER_R + BADGE_R + 0.3 : BADGE_R + 0.4;
-  return { x: sx + tx * 0.6 - ty * side * out, y: sy + ty * 0.6 + tx * side * out };
+  const base = r.from ? PLAYER_R + BADGE_R + 0.5 : BADGE_R + 0.5;
+  let first = null;
+  for (const extra of [0, 1, 2]) {
+    for (const s of [side, -side]) {
+      for (const along of [0.6, -0.6]) {
+        const out = base + extra;
+        const p = { x: sx + tx * along - ty * s * out, y: sy + ty * along + tx * s * out };
+        first ??= p;
+        if (taken.every(o => Math.hypot(o.x - p.x, o.y - p.y) >= o.r + BADGE_R + 0.1)) return p;
+      }
+    }
+  }
+  return first;
+}
+
+// Discs a badge mustn't cover: every player and ball in the shown phase.
+function badgeObstacles() {
+  const ph = phase();
+  return [
+    ...state.players.filter(p => ph.positions[p.id]).map(p => ({ ...ph.positions[p.id], r: PLAYER_R })),
+    ...ph.objects.filter(o => o.type === 'ball').map(o => ({ x: o.x, y: o.y, r: BALL_R })),
+  ];
 }
 
 // The drawn shape of a route: a pass to a receiver stops at the edge of their disc.
@@ -211,6 +242,7 @@ function renderRoutes() {
   layers.handles.replaceChildren();
   const ppm = pxPerMetre();
   const lineHit = Math.max(1.6, LINE_HIT_PX / ppm);
+  const taken = badgeObstacles();
   for (const r of phase().routes) {
     const selected = isSelected('route', r.id);
     const cls = `route${selected ? ' selected' : ''}${isAttached(r) ? '' : ' loose'}${isOtherOption(r) ? ' option-alt' : ''}`;
@@ -223,7 +255,8 @@ function renderRoutes() {
 
     // Badges go in their own layer above the players, so a nearby player can't cover them.
     if (Number.isFinite(r.order)) {
-      const b = badgePosition(r, geometry);
+      const b = badgePosition(r, geometry, taken);
+      taken.push({ ...b, r: BADGE_R });
       const badge = svgEl('g', { class: 'badge', 'data-kind': 'badge', 'data-id': r.id, transform: `translate(${b.x} ${b.y})${turn()}` }, layers.badges);
       svgEl('circle', { r: BADGE_R, stroke: ROUTE_TYPES[r.type]?.color ?? '#fff' }, badge);
       // "2", or "2A" / "2B" for options.
@@ -350,10 +383,13 @@ function scrumActive(o) {
   return !!sel && ((sel.kind === 'object' && sel.id === o.id) || (sel.kind === 'player' && o.pack.includes(sel.id)));
 }
 
+// Markers go under the routes and players; balls go in their own layer above the players, so a player
+// holding the ball never hides it.
 function renderObjects() {
-  const layer = layers.objects;
-  layer.replaceChildren();
+  layers.objects.replaceChildren();
+  layers.balls.replaceChildren();
   for (const o of phase().objects) {
+    const layer = o.type === 'ball' ? layers.balls : layers.objects;
     const g = svgEl('g', { class: `marker ${o.type}`, 'data-kind': 'object', 'data-id': o.id, transform: `translate(${o.x} ${o.y})` }, layer);
     const selected = isSelected('object', o.id);
 
@@ -405,23 +441,28 @@ function updateToolbar() {
   updateDrawHint();
 }
 
-// "Click where 12's run ends", while click-to-draw is on.
+// Shown whenever a route tool is on: how to draw with nothing selected, and "Click where 12's run ends"
+// while click-to-draw from a player is on.
 function updateDrawHint() {
   const hint = $('draw-hint');
-  const from = drawingFrom(ui, phase());
-  hint.hidden = !from;
-  if (!from) return;
-  const player = state.players.find(p => p.id === from);
-  // "12", or "defender 1" when both teams have a 1.
-  const shared = state.players.some(p => p !== player && p.label === player.label);
-  const who = shared ? `${player.team === 'attack' ? 'attacker' : 'defender'} ${player.label}` : player.label;
-  const verb = touchScreen.matches ? 'Tap' : 'Click';
+  hint.hidden = !ui.tool;
+  if (!ui.tool) return;
+  const touch = touchScreen.matches;
+  const verb = touch ? 'Tap' : 'Click';
   const type = ROUTE_TYPES[ui.tool]?.label.toLowerCase() ?? 'route';
-  const text = ui.tool === 'pass'
-    ? `${verb} where ${who}'s pass goes, or on a team-mate to pass to them.`
-    : `${verb} where ${who}'s ${type} ends.`;
-  const more = touchScreen.matches ? '' : ' Esc to stop.';
-  if (hint.textContent !== text + more) hint.textContent = text + more;
+  const from = drawingFrom(ui, phase());
+  let text;
+  if (!from) {
+    text = `Drag from a player to draw a ${type}, or ${verb.toLowerCase()} a player first.`;
+  } else {
+    const player = state.players.find(p => p.id === from);
+    // "12", or "defender 1" when both teams have a 1.
+    const shared = state.players.some(p => p !== player && p.label === player.label);
+    const who = shared ? `${player.team === 'attack' ? 'attacker' : 'defender'} ${player.label}` : player.label;
+    const where = ui.tool === 'pass' ? `${who}'s pass ends, or on a team-mate` : `${who}'s ${type} ends`;
+    text = `${verb} where ${where}. ${verb} again for another, ${touch ? 'tap the tool again' : 'Esc'} to stop.`;
+  }
+  if (hint.textContent !== text) hint.textContent = text;
 }
 
 function updateHistoryButtons() {
@@ -472,6 +513,7 @@ function syncInputs() {
   notePhase = phase();
   const set = (el, value, always) => { if ((always || document.activeElement !== el) && el.value !== value) el.value = value; };
   set(inputs.name, state.name, force);
+  $('title-size').dataset.value = inputs.name.value;
   set(inputs.category, state.category, force);
   set(inputs.tags, state.tags.join(', '), force);
   set(inputs.note, phase().note, forceNote);
@@ -479,12 +521,16 @@ function syncInputs() {
 
 // --- Actions ---
 
-function addPlayer(team) {
+// Free numbers (1-15) for a team, lowest first.
+function freeNumbers(team) {
   const prefix = team === 'attack' ? 'a' : 'd';
-  let n = 1;
-  while (n <= MAX_PER_TEAM && state.players.some(p => p.id === prefix + n)) n++;
-  if (n > MAX_PER_TEAM) return;
+  return Array.from({ length: MAX_PER_TEAM }, (_, i) => i + 1).filter(n => !state.players.some(p => p.id === prefix + n));
+}
+
+function addPlayer(team, n) {
+  const prefix = team === 'attack' ? 'a' : 'd';
   const id = prefix + n;
+  if (!freeNumbers(team).includes(n)) return;
   state.players.push({ id, team, label: String(n) });
   // A player is one person across the whole play: they're in every phase, at the same spot.
   for (const each of state.phases) each.positions[id] = startSpot(team, n, state.view);
@@ -498,6 +544,12 @@ function addObject(type) {
   // Spread new markers in a small grid so they don't stack on top of each other.
   phase().objects.push({ id, type, x: c.x - 9 + (n % 4) * 6, y: c.y - 6 + (Math.floor(n / 4) % 3) * 6 });
   ui.selected = { kind: 'object', id };
+}
+
+function addLineout(throwIn) {
+  const marker = placeLineout(state, phase(), viewCentre(state.view), throwIn);
+  ui.selected = { kind: 'object', id: marker.id };
+  ui.tool = null;
 }
 
 function addScrum(putIn) {
@@ -536,14 +588,66 @@ function deleteSelected() {
   ui.selected = null;
 }
 
+// A small text box over the pitch, just above (or below, near the top) a point on screen. Enter or clicking
+// away saves, Escape cancels. Opening another first saves the one already open.
+let finishInline = null;
+function inlineEdit({ at, gap, value, maxLength, numeric = false, label, onSave }) {
+  finishInline?.(true);
+  const input = $('inline-edit');
+  const wrap = input.parentElement.getBoundingClientRect();
+  Object.assign(input, { value, maxLength, inputMode: numeric ? 'numeric' : 'text' });
+  input.setAttribute('aria-label', label);
+  input.classList.toggle('numeric', numeric);
+  input.hidden = false;
+  const { offsetWidth: w, offsetHeight: h } = input;
+  let top = at.y - wrap.top - gap - h;
+  if (top < 4) top = at.y - wrap.top + gap;
+  input.style.left = `${Math.min(Math.max(4, at.x - wrap.left - w / 2), wrap.width - w - 4)}px`;
+  input.style.top = `${top}px`;
+  input.focus();
+  input.select();
+  let done = false;
+  const finish = save => {
+    if (done) return;
+    done = true;
+    finishInline = null;
+    input.removeEventListener('keydown', onKey);
+    input.removeEventListener('blur', onBlur);
+    input.hidden = true;
+    if (save) onSave(input.value);
+  };
+  const onKey = e => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  };
+  const onBlur = () => finish(true);
+  input.addEventListener('keydown', onKey);
+  input.addEventListener('blur', onBlur);
+  finishInline = finish;
+}
+
+// Pitch metres -> client px.
+function screenPoint(x, y) {
+  const p = new DOMPoint(x, y).matrixTransform(world.getScreenCTM());
+  return { x: p.x, y: p.y };
+}
+
 function editLabel(id) {
+  const pos = phase().positions[id];
   const player = state.players.find(p => p.id === id);
-  if (!player) return;
-  const value = prompt('Player label (number or position, e.g. 10 or FH)', player.label);
-  if (value === null) return;
-  const trimmed = value.trim().slice(0, 3);
-  if (trimmed) player.label = trimmed;
-  render();
+  if (!player || !pos) return;
+  inlineEdit({
+    at: screenPoint(pos.x, pos.y),
+    gap: PLAYER_R * pxPerMetre() + 6,
+    value: player.label,
+    maxLength: 3,
+    label: 'Player label (number or position, e.g. 10 or FH)',
+    onSave: value => {
+      const p = state.players.find(q => q.id === id); // the play may have been replaced meanwhile
+      const trimmed = value.trim().slice(0, 3);
+      if (p && trimmed && trimmed !== p.label) { p.label = trimmed; render(); }
+    },
+  });
 }
 
 function editOrder(id) {
@@ -553,11 +657,80 @@ function editOrder(id) {
     editOption(route);
     return;
   }
-  const value = prompt('Route order number (1-99)', route.order ?? '');
-  if (value === null) return;
-  const n = Number(value.trim());
-  if (Number.isInteger(n) && n >= 1 && n <= 99) route.order = n;
-  render();
+  const badge = layers.badges.querySelector(`.badge[data-id="${id}"]`)?.getBoundingClientRect();
+  if (!badge) return;
+  inlineEdit({
+    at: { x: badge.x + badge.width / 2, y: badge.y + badge.height / 2 },
+    gap: badge.height / 2 + 6,
+    value: String(route.order ?? ''),
+    maxLength: 2,
+    numeric: true,
+    label: 'Route order number (1-99)',
+    onSave: value => {
+      const r = phase().routes.find(q => q.id === id);
+      const n = Number(value.trim());
+      if (r && Number.isInteger(n) && n >= 1 && n <= 99 && n !== r.order) { r.order = n; render(); }
+    },
+  });
+}
+
+// In-app confirm, so the page never opens a native dialog. Resolves true for OK.
+function askConfirm(message, ok = 'OK') {
+  const dialog = $('confirm-dialog');
+  $('confirm-message').textContent = message;
+  $('confirm-ok').textContent = ok;
+  dialog.returnValue = '';
+  dialog.showModal();
+  return new Promise(resolve => dialog.addEventListener('close', () => resolve(dialog.returnValue === 'ok'), { once: true }));
+}
+
+// "Add attack" / "Add defender": the numbers not yet used, the next free one highlighted (Enter adds it).
+// On a computer it opens beside its button; on a phone in the middle of the screen.
+function openNumberPicker(team, button) {
+  const dialog = $('number-dialog');
+  const free = freeNumbers(team);
+  if (!free.length) return;
+  dialog.dataset.team = team;
+  $('number-title').textContent = team === 'attack' ? 'Add attacker' : 'Add defender';
+  const grid = $('number-grid');
+  grid.className = `number-grid ${team}`;
+  grid.replaceChildren(...Array.from({ length: MAX_PER_TEAM }, (_, i) => {
+    const n = i + 1;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.n = n;
+    b.textContent = n;
+    b.disabled = !free.includes(n);
+    if (n === free[0]) b.classList.add('next');
+    b.setAttribute('aria-label', `Number ${n}${b.disabled ? ' (in use)' : ''}`);
+    return b;
+  }));
+  dialog.style.cssText = '';
+  dialog.returnValue = '';
+  dialog.showModal();
+  if (!phoneLayout.matches) {
+    const r = button.getBoundingClientRect();
+    const top = Math.min(r.top, innerHeight - dialog.offsetHeight - 8);
+    dialog.style.cssText = `margin: 0; inset: auto; left: ${r.right + 8}px; top: ${Math.max(8, top)}px;`;
+  }
+  grid.querySelector('.next').focus();
+}
+
+function initNumberPicker() {
+  const dialog = $('number-dialog');
+  $('number-grid').addEventListener('click', e => {
+    const b = e.target.closest('[data-n]');
+    if (!b || b.disabled) return;
+    dialog.close();
+    addPlayer(dialog.dataset.team, Number(b.dataset.n));
+    ui.tool = null;
+    render();
+  });
+  // A click outside the box closes it.
+  dialog.addEventListener('click', e => {
+    const r = dialog.getBoundingClientRect();
+    if (e.target === dialog && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) dialog.close();
+  });
 }
 
 // An option's badge opens a box for its order number (shared by all its options), its label, and
@@ -615,9 +788,12 @@ function phaseAction(action, index) {
     ui.phase = movePhase(phases, i, action === 'left' ? i - 1 : i + 1);
   } else if (action === 'delete') {
     if (phases.length === 1) return;
-    if (!confirm(`Delete phase ${i + 1}? You can undo this.`)) return;
-    phases.splice(i, 1);
-    ui.phase = Math.min(i, phases.length - 1);
+    askConfirm(`Delete phase ${i + 1}? You can undo this.`, 'Delete phase').then(ok => {
+      if (!ok || state.phases !== phases) return;
+      phases.splice(i, 1);
+      ui.phase = Math.min(i, phases.length - 1);
+      render();
+    });
   }
 }
 
@@ -625,6 +801,7 @@ async function fileAction(action) {
   $('file-menu').open = false;
   if (action === 'save') {
     downloadPlay(state);
+    showToast(`Saved ${safeFileName(state.name)}`, 'ok');
   } else if (action === 'png') {
     $('image-dialog').showModal();
   } else if (action === 'pdf') {
@@ -632,7 +809,7 @@ async function fileAction(action) {
   } else if (action === 'load') {
     $('load-input').click();
   } else if (action === 'new') {
-    if (!confirm('Start a new blank play? The current one is replaced (you can undo).')) return;
+    if (!(await askConfirm('Start a new blank play? The current one is replaced (you can undo).', 'New play'))) return;
     replacePlay(blankPlay({ view: state.view, orientation: state.orientation }));
     render();
   }
@@ -649,7 +826,7 @@ async function loadFromInput(input) {
     showToast(err.message);
     return;
   }
-  if (!confirm(`Load "${play.name}"? It replaces the current play (you can undo).`)) return;
+  if (!(await askConfirm(`Load "${play.name}"? It replaces the current play (you can undo).`, 'Load'))) return;
   replacePlay(play);
   render();
 }
@@ -662,12 +839,12 @@ const legendItems = () => Object.entries(ROUTE_TYPES).map(([type, st]) => [type,
 // previous-phase ghost is always left out, and so are selection highlights and handles (nothing is
 // selected while it is drawn). `legend: false` leaves the route key off even if its layer is on.
 // Redraws the shown phase afterwards.
-function phasePicture(i, { width, height, scale, css, cols, idPrefix, legend = true }) {
+function phasePicture(i, { width, height, scale, css, cols, idPrefix, legend = true, print = false }) {
   const keep = { phase: ui.phase, selected: ui.selected, snap: ui.snap, snapTo: ui.snapTo, preview: ui.preview, layers: ui.layers };
   Object.assign(ui, { phase: i, selected: null, snap: null, snapTo: null, preview: null, layers: { ...ui.layers, ghost: false } });
   drawScene();
   const legendOn = legend && ui.layers.legend ? { items: legendItems(), sample: routeSample, cols } : null;
-  const picture = pictureSvg(svg, { width, height, scale, css, legend: legendOn, idPrefix });
+  const picture = pictureSvg(svg, { width, height, scale, css, legend: legendOn, idPrefix, print });
   Object.assign(ui, keep);
   drawScene();
   return picture;
@@ -719,24 +896,36 @@ async function saveAllPng() {
   keepFile(new File([blob], safeFileName(state.name, '-all-phases.png'), { type: 'image/png' }));
 }
 
-// Every phase as a PDF, one page each: the play name, "Phase n of N", the pitch picture (as in the PNG)
-// and the phase's note. Horizontal plays get landscape pages, vertical ones portrait. jsPDF is only
-// loaded the first time this runs.
+// Every phase as a PDF, one page each: a header line with the play name and its category and tags, the
+// pitch picture (as in the PNG, but with darker lines for black and white printing) as large as fits, then
+// "Phase n of N" with the route key beside it, and the phase's note. Horizontal plays get landscape pages,
+// vertical ones portrait. jsPDF is only loaded the first time this runs.
 async function savePdf() {
   const [, , vbW, vbH] = svg.getAttribute('viewBox').split(' ').map(Number);
   const orientation = state.orientation === 'vertical' ? 'portrait' : 'landscape';
-  const size = pageFit(orientation, vbW / vbH);
   const n = state.phases.length;
   const css = pageCss();
   const title = state.name.trim() || 'Untitled play';
+  const meta = [CATEGORY_LABELS[state.category] ?? state.category, state.tags.join(', ')].filter(Boolean).join(' · ');
   let blob;
   try {
+    // The route key sits right of the phase line under the pitch, in as many columns as fit beside it.
+    let size = pageFit(orientation, vbW / vbH);
+    let legend = null;
+    if (ui.layers.legend) {
+      const items = { items: legendItems(), sample: routeSample };
+      const fit = mm => legendSvg(items, { maxW: (mm - 45) * PX_PER_MM, scale: 3, css, defs: $('defs') });
+      let key = fit(size.w);
+      size = pageFit(orientation, vbW / vbH, key.h / PX_PER_MM);
+      if (key.w / PX_PER_MM > size.w - 45) key = fit(size.w);
+      legend = { png: await svgToPng(key.svg), w: key.w / PX_PER_MM, h: key.h / PX_PER_MM };
+    }
     const pages = [];
     for (const [i, ph] of state.phases.entries()) {
-      const picture = phasePicture(i, { width: size.px.w, height: size.px.h, scale: PDF_SCALE, css, cols: 1 });
-      pages.push({ title, caption: `Phase ${i + 1} of ${n}`, note: ph.note.trim(), png: await svgToPng(picture) });
+      const picture = phasePicture(i, { width: size.px.w, height: size.px.h, scale: PDF_SCALE, css, legend: false, print: true });
+      pages.push({ title, meta, caption: `Phase ${i + 1} of ${n}`, note: ph.note.trim(), png: await svgToPng(picture) });
     }
-    blob = await makePdf(pages, orientation, size);
+    blob = await makePdf(pages, orientation, size, legend);
   } catch (err) {
     showToast(err.message);
     return;
@@ -749,11 +938,13 @@ async function savePdf() {
 async function keepFile(file) {
   if (!touchScreen.matches) {
     downloadBlob(file, file.name);
+    showToast(`Saved ${file.name}`, 'ok');
     return;
   }
   if (navigator.canShare?.({ files: [file] })) {
     try {
       await navigator.share({ files: [file] });
+      showToast(`Saved ${file.name}`, 'ok');
       return;
     } catch (err) {
       if (err.name === 'AbortError') return; // the user closed the share sheet
@@ -885,8 +1076,9 @@ function initPhaseBar() {
 function initSetPieceDialog() {
   const dialog = $('set-piece-dialog');
   dialog.addEventListener('close', () => {
-    const [kind, putIn] = dialog.returnValue.split('-');
-    if (kind === 'scrum') { addScrum(putIn); render(); }
+    const [kind, team] = dialog.returnValue.split('-');
+    if (kind === 'scrum') { addScrum(team); render(); }
+    else if (kind === 'lineout') { addLineout(team); render(); }
   });
   return () => { dialog.returnValue = ''; dialog.showModal(); };
 }
@@ -937,14 +1129,23 @@ function initTemplatesDialog() {
     }));
   });
 
-  grid.addEventListener('click', e => {
+  grid.addEventListener('click', async e => {
     const card = e.target.closest('[data-template]');
     if (!card) return;
     const t = templates[Number(card.dataset.template)];
     dialog.close();
-    if (!isEmptyPlay(state) && !confirm(`Start a new play from the "${t.name}" template? The current one is replaced (you can undo).`)) return;
+    if (!isEmptyPlay(state) && !(await askConfirm(`Start a new play from the "${t.name}" template? The current one is replaced (you can undo).`, 'Use template'))) return;
     replacePlay({ ...t.play, orientation: state.orientation });
     render();
+  });
+}
+
+// The tips at the top of the sidebar start open; closing them is remembered in this browser.
+function initTips() {
+  const help = $('help');
+  try { if (localStorage.getItem(TIPS_KEY) === 'closed') help.open = false; } catch { /* storage blocked */ }
+  help.addEventListener('toggle', () => {
+    try { localStorage.setItem(TIPS_KEY, help.open ? 'open' : 'closed'); } catch { /* storage blocked */ }
   });
 }
 
@@ -991,6 +1192,8 @@ function init() {
   initKeys();
   initImageDialog();
   initOptionDialog();
+  initNumberPicker();
+  initTips();
   initTemplatesDialog();
   const openSetPiece = initSetPieceDialog();
 
@@ -998,8 +1201,8 @@ function init() {
     const b = e.target.closest('button');
     if (!b) return;
     const { action, object, route } = b.dataset;
-    if (action === 'add-attack') { addPlayer('attack'); ui.tool = null; }
-    else if (action === 'add-defense') { addPlayer('defense'); ui.tool = null; }
+    if (action === 'add-attack') openNumberPicker('attack', b);
+    else if (action === 'add-defense') openNumberPicker('defense', b);
     else if (action === 'set-piece') openSetPiece();
     else if (action === 'delete') deleteSelected();
     else if (object) { addObject(object); ui.tool = null; }

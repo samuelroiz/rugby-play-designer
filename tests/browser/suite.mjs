@@ -1,7 +1,7 @@
 // Headless Chrome checks: the four fixes plus regressions of earlier features. Desktop 1440x900 + phone 390 touch.
 import fs from 'node:fs';
 import path from 'node:path';
-import { open, drag, tap, click, state, shown, check, failed, toScreen, outDir } from './lib.mjs';
+import { open, drag, tap, click, state, shown, check, failed, toScreen, outDir, addPlayer, answerConfirm } from './lib.mjs';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 const OUT = outDir('suite');
@@ -24,9 +24,22 @@ async function pdfInfo(bytes) {
   for (let i = 1; i <= doc.numPages; i++) {
     const p = await doc.getPage(i);
     const v = p.getViewport({ scale: 1 });
-    const text = (await p.getTextContent()).items.map(t => t.str).join(' ');
+    const items = (await p.getTextContent()).items;
+    const text = items.map(t => t.str).join(' ');
     const ops = await p.getOperatorList();
-    pages.push({ w: v.width, h: v.height, text, images: ops.fnArray.filter(f => f === 85 /* paintImageXObject */).length });
+    // Where each image is drawn, in pt from the bottom left: the transform in force when it's painted
+    // (save 10, restore 11, transform 12, paintImageXObject 85).
+    const boxes = [];
+    let m = [1, 0, 0, 1, 0, 0];
+    const stack = [];
+    ops.fnArray.forEach((f, i) => {
+      const a = ops.argsArray[i];
+      if (f === 10) stack.push(m);
+      else if (f === 11) m = stack.pop() ?? [1, 0, 0, 1, 0, 0];
+      else if (f === 12) m = [m[0] * a[0] + m[2] * a[1], m[1] * a[0] + m[3] * a[1], m[0] * a[2] + m[2] * a[3], m[1] * a[2] + m[3] * a[3], m[0] * a[4] + m[2] * a[5] + m[4], m[1] * a[4] + m[3] * a[5] + m[5]];
+      else if (f === 85) boxes.push({ x: m[4], y: m[5], w: m[0], h: m[3] });
+    });
+    pages.push({ w: v.width, h: v.height, text, items: items.map(t => ({ str: t.str, x: t.transform[4], y: t.transform[5] })), images: boxes.length, boxes });
   }
   return { numPages: doc.numPages, pages };
 }
@@ -80,8 +93,8 @@ async function dragHold(page, from, to, during) {
   await captureSvgs(page);
 
   check('jsPDF not loaded on page load', !requests.some(u => u.includes('jspdf')) && !(await page.evaluate(() => !!window.jspdf)));
-  for (let i = 0; i < 4; i++) await click(page, '[data-action="add-attack"]');
-  await click(page, '[data-action="add-defense"]');
+  for (let i = 0; i < 4; i++) await addPlayer(page, 'attack');
+  await addPlayer(page, 'defense');
   let s = await state(page);
   check('4 attackers + 1 defender', s.players.length === 5);
 
@@ -311,7 +324,7 @@ async function dragHold(page, from, to, during) {
   check('print dialog never opened', (await page.evaluate(() => window.__prints)) === 0);
   check('jsPDF loaded only on export, from vendor/', requests.some(u => u.endsWith('/vendor/jspdf.umd.min.js')) && !requests.some(u => /cdn|unpkg|jsdelivr/.test(u)));
   pics = await svgs(page);
-  check('PDF pictures: 5, none with ghost or handles', pics.length === 5 && pics.every(p => !/class="(ghost[^"]*|handle[^"]*|route-highlight)"/.test(noCss(p))));
+  check('PDF pictures: the route key, then 5 pitches, none with ghost or handles', pics.length === 6 && pics.every(p => !/class="(ghost[^"]*|handle[^"]*|route-highlight)"/.test(noCss(p))));
   if (pdf) {
     const bytes = fs.readFileSync(pdf);
     check('PDF starts with %PDF', bytes.subarray(0, 4).toString() === '%PDF');
@@ -332,7 +345,7 @@ async function dragHold(page, from, to, during) {
   if (pdfV) {
     const info = await pdfInfo(fs.readFileSync(pdfV));
     check('vertical play -> portrait A4 pages', info.numPages === 5 && info.pages.every(p => Math.round(p.w) === 595 && Math.round(p.h) === 842), JSON.stringify(info.pages.map(p => [p.w, p.h])));
-    check('non-Latin note drawn as a picture on page 1', info.pages[0].images >= 2 && !info.pages[0].text.includes('Whāia'), `${info.pages[0].images} ${info.pages[0].text.slice(0, 80)}`);
+    check('non-Latin note drawn as a picture on page 1', info.pages[0].images >= 3 && !info.pages[0].text.includes('Whāia'), `${info.pages[0].images} ${info.pages[0].text.slice(0, 80)}`);
     fs.copyFileSync(pdfV, path.join(OUT, 'vertical.pdf'));
   } else check('vertical PDF downloaded', false);
   await page.screenshot({ path: path.join(OUT, 'desktop-vertical.png') });
@@ -346,7 +359,7 @@ async function dragHold(page, from, to, during) {
   await page.click('#set-piece-dialog button[value="scrum-attack"]');
   await sleep(300);
   s = await state(page);
-  check('scrum preset adds 1-8 of both teams', s.players.length === 16 && s.players.filter(p => p.team === 'attack').length === 8 && s.phases[4].objects.some(o => o.type === 'scrum' && o.pack.length === 16), JSON.stringify(s.players.map(p => p.id)));
+  check('scrum preset adds 1-9 of both teams', s.players.length === 18 && s.players.filter(p => p.team === 'attack').length === 9 && s.phases[4].objects.some(o => o.type === 'scrum' && o.pack.length === 18), JSON.stringify(s.players.map(p => p.id)));
   await sleep(600);
   const saved = await state(page);
   await page.reload();
@@ -363,10 +376,9 @@ async function dragHold(page, from, to, during) {
   bad.phases[0].routes.find(r => r.to === 'a2').to = 'a99';
   const badPath = path.join(OUT, 'bad.json');
   fs.writeFileSync(badPath, JSON.stringify(bad));
-  page.once('dialog', d => d.accept());
   const input = await page.$('#load-input');
   await input.uploadFile(badPath);
-  await sleep(500);
+  await answerConfirm(page);
   s = await state(page);
   check('loading a pass to an unknown player leaves its end loose', s.phases[0].routes.filter(r => r.type === 'pass').every(r => r.to === null || s.players.some(p => p.id === r.to)) && s.phases[0].routes.some(r => r.type === 'pass' && r.to === null));
   check('Escape clears selection', await (async () => { await page.keyboard.press('Escape'); return page.evaluate(() => document.querySelector('[data-action="delete"]').disabled); })());
@@ -382,9 +394,7 @@ async function dragHold(page, from, to, during) {
   fs.mkdirSync(dl);
   const { browser, page, errors } = await open({ downloads: dl });
   await captureSvgs(page);
-  const dialogs = [];
-  let accept = true;
-  page.on('dialog', d => { dialogs.push(d.message()); if (accept) d.accept(); else d.dismiss(); });
+  const confirmOpen = () => page.$eval('#confirm-dialog', d => d.open);
 
   const index = JSON.parse(fs.readFileSync(new URL('../../templates/index.json', import.meta.url)));
   const TEAMS = { Blank: [0, 0], 'Backline attack': [15, 0], 'Attack vs defense': [15, 15], Scrum: [15, 15], Lineout: [15, 15], 'Kick-off': [15, 15] };
@@ -405,18 +415,19 @@ async function dragHold(page, from, to, during) {
   await page.screenshot({ path: path.join(OUT, 'templates-picker.png') });
   const empty = await state(page);
   await page.click('#templates-dialog .cancel');
-  check('picker: Cancel closes it and changes nothing', !(await page.$eval('#templates-dialog', d => d.open)) && eq(await state(page), empty) && dialogs.length === 0);
+  check('picker: Cancel closes it and changes nothing', !(await page.$eval('#templates-dialog', d => d.open)) && eq(await state(page), empty) && !(await confirmOpen()));
 
   let prevEmpty = true;
   for (const [i, t] of index.entries()) {
     await openPicker();
-    dialogs.length = 0;
     await page.$eval(`.template-card[data-template="${i}"]`, b => b.click());
+    const asked = await confirmOpen();
+    if (asked) await answerConfirm(page);
     const s = await state(page);
     const pos = s.phases[0].positions;
     const count = team => s.players.filter(p => p.team === team).length;
     const ids = s.players.map(p => p.id);
-    check(`${t.name}: confirm only if the play had something in it`, dialogs.length === (prevEmpty ? 0 : 1), dialogs.join());
+    check(`${t.name}: asks first (in the app) only if the play had something in it`, asked === !prevEmpty);
     check(`${t.name}: ${TEAMS[t.name][0]} attack, ${TEAMS[t.name][1]} defense`, count('attack') === TEAMS[t.name][0] && count('defense') === TEAMS[t.name][1]);
     check(`${t.name}: no duplicate ids, ids a/d + number 1-15, label = number`, new Set(ids).size === ids.length && s.players.every(p => p.id === (p.team === 'attack' ? 'a' : 'd') + p.label && Number(p.label) >= 1 && Number(p.label) <= 15), ids.join());
     const off = ids.filter(id => !pos[id] || pos[id].x < 0 || pos[id].x > 100 || pos[id].y < 0 || pos[id].y > 70);
@@ -427,7 +438,7 @@ async function dragHold(page, from, to, during) {
     check(`${t.name}: drawn on the pitch`, (await page.$$('#players-layer .player')).length === ids.length && s.phases.length === 1);
     check(`${t.name}: name from the template`, (await page.$eval('#play-name', i => i.value)) === (t.name === 'Blank' ? 'Untitled play' : t.name));
     if (t.name === 'Lineout') check('Lineout: a lineout marker 5 m in from touch, hooker by touch', s.phases[0].objects.some(o => o.type === 'lineout' && o.y === 5) && pos.a2.y < 5);
-    if (t.name === 'Scrum') check('Scrum: the preset scrum on the middle spot with both packs', s.phases[0].objects.some(o => o.type === 'scrum' && o.y === 35 && o.pack.length === 16));
+    if (t.name === 'Scrum') check('Scrum: the preset scrum on the middle spot with both packs and 9s', s.phases[0].objects.some(o => o.type === 'scrum' && o.y === 35 && o.pack.length === 18));
     if (t.name === 'Backline attack') check('Backline attack: a ruck with 9 at it', s.phases[0].objects.some(o => o.type === 'ruck' && Math.hypot(o.x - pos.a9.x, o.y - pos.a9.y) < 4));
     if (t.name !== 'Blank') await page.screenshot({ path: path.join(OUT, `template-${t.file.replace('.json', '')}.png`) });
     prevEmpty = t.name === 'Blank';
@@ -447,13 +458,12 @@ async function dragHold(page, from, to, during) {
 
   // Confirm declined: nothing changes. Accepted: one undo step back.
   await openPicker();
-  accept = false;
-  dialogs.length = 0;
   await page.$eval('.template-card[data-template="3"]', b => b.click());
-  check('declining the confirm keeps the play', dialogs.length === 1 && eq(await state(page), kickOff));
-  accept = true;
+  const msg = await answerConfirm(page, false);
+  check('declining the confirm keeps the play', msg.includes('"Scrum" template') && eq(await state(page), kickOff), msg);
   await openPicker();
   await page.$eval('.template-card[data-template="3"]', b => b.click());
+  await answerConfirm(page);
   const scrum = await state(page);
   check('accepting loads Scrum', scrum.name === 'Scrum');
   await click(page, '[data-action="undo"]');
@@ -467,6 +477,7 @@ async function dragHold(page, from, to, during) {
   const ar = await page.$eval('.template-card svg', svg => { const r = svg.getBoundingClientRect(); return r.width / r.height; });
   check('vertical: thumbnails are vertical', ar < 1, String(ar));
   await page.$eval('.template-card[data-template="4"]', b => b.click());
+  await answerConfirm(page);
   check('vertical: the template loads vertical', (await state(page)).orientation === 'vertical');
   await click(page, '[data-orientation="horizontal"]');
 
@@ -474,12 +485,12 @@ async function dragHold(page, from, to, during) {
   // Leaves `n` phases (from a blank play), with notes, then saves all phases and reads back the sheet.
   async function sheet(n, { orientation = 'horizontal', longNote = false } = {}) {
     await page.evaluate(() => localStorage.clear());
-    accept = true;
     await click(page, '[data-file="new"]');
+    await answerConfirm(page);
     await click(page, `[data-orientation="${orientation}"]`);
     await page.$eval('#play-name', i => { i.value = 'Sheet: test'; i.dispatchEvent(new Event('input')); });
-    await click(page, '[data-action="add-attack"]');
-    await click(page, '[data-action="add-attack"]');
+    await addPlayer(page, 'attack');
+    await addPlayer(page, 'attack');
     for (let i = 0; i < n; i++) {
       if (i) await click(page, '[data-phase="add"]');
       const note = longNote && i === 0 ? 'Long note that goes on and on. '.repeat(20) : `note ${i + 1}`;
@@ -542,6 +553,343 @@ async function dragHold(page, from, to, during) {
   await browser.close();
 }
 
+// ---------------- First-use polish (desktop) ----------------
+{
+  console.log('\n== First-use polish (desktop) ==');
+  const dl = path.join(OUT, 'polish');
+  fs.mkdirSync(dl);
+  const { browser, page, errors } = await open({ downloads: dl });
+  await captureSvgs(page);
+  const rect = (sel) => page.$eval(sel, el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, cx: r.x + r.width / 2, cy: r.y + r.height / 2, right: r.right, bottom: r.bottom }; });
+  const toast = () => page.$eval('#toast', t => (t.hidden ? null : { text: t.textContent, ok: t.classList.contains('ok') }));
+  const inline = () => page.$eval('#inline-edit', i => (i.hidden ? null : { value: i.value, focused: document.activeElement === i, numeric: i.classList.contains('numeric') }));
+  const dblTap = async id => {
+    const c = await rect(`#players-layer [data-id="${id}"] .body`);
+    await page.mouse.click(c.cx, c.cy);
+    await page.mouse.click(c.cx, c.cy);
+  };
+  let s;
+
+  // --- 6. Number picker ---
+  await click(page, '[data-action="add-attack"]');
+  let picker = await page.evaluate(() => ({
+    open: document.getElementById('number-dialog').open,
+    title: document.getElementById('number-title').textContent,
+    free: [...document.querySelectorAll('#number-grid button:not(:disabled)')].map(b => Number(b.dataset.n)),
+    next: document.querySelector('#number-grid .next')?.dataset.n,
+    focused: document.activeElement?.dataset?.n,
+  }));
+  check('Add attack opens a picker: 1-15 free, 1 highlighted and focused', picker.open && picker.title === 'Add attacker' && picker.free.length === 15 && picker.next === '1' && picker.focused === '1', JSON.stringify(picker));
+  const btnBox = await rect('[data-action="add-attack"]');
+  const dlgBox = await rect('#number-dialog');
+  check('on a computer the picker opens beside its button', dlgBox.x >= btnBox.right && Math.abs(dlgBox.y - btnBox.y) < 40, JSON.stringify([btnBox, dlgBox]));
+  await page.screenshot({ path: path.join(OUT, 'number-picker.png') });
+  await click(page, '#number-grid [data-n="10"]');
+  s = await state(page);
+  check('clicking 10 adds attacker 10', eq(s.players, [{ id: 'a10', team: 'attack', label: '10' }]) && !(await page.$eval('#number-dialog', d => d.open)));
+  await click(page, '[data-action="add-attack"]');
+  picker = await page.evaluate(() => ({ used: document.querySelector('#number-grid [data-n="10"]').disabled, next: document.querySelector('#number-grid .next').dataset.n }));
+  check('10 now shows as used; 1 is still the highlighted next', picker.used && picker.next === '1');
+  await page.keyboard.press('Enter');
+  check('Enter adds the highlighted number (as before)', (await state(page)).players.some(p => p.id === 'a1'));
+  await click(page, '[data-action="add-attack"]');
+  await page.keyboard.press('Escape');
+  check('Escape closes the picker, adds nobody', (await state(page)).players.length === 2 && !(await page.$eval('#number-dialog', d => d.open)));
+  await click(page, '[data-action="add-defense"]');
+  check('Add defender: "Add defender", blue highlight', (await page.$eval('#number-title', t => t.textContent)) === 'Add defender' && (await page.$eval('#number-grid', g => g.classList.contains('defense'))));
+  await page.keyboard.press('Enter');
+  check('defender 1 added', (await state(page)).players.some(p => p.id === 'd1'));
+  await click(page, '[data-action="undo"]');
+  check('adding a player is one undo step', !(await state(page)).players.some(p => p.id === 'd1'));
+  await click(page, '[data-action="redo"]');
+
+  // --- 1. Rename with an in-app box ---
+  await page.keyboard.press('Escape');
+  await dblTap('a10');
+  let box = await inline();
+  const near = await rect('#inline-edit');
+  const disc = await rect('#players-layer [data-id="a10"] .body');
+  check('double-click opens a small box by the player, focused, with the label', box?.value === '10' && box.focused && Math.hypot(near.cx - disc.cx, near.cy - disc.cy) < 70, JSON.stringify([box, near, disc]));
+  await page.screenshot({ path: path.join(OUT, 'rename.png') });
+  await page.keyboard.type('FH');
+  await page.keyboard.press('Enter');
+  s = await state(page);
+  check('Enter saves the new label and closes the box', s.players.find(p => p.id === 'a10').label === 'FH' && !(await inline()));
+  await click(page, '[data-action="undo"]');
+  check('rename is one undo step', (await state(page)).players.find(p => p.id === 'a10').label === '10');
+  await sleep(450);
+  await dblTap('a10');
+  await page.keyboard.type('XX');
+  await page.keyboard.press('Escape');
+  check('Escape cancels', (await state(page)).players.find(p => p.id === 'a10').label === '10' && !(await inline()));
+  await sleep(450);
+  await dblTap('a10');
+  await page.keyboard.type('AB');
+  await tap(page, 30, 50); // clicking away
+  check('clicking away saves', (await state(page)).players.find(p => p.id === 'a10').label === 'AB' && !(await inline()));
+  await click(page, '[data-action="undo"]');
+  // The route order badge: an in-app box too.
+  await tool(page, 'run');
+  const a1 = (await state(page)).phases[0].positions.a1;
+  await drag(page, [a1.x, a1.y], [a1.x + 8, a1.y + 3]);
+  await tool(page, null);
+  const run = (await state(page)).phases[0].routes[0];
+  const badge = await rect(`#badges-layer [data-id="${run.id}"] circle`);
+  await page.mouse.click(badge.cx, badge.cy);
+  box = await inline();
+  check('tapping a route\'s order badge opens a number box', box?.value === '1' && box.numeric && box.focused, JSON.stringify(box));
+  await page.keyboard.type('7');
+  await page.keyboard.press('Enter');
+  check('Enter sets the order', (await state(page)).phases[0].routes[0].order === 7 && (await page.$eval(`#badges-layer [data-id="${run.id}"] text`, t => t.textContent)) === '7');
+  // Confirms are in-app.
+  await click(page, '[data-phase="add"]');
+  await click(page, '[data-phase="delete"]');
+  let msg = await answerConfirm(page, false);
+  check('Delete phase asks in the app; Cancel keeps it', msg.startsWith('Delete phase 2') && (await state(page)).phases.length === 2);
+  await click(page, '[data-phase="delete"]');
+  await answerConfirm(page);
+  check('OK deletes the phase', (await state(page)).phases.length === 1);
+  await click(page, '[data-action="undo"]');
+  check('and it undoes', (await state(page)).phases.length === 2);
+  await page.$eval('#phase-tabs [data-index="0"]', b => b.click());
+  const kept = await state(page);
+  await click(page, '[data-file="new"]');
+  msg = await answerConfirm(page, false);
+  check('New play asks in the app; Cancel keeps the play', msg.startsWith('Start a new blank play') && eq(await state(page), kept));
+
+  // --- 2. Balls above players, badges clear of them ---
+  check('balls are drawn in a layer above the players', await page.evaluate(() => {
+    const ids = [...document.getElementById('world').children].map(g => g.id);
+    return ids.indexOf('ball-layer') > ids.indexOf('players-layer') && ids.indexOf('badges-layer') > ids.indexOf('ball-layer');
+  }));
+  await click(page, '[data-object="ball"]');
+  await page.evaluate(() => { const b = window.playState.phases[0].objects.find(o => o.type === 'ball'); const p = window.playState.phases[0].positions.a1; Object.assign(b, { x: p.x + 0.4, y: p.y + 0.3 }); });
+  await page.keyboard.press('Escape');
+  const ballAt = await rect('#ball-layer .ball');
+  check('a ball on a player is on top (it gets the click)', await page.evaluate(({ cx, cy }) => document.elementFromPoint(cx, cy)?.closest('[data-kind]')?.dataset.kind === 'object', ballAt));
+  // Kick-off: 10 has the ball. Routes from 10 and 9: no badge covers a player, a ball or another badge.
+  await click(page, '#templates-button');
+  await page.waitForSelector('.template-card');
+  await page.$eval('.template-card[data-template="5"]', b => b.click());
+  await answerConfirm(page);
+  const ko = (await state(page)).phases[0].positions;
+  await tool(page, 'run');
+  await drag(page, [ko.a10.x, ko.a10.y], [ko.a10.x + 6, ko.a10.y - 4]);
+  await tool(page, 'kick');
+  await drag(page, [ko.a10.x, ko.a10.y], [80, 50]);
+  await tool(page, 'pass');
+  await drag(page, [ko.a10.x, ko.a10.y], [ko.a9.x, ko.a9.y]);
+  await tool(page, 'run');
+  await drag(page, [ko.a9.x, ko.a9.y], [ko.a9.x + 5, ko.a9.y - 6]);
+  await tool(page, null);
+  await page.keyboard.press('Escape');
+  const clash = await page.evaluate(() => {
+    const ph = window.playState.phases[0];
+    const discs = [
+      ...Object.entries(ph.positions).map(([id, p]) => ({ id, ...p, r: 1.2 })),
+      ...ph.objects.filter(o => o.type === 'ball').map(o => ({ id: 'ball', x: o.x, y: o.y, r: 0.75 })),
+    ];
+    const badges = [...document.querySelectorAll('#badges-layer .badge')].map(b => {
+      const [x, y] = b.getAttribute('transform').match(/translate\(([-\d.]+) ([-\d.]+)\)/).slice(1).map(Number);
+      return { id: b.dataset.id, x, y, r: 0.9 };
+    });
+    const out = [];
+    badges.forEach((b, i) => {
+      for (const d of [...discs, ...badges.slice(0, i)]) if (Math.hypot(b.x - d.x, b.y - d.y) < b.r + d.r) out.push(`${b.id}~${d.id}`);
+    });
+    return { n: badges.length, out };
+  });
+  check('badges cover no player, ball or other badge', clash.n === 4 && clash.out.length === 0, JSON.stringify(clash));
+  await page.screenshot({ path: path.join(OUT, 'badges.png') });
+
+  // --- 3. Scrum with 9s, 4. Lineout preset ---
+  await click(page, '[data-file="new"]');
+  await answerConfirm(page);
+  await addPlayer(page, 'attack', { n: 9 });
+  await click(page, '[data-action="set-piece"]');
+  await page.click('#set-piece-dialog button[value="scrum-attack"]');
+  await sleep(200);
+  s = await state(page);
+  let ph = s.phases[0];
+  let scrum = ph.objects.find(o => o.type === 'scrum');
+  let ball = ph.objects.find(o => o.type === 'ball');
+  check('scrum: 1-9 of both teams, the existing 9 reused', s.players.length === 18 && s.players.filter(p => p.id === 'a9').length === 1 && scrum.pack.includes('a9') && scrum.pack.includes('d9'), s.players.map(p => p.id).join());
+  check('attack put-in: attack 9 next to the ball on the put-in side', Math.hypot(ph.positions.a9.x - ball.x, ph.positions.a9.y - ball.y) < 3 && ph.positions.a9.y < ball.y && ball.y < scrum.y, JSON.stringify([ph.positions.a9, ball, scrum]));
+  check('the other 9 on the same side, by their pack', ph.positions.d9.y === ph.positions.a9.y && ph.positions.d9.x > scrum.x);
+  await click(page, '[data-action="set-piece"]');
+  await page.click('#set-piece-dialog button[value="scrum-defense"]');
+  await sleep(200);
+  s = await state(page);
+  ph = s.phases[0];
+  scrum = ph.objects.find(o => o.type === 'scrum');
+  ball = ph.objects.find(o => o.type === 'ball');
+  check('defense put-in: defense 9 next to the ball, both 9s on that side', s.players.length === 18 && Math.hypot(ph.positions.d9.x - ball.x, ph.positions.d9.y - ball.y) < 3 && ph.positions.d9.y > scrum.y && ph.positions.a9.y > scrum.y);
+  await page.screenshot({ path: path.join(OUT, 'scrum-9s.png') });
+
+  const setPiece = await page.$$eval('#set-piece-dialog button[value]', bs => bs.map(b => b.value));
+  check('Set piece offers Scrum and Lineout', ['scrum-attack', 'scrum-defense', 'lineout-attack', 'lineout-defense'].every(v => setPiece.includes(v)), setPiece.join());
+  const before = await state(page);
+  await click(page, '[data-action="set-piece"]');
+  await page.click('#set-piece-dialog button[value="lineout-attack"]');
+  await sleep(200);
+  s = await state(page);
+  ph = s.phases[0];
+  let lo = ph.objects.find(o => o.type === 'lineout');
+  const line = (team, ns) => ns.map(n => ph.positions[(team === 'attack' ? 'a' : 'd') + n]);
+  const ids = s.players.map(p => p.id);
+  check('lineout: a marker added 5 m in from touch', lo && lo.y === 5, JSON.stringify(lo));
+  check('lineout: players reused, no duplicates, 9 per team', new Set(ids).size === ids.length && s.players.length === 18);
+  check('lineout: the phase\'s ball is reused, not a second one', ph.objects.filter(o => o.type === 'ball').length === 1);
+  const aLine = line('attack', [1, 4, 3, 6, 5, 8, 7]);
+  const dLine = line('defense', [1, 4, 3, 6, 5, 8, 7]);
+  check('lineout: 1 and 3-8 of each team in a line from 5 m in, attack on their own side', aLine.every(p => p.x === lo.x - 1.2 && p.y > 5 && p.y < 23) && dLine.every(p => p.x === lo.x + 1.2), JSON.stringify([aLine, dLine]));
+  ball = ph.objects.find(o => o.type === 'ball');
+  check('lineout: attack hooker throwing from touch with the ball, the other in the 5 m channel', ph.positions.a2.y < 2 && Math.hypot(ball.x - ph.positions.a2.x, ball.y - ph.positions.a2.y) < 2 && ph.positions.d2.y > 2 && ph.positions.d2.y < 5);
+  check('lineout: 9s behind the lineout', ph.positions.a9.y > 21 && ph.positions.d9.y > 21 && ph.positions.a9.x < lo.x && ph.positions.d9.x > lo.x);
+  await page.screenshot({ path: path.join(OUT, 'lineout-preset.png') });
+  await click(page, '[data-action="undo"]');
+  check('the lineout preset is one undo step', eq(await state(page), before));
+  // At a marker dragged to the far touchline, with the defense throwing.
+  await click(page, '[data-object="lineout"]');
+  await page.evaluate(() => { const o = window.playState.phases[0].objects.find(q => q.type === 'lineout'); Object.assign(o, { x: 30, y: 58 }); });
+  await click(page, '[data-action="set-piece"]');
+  await page.click('#set-piece-dialog button[value="lineout-defense"]');
+  await sleep(200);
+  s = await state(page);
+  ph = s.phases[0];
+  lo = ph.objects.find(o => o.type === 'lineout');
+  check('far touchline: snapped to 5 m in (y 65), lines run into the field', lo.x === 30 && lo.y === 65 && line('attack', [1, 7]).every(p => p.y < 65 && p.x === 28.8), JSON.stringify(lo));
+  check('defense throwing: their hooker on the touchline', ph.positions.d2.y > 68 && ph.positions.a2.y < 68 && s.players.length === 18);
+  check('only one lineout marker', ph.objects.filter(o => o.type === 'lineout').length === 1);
+
+  // --- 5. Attack direction ---
+  check('Direction layer on by default', await page.$eval('[data-layer="direction"]', c => c.checked));
+  const dir = async () => page.evaluate(() => {
+    const g = document.querySelector('#pitch-layer .direction');
+    if (!g) return null;
+    const shaft = g.querySelector('.direction-shaft');
+    const m = shaft.getScreenCTM();
+    const a = new DOMPoint(+shaft.getAttribute('x1'), +shaft.getAttribute('y1')).matrixTransform(m);
+    const b = new DOMPoint(+shaft.getAttribute('x2'), +shaft.getAttribute('y2')).matrixTransform(m);
+    const pitch = document.getElementById('pitch').getBoundingClientRect();
+    const box = g.getBoundingClientRect();
+    return { dx: b.x - a.x, dy: b.y - a.y, fromBottom: (pitch.bottom - box.bottom) / pitch.height, text: g.querySelector('text').textContent, fill: g.querySelector('text').getAttribute('fill') };
+  });
+  let d = await dir();
+  check('horizontal: "Attack" arrow in red near the bottom, pointing right (to x=110)', d && d.text === 'Attack' && d.fill === '#d32f2f' && d.dx > 20 && Math.abs(d.dy) < 1 && d.fromBottom < 0.1, JSON.stringify(d));
+  await click(page, '[data-orientation="vertical"]');
+  d = await dir();
+  check('vertical: pointing up (x=110 is at the top), near the bottom', d && d.dy < -20 && Math.abs(d.dx) < 1 && d.fromBottom < 0.1, JSON.stringify(d));
+  await page.screenshot({ path: path.join(OUT, 'direction-vertical.png') });
+  await click(page, '[data-view="half"]');
+  d = await dir();
+  check('half view: still near the bottom, pointing up', d && d.dy < -20 && d.fromBottom < 0.12, JSON.stringify(d));
+  await click(page, '[data-view="full"]');
+  await click(page, '[data-orientation="horizontal"]');
+  await click(page, '[data-layer="direction"]');
+  check('unticking Direction hides it', (await dir()) === null);
+  await click(page, '[data-layer="direction"]');
+
+  // --- 7. Tool clarity ---
+  await page.keyboard.press('Escape');
+  await click(page, '[data-route="pass"]');
+  const contrast = () => page.$eval('[data-route="pass"]', b => {
+    const rgb = c => c.match(/\d+(\.\d+)?/g).slice(0, 3).map(Number);
+    const lum = ([r, g, bl]) => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(bl); };
+    const cs = getComputedStyle(b);
+    const [l1, l2] = [lum(rgb(cs.backgroundColor)), lum(rgb(cs.color))].sort((x, y) => y - x);
+    return { ratio: (l1 + 0.05) / (l2 + 0.05), bg: cs.backgroundColor };
+  });
+  let c = await contrast();
+  check('the active route tool is high contrast (dark, white text)', c.ratio >= 7 && c.bg === 'rgb(29, 29, 29)', JSON.stringify(c));
+  await page.hover('[data-route="pass"]');
+  c = await contrast();
+  check('... and stays so while hovered', c.ratio >= 7, JSON.stringify(c));
+  const hintText = await page.$eval('#draw-hint', h => (h.hidden ? null : h.textContent));
+  check('picking a tool with no player selected shows how to start', hintText === 'Drag from a player to draw a pass, or click a player first.', hintText);
+  await tapPlayer(page, 'a5');
+  const hint2 = await page.$eval('#draw-hint', h => (h.hidden ? null : h.textContent));
+  check('with a player selected: where to click, again, Esc', hint2 === "Click where attacker 5's pass ends, or on a team-mate. Click again for another, Esc to stop.", hint2);
+  await page.keyboard.press('Escape');
+  check('tips are at the top of the sidebar, open at first', await page.evaluate(() => {
+    const help = document.querySelector('.toolbar').firstElementChild;
+    return help.id === 'help' && help.open && help.textContent.includes('Double-click a player') && help.querySelector('summary').textContent.includes('?');
+  }));
+  await page.click('#help summary');
+  await sleep(100); // the toggle event comes just after the click
+  await page.reload();
+  await page.waitForSelector('#phase-tabs button');
+  await captureSvgs(page);
+  check('closing the tips is remembered', !(await page.$eval('#help', h => h.open)));
+  await page.click('#help summary');
+
+  // --- 8. Title pencil, halfway labels ---
+  await page.$eval('#play-name', i => { i.value = 'Polish: test'; i.dispatchEvent(new Event('input')); });
+  const title = await rect('#title-size');
+  const pencil = await rect('.title-pencil');
+  check('a pencil sits right after the play name', pencil.w > 8 && pencil.x - title.right >= 0 && pencil.x - title.right < 12 && Math.abs(pencil.cy - title.cy) < 6, JSON.stringify([title, pencil]));
+  await page.mouse.click(pencil.cx, pencil.cy);
+  check('clicking the pencil puts the cursor in the name', await page.evaluate(() => document.activeElement?.id === 'play-name'));
+  await page.$eval('#play-name', i => i.blur());
+  const labels = await page.$$eval('#pitch-layer .distance', ts => ts.map(t => ({ text: t.textContent, at: t.getAttribute('transform').match(/translate\(([-\d.]+) ([-\d.]+)\)/).slice(1).map(Number) })));
+  const fifties = labels.filter(l => l.text === '50');
+  const tens = labels.filter(l => l.text === '10');
+  const gapTo50 = Math.min(...tens.flatMap(t => fifties.map(f => Math.hypot(t.at[0] - f.at[0], t.at[1] - f.at[1]))));
+  check('halfway is labelled "50" only, the 10 m labels well away from it', fifties.length === 2 && tens.length === 4 && gapTo50 > 9, `${gapTo50} ${JSON.stringify(labels)}`);
+
+  // --- 9. Exports: toasts, PDF layout, print lines ---
+  await page.$eval('#play-tags', i => { i.value = 'backs, restart'; i.dispatchEvent(new Event('input')); });
+  const saved = async (file, image, ext) => {
+    for (const f of fs.readdirSync(dl)) fs.rmSync(path.join(dl, f));
+    await page.evaluate(() => { window.__svgs.length = 0; document.getElementById('toast').hidden = true; });
+    await click(page, `[data-file="${file}"]`);
+    if (image) await click(page, `[data-image="${image}"]`);
+    const f = await waitFile(dl, ext);
+    await page.waitForFunction(() => !document.getElementById('toast').hidden, { timeout: 15000 }).catch(() => null);
+    return { file: f && path.basename(f), path: f, toast: await toast(), pics: await svgs(page) };
+  };
+  let r = await saved('save', null, '.json');
+  check('Save file: toast "Saved Polish test.json"', r.toast?.text === 'Saved Polish test.json' && r.toast.ok && r.file === 'Polish test.json', JSON.stringify(r.toast));
+  r = await saved('png', 'phase', '.png');
+  check('PNG: toast with its name, and the direction arrow in the picture', r.toast?.text === `Saved ${r.file}` && r.file === 'Polish test-phase-1.png' && /class="direction"/.test(r.pics[0]), JSON.stringify(r.toast));
+  r = await saved('png', 'all', '.png');
+  const sheet = await page.evaluate(xml => {
+    const root = new DOMParser().parseFromString(xml, 'image/svg+xml').documentElement;
+    const tiles = [...root.children].filter(e => e.getAttribute('class') === 'tile');
+    const key = [...root.children].find(e => e.getAttribute('class') === 'legend-key');
+    const keyY = key ? Number(key.getAttribute('transform').match(/translate\([-\d.]+ ([-\d.]+)\)/)[1]) : null;
+    const tileBottom = Math.max(...tiles.map(t => Number(t.getAttribute('y')) + Number(t.getAttribute('height'))));
+    return { keyY, tileBottom, inTiles: tiles.some(t => t.querySelector('.legend-key')) };
+  }, r.pics.at(-1));
+  check('all-phases PNG: toast, route key below the grid and not on a pitch', r.toast?.text === 'Saved Polish test-all-phases.png' && sheet.keyY > sheet.tileBottom && !sheet.inTiles, JSON.stringify([r.toast, sheet]));
+  r = await saved('pdf', null, '.pdf');
+  check('PDF: toast with its name', r.toast?.text === 'Saved Polish test.pdf', JSON.stringify(r.toast));
+  check('PDF: the route key is its own picture, not on the pitch', r.pics.length === 2 && r.pics[0].includes('legend-key') && !r.pics[1].includes('legend-key'));
+  check('PDF: darker pitch lines for printing; the screen keeps white lines', /<svg[^>]*class="print"/.test(r.pics[1]) && r.pics[1].includes('.print .line') && (await page.$eval('#pitch-layer .line', l => getComputedStyle(l).stroke)) === 'rgb(255, 255, 255)');
+  check('PDF: the direction arrow is in the picture', /class="direction"/.test(r.pics[1]));
+  if (r.path) {
+    const info = await pdfInfo(fs.readFileSync(r.path));
+    const pg = info.pages[0];
+    const [pitchBox, keyBox] = [...pg.boxes].sort((a, b) => b.w * b.h - a.w * a.h);
+    const titleItem = pg.items.find(t => t.str.includes('Polish: test'));
+    const metaItem = pg.items.find(t => t.str.includes('Attack'));
+    check('PDF header: name on the left, category and tags on the right of the same line', titleItem && metaItem && metaItem.str.includes('backs, restart') && titleItem.x < metaItem.x && Math.abs(titleItem.y - metaItem.y) < 10, JSON.stringify(pg.items));
+    check('PDF: the pitch is as wide as fits (over 750 pt of the 842 pt page)', pitchBox.w > 750, JSON.stringify(pg.boxes));
+    check('PDF: the route key is below the pitch', keyBox && keyBox.y + keyBox.h <= pitchBox.y + 1, JSON.stringify(pg.boxes));
+    fs.copyFileSync(r.path, path.join(OUT, 'polish.pdf'));
+  }
+  await click(page, '[data-orientation="vertical"]');
+  r = await saved('pdf', null, '.pdf');
+  if (r.path) {
+    const pg = (await pdfInfo(fs.readFileSync(r.path))).pages[0];
+    const [pitchBox, keyBox] = [...pg.boxes].sort((a, b) => b.w * b.h - a.w * a.h);
+    check('portrait PDF: pitch fills the height left, key below it', pitchBox.h > 600 && keyBox.y + keyBox.h <= pitchBox.y + 1, JSON.stringify(pg.boxes));
+    fs.copyFileSync(r.path, path.join(OUT, 'polish-vertical.pdf'));
+  }
+  check('polish: no console errors or native dialogs', errors.length === 0, errors.join(' | '));
+  await browser.close();
+}
+
 // ---------------- Phone 390 portrait, touch ----------------
 {
   console.log('\n== Phone 390 portrait (touch) ==');
@@ -554,10 +902,24 @@ async function dragHold(page, from, to, during) {
   const insertBox = await page.$eval('[data-phase="insert"]', b => { const r = b.getBoundingClientRect(); return { l: r.left, r: r.right, w: r.width }; });
   check('Insert after button fits on screen', insertBox.l >= 0 && insertBox.r <= 390 && insertBox.w > 30, JSON.stringify(insertBox));
 
-  for (let i = 0; i < 3; i++) await page.tap('[data-action="add-attack"]');
+  for (let i = 0; i < 3; i++) await addPlayer(page, 'attack', { touch: true });
   await drag(page, [44, 9.3], [50, 15], { touch: true });
   let s = await state(page);
   check('touch drag player', Math.hypot(s.phases[0].positions.a2.x - 50, s.phases[0].positions.a2.y - 15) < 0.3, JSON.stringify(s.phases[0].positions.a2));
+  // Rename by double tap: the in-app box, no prompt.
+  await page.keyboard.press('Escape');
+  await sleep(450);
+  const a3 = (await state(page)).phases[0].positions.a3;
+  await tap(page, a3.x, a3.y, { touch: true });
+  await tap(page, a3.x, a3.y, { touch: true });
+  const phoneBox = await page.$eval('#inline-edit', i => (i.hidden ? null : { value: i.value, r: i.getBoundingClientRect().right, focused: document.activeElement === i }));
+  check('phone: double tap opens the rename box on screen', phoneBox?.value === '3' && phoneBox.focused && phoneBox.r <= 390, JSON.stringify(phoneBox));
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape'); // the first Escape cancels the rename, the second clears the selection
+  await page.tap('[data-action="add-defense"]');
+  await page.waitForSelector('#number-dialog[open]');
+  const pickBox = await page.$eval('#number-dialog', d => { const r = d.getBoundingClientRect(); return { l: r.left, r: r.right }; });
+  check('phone: number picker in the middle of the screen', pickBox.l > 0 && pickBox.r < 390 && Math.abs((pickBox.l + pickBox.r) / 2 - 195) < 4, JSON.stringify(pickBox));
   await page.keyboard.press('Escape');
   await page.tap('[data-route="pass"]');
   await drag(page, [44.5, 5.5], [51, 16], { touch: true });
