@@ -2,6 +2,7 @@
 // Mouse, touch and pen all go through the same pointer events.
 
 import { BOUNDS, toMetres } from './pitch.js';
+import { syncOptions } from './options.js';
 
 const DOUBLE_TAP_MS = 400;
 const MIN_ROUTE_LENGTH = 1; // metres; shorter drags are treated as a mis-tap
@@ -135,6 +136,7 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
       points: [[round(start.x), round(start.y)], [round(start.x), round(start.y)]],
       curve: 0,
       order: nextOrder(phase().routes),
+      option: null,
     };
     if (ui.tool === 'pass') route.to = null;
     phase().routes.push(route);
@@ -166,6 +168,7 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
     const route = startRoute(from, start);
     route.points[1] = [round(end.x), round(end.y)];
     if (ui.tool === 'pass') route.to = to;
+    syncOptions(phase().routes, [from]);
   }
 
   svg.addEventListener('pointerdown', e => {
@@ -194,7 +197,7 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
       // Route handles: start, end, or bend (the midpoint). Nothing changes until the pointer has moved,
       // so a tap on a start handle sitting on a player can still select that player (see endDrag).
       ui.selected = { kind: 'route', id };
-      drag = { mode: hit.dataset.handle, id, start: p, moved: false };
+      drag = { mode: hit.dataset.handle, id, start: p, moved: false, from: findRoute(id).from };
     } else if (kind === 'badge') {
       // Tapping a route's order badge edits the number (on release, see endDrag).
       ui.selected = { kind: 'route', id };
@@ -303,6 +306,17 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
         if (e.type === 'pointerup' && r.from) ui.selected = { kind: 'player', id: r.from };
       } else {
         ui.selected = done.keepPlayer ? { kind: 'player', id: done.keepPlayer } : { kind: 'route', id: r.id };
+        // A second pass or kick from the same player makes them options.
+        syncOptions(phase().routes, [r.from]);
+      }
+    }
+
+    // A route whose start moved to another player leaves its old options and joins theirs as the last.
+    if (done.mode === 'start' && done.moved) {
+      const r = findRoute(done.id);
+      if (r && r.from !== done.from) {
+        if (r.option) r.option = null;
+        syncOptions(phase().routes, [done.from, r.from]);
       }
     }
 

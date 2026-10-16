@@ -148,6 +148,24 @@
     </form>
   </dialog>
 
+  <dialog id="option-dialog" aria-labelledby="option-title">
+    <form method="dialog">
+      <h2 id="option-title">Option</h2>
+      <label class="field">Order number
+        <input id="option-order" type="number" min="1" max="99" step="1" inputmode="numeric">
+      </label>
+      <label class="field">Label
+        <input id="option-label" type="text" placeholder="e.g. if 13 bites" spellcheck="false" autocomplete="off">
+      </label>
+      <p class="tip">This player's passes and kicks in this phase are options: alternatives that share one order number. A is the main plan, and the next phase follows it.</p>
+      <div class="choices">
+        <button value="save">Save</button>
+        <button value="" class="cancel">Cancel</button>
+      </div>
+      <button value="main" id="option-main" class="main-option">Make this the main option</button>
+    </form>
+  </dialog>
+
   <dialog id="image-dialog" aria-labelledby="image-title">
     <form method="dialog">
       <h2 id="image-title">Save image</h2>
