@@ -77,15 +77,22 @@ python3 -m http.server
 
 Then open <http://localhost:8000>.
 
-## Tests
+## Running tests
 
-The phase logic (building, adding, inserting and moving phases) has tests that need nothing but Node 22 or newer:
+The site needs no packages. The packages in `package.json` are dev-only, for the headless browser tests.
 
 ```sh
-node --test tests/*.test.js
+npm install   # once: puppeteer (downloads its own Chrome) and pdfjs-dist
+npm test
 ```
 
-They check, among other things, that every phase after an insert or a move is exactly what it was before.
+`npm test` serves the repo on a free local port, then runs:
+
+- `tests/*.test.js`: Node tests for the phase logic (building, adding, inserting and moving phases). They need nothing but Node 22 or newer, so you can also run them alone with `node --test tests/*.test.js`.
+- `tests/browser/suite.mjs`: headless Chrome on desktop and phone (touch). It covers dragging, routes and passes, ghost routes, phases, undo/redo, autosave, save/load, and the PNG/PDF exports.
+- `tests/browser/clickdraw.mjs`: click-to-draw routes from the selected player.
+
+Downloads and screenshots go to a temporary folder; the path is printed at the start of each suite. To use your installed Chrome instead of puppeteer's, set `PUPPETEER_EXECUTABLE_PATH`, for example `PUPPETEER_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" npm test`.
 
 ## Deploying to GitHub Pages
 
@@ -110,7 +117,7 @@ js/history.js    undo/redo by snapshots of the play
 js/storage.js    autosave, saving and loading .json files, checking and repairing loaded plays
 js/export.js     PNG of a phase, PDF of all phases (loads jsPDF on first use)
 vendor/          jsPDF 4.2.1 (jspdf.umd.min.js) and its licence
-tests/           Node tests for the phase logic
+tests/           Node tests for the phase logic; run.mjs (npm test); browser/ headless Chrome suites
 plays/<category>/  for saved plays (later stages)
 ```
 

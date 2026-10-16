@@ -1,0 +1,16 @@
+{
+  "name": "rugby-play-designer",
+  "private": true,
+  "type": "module",
+  "description": "Static site; these packages are only for the headless browser tests.",
+  "scripts": {
+    "test": "node tests/run.mjs"
+  },
+  "devDependencies": {
+    "pdfjs-dist": "^4.10.38",
+    "puppeteer": "^23.11.1"
+  },
+  "allowScripts": {
+    "puppeteer@23.11.1": true
+  }
+}
