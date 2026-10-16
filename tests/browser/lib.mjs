@@ -16,6 +16,12 @@ export async function open({ mobile = false, downloads = null } = {}) {
   const errors = [];
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', e => errors.push(String(e)));
+  // The app must never open a native prompt, alert or confirm: any one fails the suite.
+  page.on('dialog', d => {
+    check(`no native ${d.type()} dialog`, false, d.message());
+    errors.push(`native ${d.type()}: ${d.message()}`);
+    d.dismiss().catch(() => {});
+  });
   if (mobile) {
     await page.emulate({
       viewport: { width: 390, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true },
@@ -65,6 +71,27 @@ export async function tap(page, x, y, { touch = false } = {}) {
 }
 
 export const click = (page, sel) => page.$eval(sel, b => b.click());
+
+// Add attack / Add defender: opens the number picker, then Enter adds the highlighted (next free) number,
+// or `n` picks that number. On a phone (`touch`) the buttons are tapped.
+export async function addPlayer(page, team, { n = null, touch = false } = {}) {
+  const button = `[data-action="add-${team === 'attack' ? 'attack' : 'defense'}"]`;
+  if (touch) await page.tap(button); else await click(page, button);
+  await page.waitForSelector('#number-dialog[open]');
+  if (n == null && !touch) await page.keyboard.press('Enter');
+  else if (touch) await page.tap(n == null ? '#number-grid .next' : `#number-grid [data-n="${n}"]`);
+  else await click(page, `#number-grid [data-n="${n}"]`);
+}
+
+// Answers the app's own confirm box (OK or Cancel) once it is open. Returns its message.
+export async function answerConfirm(page, ok = true) {
+  await page.waitForSelector('#confirm-dialog[open]', { timeout: 5000 });
+  const message = await page.$eval('#confirm-message', p => p.textContent);
+  await page.click(ok ? '#confirm-ok' : '#confirm-dialog .cancel');
+  await page.waitForFunction(() => !document.getElementById('confirm-dialog').open);
+  await new Promise(r => setTimeout(r, 50)); // the close event, then the change
+  return message;
+}
 export const state = page => page.evaluate(() => JSON.parse(JSON.stringify(window.playState)));
 export const shown = page => page.evaluate(() => Number(document.querySelector('#phase-tabs [aria-current="step"]').dataset.index));
 

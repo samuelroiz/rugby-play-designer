@@ -1,7 +1,7 @@
 // Click-to-draw from a selected player. Desktop 1440x900 (mouse) + quick phone 390 touch check.
 import path from 'node:path';
 import fs from 'node:fs';
-import { open, drag, tap, click, state, check, failed, toScreen, outDir } from './lib.mjs';
+import { open, drag, tap, click, state, check, failed, toScreen, outDir, addPlayer, answerConfirm } from './lib.mjs';
 
 const OUT = outDir('clickdraw');
 console.log(`Screenshots: ${OUT}`);
@@ -20,9 +20,9 @@ const tapPlayer = async (page, id) => {
 };
 
 // a1 (44,5) a2 (50,15) a3 (50,25) d1 (60,15), labels: a2 -> "12".
-async function setup(page) {
-  for (let i = 0; i < 3; i++) await click(page, '[data-action="add-attack"]');
-  await click(page, '[data-action="add-defense"]');
+async function setup(page, { touch = false } = {}) {
+  for (let i = 0; i < 3; i++) await addPlayer(page, 'attack', { touch });
+  await addPlayer(page, 'defense', { touch });
   await page.evaluate(() => {
     const p = window.playState.phases[0].positions;
     Object.assign(p, { a2: { x: 50, y: 15 }, a3: { x: 50, y: 25 }, d1: { x: 60, y: 15 } });
@@ -34,14 +34,13 @@ async function setup(page) {
 {
   console.log('\n== Desktop 1440x900, mouse ==');
   const { browser, page, errors } = await open();
-  page.on('dialog', d => { console.log('DIALOG', d.type(), d.message()); errors.push('unexpected dialog: ' + d.message()); d.dismiss(); });
   await setup(page);
 
   // Select 12, pick Run: hint, preview follows the pointer, one click makes the route.
   await tapPlayer(page, 'a2');
   check('player selected', (await sel(page)) === 'a2');
   await click(page, '[data-route="run"]');
-  check('hint names the player and route', (await hint(page)) === "Click where 12's run ends. Esc to stop.", await hint(page));
+  check('hint names the player and route', (await hint(page)) === "Click where 12's run ends. Click again for another, Esc to stop.", await hint(page));
   await hover(page, 58, 20);
   const d1 = await preview(page);
   await hover(page, 60, 10);
@@ -76,7 +75,7 @@ async function setup(page) {
   const types = ['run', 'pass', 'kick', 'decoy', 'drift', 'blitz'];
   for (const [i, t] of types.entries()) {
     if ((await toolOn(page)) !== t) await click(page, `[data-route="${t}"]`);
-    check(`${t}: hint`, (await hint(page))?.includes(t === 'pass' ? "12's pass goes" : `12's ${t} ends`), await hint(page));
+    check(`${t}: hint`, (await hint(page))?.includes(t === 'pass' ? "12's pass ends, or on a team-mate. Click again" : `12's ${t} ends. Click again`), await hint(page));
     await tap(page, 40 + i * 3, 40);
     rs = await routes(page);
     const r = rs.at(-1);
@@ -112,7 +111,7 @@ async function setup(page) {
   // Switching players with a run.
   await click(page, '[data-route="run"]');
   await tapPlayer(page, 'a3');
-  check('run: clicking another player switches the start', (await sel(page)) === 'a3' && (await routes(page)).length === 2 && (await hint(page)) === "Click where 3's run ends. Esc to stop.", await hint(page));
+  check('run: clicking another player switches the start', (await sel(page)) === 'a3' && (await routes(page)).length === 2 && (await hint(page)) === "Click where 3's run ends. Click again for another, Esc to stop.", await hint(page));
   await tap(page, 56, 30);
   rs = await routes(page);
   check('next click draws from the new player', rs.length === 3 && rs[2].from === 'a3' && eq(rs[2].points, [[50, 25], [56, 30]]));
@@ -132,26 +131,26 @@ async function setup(page) {
   // Escape.
   await tapPlayer(page, 'a2');
   await click(page, '[data-route="kick"]');
-  check('kick mode on', (await hint(page)) === "Click where 12's kick ends. Esc to stop.");
+  check('kick mode on', (await hint(page)) === "Click where 12's kick ends. Click again for another, Esc to stop.");
   await hover(page, 70, 20);
   await page.keyboard.press('Escape');
   check('Escape turns it off: no hint, no tool, no selection, no preview', (await hint(page)) === null && (await toolOn(page)) === null && (await sel(page)) === null && (await preview(page)) === null);
 
   // Drag-drawing with nothing selected still works (and a press-drag pass still attaches).
   await click(page, '[data-route="run"]');
-  check('no player selected: no hint', (await hint(page)) === null);
+  check('tool on, no player selected: hint says how to start', (await hint(page)) === 'Drag from a player to draw a run, or click a player first.', await hint(page));
   await drag(page, [50, 25], [58, 33]);
   rs = await routes(page);
   check('drag-draw with nothing selected still works, route selected', rs.length === 5 && rs[4].from === 'a3' && eq(rs[4].points[1], [58, 33]) && (await page.evaluate(() => !!document.querySelector('#routes-layer .route.selected'))));
   await drag(page, [80, 40], [85, 45]);
   rs = await routes(page);
   check('drag-draw from open grass still works', rs.length === 6 && rs[5].from === null);
-  check('with a route selected, still no hint', (await hint(page)) === null);
+  check('with a route selected, the how-to-start hint', (await hint(page)) === 'Drag from a player to draw a run, or click a player first.', await hint(page));
   // Tap (no drag) on a player with a tool on and nothing selected selects them -> click mode.
   await page.keyboard.press('Escape');
   await click(page, '[data-route="drift"]');
   await tapPlayer(page, 'a1');
-  check('tapping a player with a tool on selects them and starts click-to-draw', (await sel(page)) === 'a1' && (await hint(page)) === "Click where attacker 1's drift ends. Esc to stop." && (await routes(page)).length === 6);
+  check('tapping a player with a tool on selects them and starts click-to-draw', (await sel(page)) === 'a1' && (await hint(page)) === "Click where attacker 1's drift ends. Click again for another, Esc to stop." && (await routes(page)).length === 6);
   await page.mouse.move(5, 5); // off the pitch
   check('preview hidden when the pointer leaves the pitch', (await preview(page)) === null);
   await page.screenshot({ path: path.join(OUT, 'desktop.png') });
@@ -174,7 +173,6 @@ async function setup(page) {
   const dl = path.join(OUT, 'options');
   fs.mkdirSync(dl);
   const { browser, page, errors } = await open({ downloads: dl });
-  page.on('dialog', d => d.accept()); // load confirm
   await setup(page);
   await page.evaluate(() => {
     window.__svgs = [];
@@ -350,7 +348,7 @@ async function setup(page) {
   pics = await exported('png', 'all');
   check('all-phases PNG shows them on phase 1', pics.length === 1 && shows(pics[0]));
   pics = await exported('pdf');
-  check('PDF page 1 shows them', pics.length === 2 && shows(pics[0]));
+  check('PDF page 1 shows them (after the route key picture)', pics.length === 3 && shows(pics[1]));
   check('exports have no ghost', pics.every(p => !/class="ghost/.test(p)));
 
   // Vertical: the label stays upright beside the end.
@@ -371,7 +369,7 @@ async function setup(page) {
   const oldPath = path.join(OUT, 'old.json');
   fs.writeFileSync(oldPath, JSON.stringify(old));
   await (await page.$('#load-input')).uploadFile(oldPath);
-  await sleep(500);
+  await answerConfirm(page);
   rs = await routes(page);
   check('old play loads unchanged: no option fields, badges 1 and 2', rs.every(r => !('option' in r)) && eq(tags(rs), ['1', '2']) && eq((await badges()).sort(), ['1', '2']), JSON.stringify(rs));
   check('options: no console errors', errors.length === 0, errors.join(' | '));
@@ -381,11 +379,11 @@ async function setup(page) {
 {
   console.log('\n== Phone 390, touch ==');
   const { browser, page, errors } = await open({ mobile: true });
-  await setup(page);
+  await setup(page, { touch: true });
   await tap(page, 50, 15, { touch: true });
   check('tap selects 12', (await sel(page)) === 'a2');
   await page.tap('[data-route="run"]');
-  check('phone hint says Tap', (await hint(page)) === "Tap where 12's run ends.", await hint(page));
+  check('phone hint says Tap', (await hint(page)) === "Tap where 12's run ends. Tap again for another, tap the tool again to stop.", await hint(page));
   await tap(page, 60, 22, { touch: true });
   let rs = await routes(page);
   check('one tap makes a run from 12', rs.length === 1 && rs[0].from === 'a2' && Math.hypot(rs[0].points[1][0] - 60, rs[0].points[1][1] - 22) < 0.3, JSON.stringify(rs));
@@ -396,7 +394,7 @@ async function setup(page) {
   rs = await routes(page);
   check('tap near a team-mate ends the pass on them', rs.length === 3 && rs[2].to === 'a3', JSON.stringify(rs[2]));
   await tap(page, 60, 15, { touch: true });
-  check('pass: tap an opponent switches, hint names the team', (await sel(page)) === 'd1' && (await hint(page)) === "Tap where defender 1's pass goes, or on a team-mate to pass to them.", await hint(page));
+  check('pass: tap an opponent switches, hint names the team', (await sel(page)) === 'd1' && (await hint(page)) === "Tap where defender 1's pass ends, or on a team-mate. Tap again for another, tap the tool again to stop.", await hint(page));
   await page.screenshot({ path: path.join(OUT, 'phone.png') });
   await page.tap('[data-route="pass"]');
   check('tap tool again turns it off', (await hint(page)) === null);

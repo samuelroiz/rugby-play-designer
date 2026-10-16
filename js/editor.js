@@ -320,7 +320,8 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
       }
     }
 
-    if (done.mode === 'badge' && e.type === 'pointerup') setTimeout(() => editOrder(done.id));
+    // Editors open straight from the tap (they're in-page, not blocking), so phones show the keyboard.
+    if (done.mode === 'badge' && e.type === 'pointerup') editOrder(done.id);
 
     if (e.type === 'pointerup' && !done.moved) {
       if (done.mode === 'move' && done.kind === 'player') tapPlayer(done.id);
@@ -342,7 +343,7 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
       tapPlayer(id);
     } else if (kind === 'badge') {
       ui.selected = { kind: 'route', id };
-      setTimeout(() => editOrder(id));
+      editOrder(id);
     } else if (kind === 'object' || kind === 'route') {
       ui.selected = { kind, id };
     }
@@ -353,7 +354,7 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
     const now = performance.now();
     if (lastTap.id === id && now - lastTap.time < DOUBLE_TAP_MS) {
       lastTap = { id: null, time: 0 };
-      setTimeout(() => editLabel(id)); // let the pointer event finish before the prompt blocks
+      editLabel(id);
     } else {
       lastTap = { id, time: now };
     }

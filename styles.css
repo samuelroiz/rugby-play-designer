@@ -33,9 +33,15 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+/* Play name: the box is as wide as its text (sized by a hidden copy of it), with a pencil after it. */
+.title-edit { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: .15rem; margin-right: auto; cursor: text; color: var(--muted); }
+.title-size { display: inline-grid; min-width: 0; max-width: 100%; }
+.title-size::after { content: attr(data-value) " "; visibility: hidden; white-space: pre; grid-area: 1 / 1; font-size: 1.05rem; font-weight: 600; padding: .35rem .5rem; border: 1px solid transparent; overflow: hidden; }
+.title-size > input { grid-area: 1 / 1; width: 100%; }
+.title-pencil { flex: none; width: 1rem; height: 1rem; }
+.title-edit:hover .title-pencil { color: var(--ink); }
 #play-name {
-  flex: 1;
-  min-width: 0;
+  min-width: 3rem;
   font: inherit;
   font-size: 1.05rem;
   font-weight: 600;
@@ -125,7 +131,16 @@ a.button {
   white-space: nowrap;
 }
 button:hover:not(:disabled), a.button:hover { background: #eef3ee; }
-button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* Pressed stays pressed while hovered (the hover colour would otherwise put white text on pale green). */
+button[aria-pressed="true"], button[aria-pressed="true"]:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* The route tool that's on: near-black with a yellow edge, so it stands out from the green samples. */
+#route-tools button[aria-pressed="true"], #route-tools button[aria-pressed="true"]:hover:not(:disabled) {
+  background: #1d1d1d;
+  border-color: #1d1d1d;
+  color: #fff;
+  font-weight: 600;
+  box-shadow: inset 4px 0 0 #ffd600;
+}
 button:disabled { opacity: .45; cursor: default; }
 button.danger { color: #b71c1c; }
 
@@ -155,6 +170,13 @@ button.danger { color: #b71c1c; }
   color: var(--muted);
 }
 .tip { margin: .25rem 0 0; font-size: .75rem; color: var(--muted); }
+
+/* Tips at the top of the sidebar, behind a "?" */
+.help { border: 1px solid var(--border); border-radius: 6px; background: #fff; padding: .35rem .5rem; }
+.help summary { display: flex; align-items: center; gap: .4rem; cursor: pointer; list-style: none; font-size: .8rem; font-weight: 600; color: var(--muted); }
+.help summary::-webkit-details-marker { display: none; }
+.help-icon { display: grid; place-items: center; width: 1.1rem; height: 1.1rem; border-radius: 50%; background: var(--accent); color: #fff; font-size: .75rem; font-weight: 700; }
+.help .tip { margin-top: .4rem; }
 
 /* Pitch area. The SVG is sized to the view's exact aspect ratio (--ar, set by setView) and as large
    as fits, so the viewBox fills it with no extra field around it at any screen shape. */
@@ -212,6 +234,23 @@ button.danger { color: #b71c1c; }
   box-shadow: 0 4px 14px rgba(0, 0, 0, .2);
 }
 .toast[hidden] { display: none; }
+.toast.ok { background: #effaf0; color: #1b5e20; border-color: #a5d6a7; }
+
+/* Renaming a player or changing a route's order: a small box over the pitch */
+.inline-edit {
+  position: absolute;
+  z-index: 6;
+  width: 5.5rem;
+  font: inherit;
+  font-weight: 600;
+  text-align: center;
+  padding: .3rem .4rem;
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .3);
+}
+.inline-edit.numeric { width: 4rem; }
+.inline-edit[hidden] { display: none; }
 /* Click-to-draw hint, top left of the pitch next to the toolbar */
 .draw-hint {
   position: absolute;
@@ -280,6 +319,17 @@ dialog .cancel { margin: .75rem 0 0 auto; }
 #save-dialog .choices { flex-wrap: wrap; margin-top: .6rem; }
 #save-dialog .choices > * { flex: 1; justify-content: center; }
 #save-dialog [hidden] { display: none; }
+#confirm-message { margin: 0 0 .9rem; }
+#confirm-dialog .cancel { margin: 0; }
+
+/* Player number picker */
+#number-dialog { max-width: 15.5rem; }
+.number-grid { display: grid; grid-template-columns: repeat(5, 2.4rem); gap: .35rem; }
+.number-grid button { justify-content: center; padding: .45rem 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.number-grid button.next { color: #fff; }
+.number-grid.attack button.next { background: #d32f2f; border-color: #d32f2f; }
+.number-grid.defense button.next { background: #1565c0; border-color: #1565c0; }
+.number-grid button.next:focus-visible { outline: 3px solid #ffd600; outline-offset: 1px; }
 
 /* Option box: order number, label, make main */
 dialog .field { display: flex; flex-direction: column; gap: .2rem; margin-bottom: .6rem; font-size: .8rem; color: var(--muted); }
@@ -311,6 +361,12 @@ dialog .field input { font: inherit; font-size: .95rem; color: var(--ink); paddi
 .crossbar { stroke: #fff; stroke-width: .35; }
 .post { fill: #fff; stroke: #333; stroke-width: .08; }
 .grid line { stroke: rgba(255, 255, 255, .13); stroke-width: .06; }
+/* Attack direction arrow (Direction layer) */
+.direction { pointer-events: none; }
+.direction-casing { stroke: rgba(255, 255, 255, .85); stroke-width: .75; stroke-linecap: round; }
+.direction-shaft { stroke-width: .4; stroke-linecap: round; }
+.direction-head { stroke: rgba(255, 255, 255, .85); stroke-width: .2; }
+.direction text { font-family: system-ui, sans-serif; font-weight: 700; stroke: rgba(255, 255, 255, .85); stroke-width: .3; paint-order: stroke; }
 .distance {
   fill: rgba(255, 255, 255, .6);
   font-family: system-ui, sans-serif;
@@ -395,7 +451,8 @@ dialog .field input { font: inherit; font-size: .95rem; color: var(--ink); paddi
     grid-template-rows: auto minmax(0, 1fr) auto auto;
     grid-template-areas: "top" "pitch" "phases" "tools";
   }
-  .group h2, .toolbar .tip, .long { display: none; }
+  .group h2, .toolbar .help, .long { display: none; }
+  .title-edit { flex: 1 1 auto; }
   .topbar { flex-wrap: wrap; gap: .4rem; padding: .4rem .5rem; }
   .view-controls { flex-basis: 100%; gap: .4rem; }
   .view-controls .menu { margin-left: auto; }
