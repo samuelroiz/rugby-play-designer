@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Blank",
+    "file": "blank.json"
+  },
+  {
+    "name": "Backline attack",
+    "file": "backline-attack.json"
+  },
+  {
+    "name": "Attack vs defense",
+    "file": "attack-vs-defense.json"
+  },
+  {
+    "name": "Scrum",
+    "file": "scrum.json"
+  },
+  {
+    "name": "Lineout",
+    "file": "lineout.json"
+  },
+  {
+    "name": "Kick-off",
+    "file": "kick-off.json"
+  }
+]

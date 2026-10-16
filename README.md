@@ -2,7 +2,7 @@
 
 A browser whiteboard for drawing rugby plays: put attackers and defenders on a pitch, drag them around, draw runs, passes, kicks and other routes, and drop ball, ruck, scrum and lineout markers.
 
-It is plain HTML, CSS, JavaScript (ES modules) and SVG. There is no framework, no build step and no npm. This is **Stage 2a**: a play has several phases, and it is autosaved in the browser and can be saved to and loaded from `.json` files. A phase can be saved as a PNG, and the whole play as a PDF. Every change can be undone. Animation comes later.
+It is plain HTML, CSS, JavaScript (ES modules) and SVG. There is no framework and no build step, and the site needs no npm packages (they are only for the tests). This is **Stage 2a**: a play has several phases, and it is autosaved in the browser and can be saved to and loaded from `.json` files. A play can start from a template. A phase, or every phase on one sheet, can be saved as a PNG, and the whole play as a PDF. Every change can be undone. Animation comes later.
 
 ## Using it
 
@@ -37,6 +37,34 @@ It is plain HTML, CSS, JavaScript (ES modules) and SVG. There is no framework, n
 
   Everything except Grid starts on.
 
+### Templates
+
+A new play (first visit, or **File → New play**) starts as an empty pitch with no players. **Templates** in the top bar opens a picker with a card per template: a small picture of its pitch, drawn from the template's own data, with its name under it. Picking one starts a new play from it. If the current play has anything in it (players, markers, routes, a note or more than one phase), it asks first. It's one undo step. The template's view (full or half) is used, but it takes the orientation you have on now.
+
+The starter templates (attack plays towards x = 110, as always):
+
+- **Blank**: an empty pitch.
+- **Backline attack**: all 15 attackers. A ruck 20 m in from the left touchline with 9 at it, the forwards in a pod off the ruck (two guarding the short side), and the backs in a flat-ish line out to 14 on the open side, with 11 on the short side and 15 deep.
+- **Attack vs defense**: the same attack, and the defense in a flat line 3 m beyond the ruck, with their 9 behind it and 15 sweeping.
+- **Scrum**: both packs from the scrum preset on the middle spot (attack's put-in), and both backlines 5 m behind their No. 8.
+- **Lineout**: a lineout marker 5 m in from touch on the attack's 10 m line, both teams' 1 and 3–8 lined up in it, the hooker throwing in from touch and the other hooker in the 5 m channel, the 9s near the back, and both backlines 10 m back.
+- **Kick-off**: 10 kicking off from the centre spot with the attack spread behind halfway, and the receiving team spread in their half, 10 m or more back.
+
+Players are discs 2.4 m across, which is wider than a real body, so tight formations (the scrum, the lineout) are spaced to stop the discs overlapping, as in the scrum preset.
+
+#### Making your own template
+
+Templates are ordinary play files in `templates/`, listed in `templates/index.json`:
+
+```json
+[
+  { "name": "Blank", "file": "blank.json" },
+  { "name": "Backline attack", "file": "backline-attack.json" }
+]
+```
+
+To turn a play into a template, save it from the app (**File → Save file**), copy the `.json` into `templates/` and add a line for it to `index.json`. `name` is what the card shows, and the cards are in the order of the list. The play's own name, category, tags, view, phases, routes and markers all come with it. Templates are fetched from the site, so they work on GitHub Pages and on a local server, but not when `index.html` is opened as a file.
+
 ### Phases
 
 The bar under the pitch shows the phase tabs (**1 2 3 … +**), **Prev** and **Next**, and "Phase 2 of 4". The **←** and **→** keys also go back and forward.
@@ -60,7 +88,11 @@ The bar under the pitch shows the phase tabs (**1 2 3 … +**), **Prev** and **N
   - **New play**: asks first, then starts a blank play.
   - **Save file**: downloads the play as `<play name>.json`. The name is cleaned of characters that aren't allowed in file names, and the JSON is pretty-printed.
   - **Load file…**: reads a `.json` play. It checks the file has `schemaVersion`, `players` and `phases`, and shows a short error if not. Loading replaces the current play after asking, and can be undone.
-  - **Save image (PNG)**: the phase being shown, at twice its size on screen, in the current view and orientation, with the layers that are on (distances, grid, legend). The previous-phase ghost, selection highlights and handles are always left out. It is named `<play name>-phase-<n>.png`. On a phone or tablet it opens the share sheet instead of downloading (on iPhone, *Save Image* puts it in Photos). If the share sheet can't open, the picture is shown in a box: press and hold it to save, or use *Open in new tab* or *Share…*.
+  - **Save image (PNG)…**: asks *This phase* or *All phases*.
+
+    *This phase* is the phase being shown, at twice its size on screen, in the current view and orientation, with the layers that are on (distances, grid, legend). The previous-phase ghost, selection highlights and handles are always left out. It is named `<play name>-phase-<n>.png`. On a phone or tablet it opens the share sheet instead of downloading (on iPhone, *Save Image* puts it in Photos). If the share sheet can't open, the picture is shown in a box: press and hold it to save, or use *Open in new tab* or *Share…*.
+
+    *All phases* is one PNG with the play name at the top and every phase in a grid: 2 per row for a horizontal play and 3 for a vertical one (or fewer, if there are fewer phases). Each tile is "Phase n" over the pitch, with the phase's note under it, cut to two lines with "…". The route key goes once under the grid, if the Legend layer is on. Like the other pictures, it has no ghost, highlights or handles. It is named `<play name>-all-phases.png`, and goes to the share sheet on a phone or tablet, with the same fallback box. A play with a great many phases is drawn smaller so the picture stays under the size phones can make.
   - **Save PDF (all phases)**: downloads `<play name>.pdf` straight away (no print dialog), with one A4 page per phase: the play name, "Phase n of N", the pitch picture (made the same way as the PNG, so no ghost or handles) and the phase's note under it. Horizontal plays get landscape pages and vertical ones portrait. A very long note is cut short with "…". The PDF's built-in font only covers Western European letters, so a name or note with anything else (macrons such as *ā*, other alphabets, emoji) is drawn as a picture of the text instead. On a phone or tablet it goes to the share sheet like the PNG (*Save to Files* on iPhone); if that can't open, a box offers *Open in new tab* and *Share…*.
 
     The PDF is made with [jsPDF](https://github.com/parallax/jsPDF) **4.2.1** (MIT licence), kept in the repo as `vendor/jspdf.umd.min.js` with its licence in `vendor/jspdf.LICENSE`. It isn't fetched from a CDN, and it is only loaded the first time you save a PDF, so ordinary page loads don't download it. To update it, replace both files from the `dist/jspdf.umd.min.js` and `LICENSE` of the new npm package and change the version here.
@@ -88,8 +120,8 @@ npm test
 
 `npm test` serves the repo on a free local port, then runs:
 
-- `tests/*.test.js`: Node tests for the phase logic (building, adding, inserting and moving phases). They need nothing but Node 22 or newer, so you can also run them alone with `node --test tests/*.test.js`.
-- `tests/browser/suite.mjs`: headless Chrome on desktop and phone (touch). It covers dragging, routes and passes, ghost routes, phases, undo/redo, autosave, save/load, and the PNG/PDF exports.
+- `tests/*.test.js`: Node tests for the phase logic (building, adding, inserting and moving phases), and a check that every template in `templates/index.json` loads like a saved play. They need nothing but Node 22 or newer, so you can also run them alone with `node --test tests/*.test.js`.
+- `tests/browser/suite.mjs`: headless Chrome on desktop and phone (touch). It covers dragging, routes and passes, ghost routes, phases, undo/redo, autosave, save/load, templates and the picker, and the PNG (one phase and all phases) and PDF exports.
 - `tests/browser/clickdraw.mjs`: click-to-draw routes from the selected player.
 
 Downloads and screenshots go to a temporary folder; the path is printed at the start of each suite. To use your installed Chrome instead of puppeteer's, set `PUPPETEER_EXECUTABLE_PATH`, for example `PUPPETEER_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" npm test`.
@@ -115,7 +147,9 @@ js/setpiece.js   scrum preset: formation, snapping the mark, moving the pack and
 js/phases.js     building the next phase (players follow their runs, ball goes to the receiver); add, insert, move
 js/history.js    undo/redo by snapshots of the play
 js/storage.js    autosave, saving and loading .json files, checking and repairing loaded plays
-js/export.js     PNG of a phase, PDF of all phases (loads jsPDF on first use)
+js/export.js     PNG of a phase, PNG of all phases in a grid, PDF of all phases (loads jsPDF on first use)
+js/templates.js  fetching templates/index.json and the template plays, picker thumbnails
+templates/       starter templates (play files) and index.json listing them
 vendor/          jsPDF 4.2.1 (jspdf.umd.min.js) and its licence
 tests/           Node tests for the phase logic; run.mjs (npm test); browser/ headless Chrome suites
 plays/<category>/  for saved plays (later stages)

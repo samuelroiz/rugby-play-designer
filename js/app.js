@@ -8,7 +8,8 @@ import { placeScrum, moveScrum } from './setpiece.js';
 import { appendPhase, insertPhaseAfter, movePhase } from './phases.js';
 import { createHistory } from './history.js';
 import { blankPlay, loadAutosave, saveAutosave, downloadPlay, downloadBlob, readPlayFile, safeFileName } from './storage.js';
-import { pictureSvg, pageCss, svgToPng, pageFit, makePdf } from './export.js';
+import { pictureSvg, allPhasesSvg, pageCss, svgToPng, pageFit, makePdf } from './export.js';
+import { loadTemplates, thumbnail, isEmptyPlay } from './templates.js';
 
 const MAX_PER_TEAM = 15;
 const BADGE_R = 0.9;
@@ -16,6 +17,9 @@ const BADGE_R = 0.9;
 const PASS_END_GAP = PLAYER_R + 0.2;
 // PDF pages: the pitch picture is drawn at this many times its size in CSS px on the page (about 190 dpi).
 const PDF_SCALE = 2;
+// All-phases PNG: width of each pitch tile in CSS px, and tiles per row (fewer if there are fewer phases).
+const SHEET_TILE_W = { horizontal: 520, vertical: 260 };
+const SHEET_COLS = { horizontal: 2, vertical: 3 };
 const AUTOSAVE_MS = 400;
 // Smallest touch target for route handles and lines, in screen pixels (converted to metres at draw time).
 const HANDLE_HIT_PX = 22;
@@ -550,7 +554,7 @@ async function fileAction(action) {
   if (action === 'save') {
     downloadPlay(state);
   } else if (action === 'png') {
-    savePng();
+    $('image-dialog').showModal();
   } else if (action === 'pdf') {
     savePdf();
   } else if (action === 'load') {
@@ -584,12 +588,13 @@ const legendItems = () => Object.entries(ROUTE_TYPES).map(([type, st]) => [type,
 
 // Phase i as a standalone picture, in the current view, orientation and layers, except that the
 // previous-phase ghost is always left out, and so are selection highlights and handles (nothing is
-// selected while it is drawn). Redraws the shown phase afterwards.
-function phasePicture(i, { width, height, scale, css, cols, idPrefix }) {
-  const keep = { phase: ui.phase, selected: ui.selected, snap: ui.snap, snapTo: ui.snapTo, layers: ui.layers };
-  Object.assign(ui, { phase: i, selected: null, snap: null, snapTo: null, layers: { ...ui.layers, ghost: false } });
+// selected while it is drawn). `legend: false` leaves the route key off even if its layer is on.
+// Redraws the shown phase afterwards.
+function phasePicture(i, { width, height, scale, css, cols, idPrefix, legend = true }) {
+  const keep = { phase: ui.phase, selected: ui.selected, snap: ui.snap, snapTo: ui.snapTo, preview: ui.preview, layers: ui.layers };
+  Object.assign(ui, { phase: i, selected: null, snap: null, snapTo: null, preview: null, layers: { ...ui.layers, ghost: false } });
   drawScene();
-  const legendOn = ui.layers.legend ? { items: legendItems(), sample: routeSample, cols } : null;
+  const legendOn = legend && ui.layers.legend ? { items: legendItems(), sample: routeSample, cols } : null;
   const picture = pictureSvg(svg, { width, height, scale, css, legend: legendOn, idPrefix });
   Object.assign(ui, keep);
   drawScene();
@@ -608,6 +613,38 @@ async function savePng() {
     return;
   }
   keepFile(new File([blob], safeFileName(state.name, `-phase-${ui.phase + 1}.png`), { type: 'image/png' }));
+}
+
+// Every phase on one PNG: a grid of tiles, each "Phase n" over the pitch with its note under it, the play
+// name at the top, and one route key under the grid (if the Legend layer is on). Tiles are drawn as the
+// single PNG is, so there's no ghost and nothing selected.
+async function saveAllPng() {
+  const [, , vbW, vbH] = svg.getAttribute('viewBox').split(' ').map(Number);
+  const tileW = SHEET_TILE_W[state.orientation];
+  const tileH = Math.round(tileW * vbH / vbW);
+  const css = pageCss();
+  let blob;
+  try {
+    const tiles = state.phases.map((ph, i) => ({
+      picture: phasePicture(i, { width: tileW, height: tileH, scale: 1, css: '', legend: false, idPrefix: `p${i + 1}-` }),
+      label: `Phase ${i + 1}`,
+      note: ph.note.trim(),
+    }));
+    const sheet = allPhasesSvg({
+      title: state.name.trim() || 'Untitled play',
+      tiles,
+      tileW,
+      tileH,
+      cols: Math.min(SHEET_COLS[state.orientation], tiles.length),
+      css,
+      legend: ui.layers.legend ? { items: legendItems(), sample: routeSample } : null,
+    });
+    blob = await svgToPng(sheet);
+  } catch (err) {
+    showToast(err.message);
+    return;
+  }
+  keepFile(new File([blob], safeFileName(state.name, '-all-phases.png'), { type: 'image/png' }));
 }
 
 // Every phase as a PDF, one page each: the play name, "Phase n of N", the pitch picture (as in the PNG)
@@ -782,6 +819,63 @@ function initSetPieceDialog() {
   return () => { dialog.returnValue = ''; dialog.showModal(); };
 }
 
+// Save image: this phase or all phases. The buttons save straight from their click, so a phone's share
+// sheet still counts it as the user's tap.
+function initImageDialog() {
+  const dialog = $('image-dialog');
+  for (const b of dialog.querySelectorAll('[data-image]')) {
+    b.addEventListener('click', () => {
+      dialog.close();
+      if (b.dataset.image === 'all') saveAllPng();
+      else savePng();
+    });
+  }
+}
+
+// Templates picker: a card per template with a thumbnail drawn from its data. Picking one starts a new play
+// from it (asking first unless the current play is empty), as one undo step. The template's view is kept,
+// but it takes the current orientation, which is a choice about the screen rather than the play.
+function initTemplatesDialog() {
+  const dialog = $('templates-dialog');
+  const grid = $('template-grid');
+  const status = $('templates-status');
+  let templates = [];
+
+  $('templates-button').addEventListener('click', async () => {
+    grid.replaceChildren();
+    status.hidden = false;
+    status.textContent = 'Loading templates…';
+    dialog.showModal();
+    try {
+      templates = await loadTemplates();
+    } catch (err) {
+      status.textContent = err.message;
+      return;
+    }
+    status.hidden = true;
+    grid.replaceChildren(...templates.map((t, i) => {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'template-card';
+      card.dataset.template = i;
+      const name = document.createElement('span');
+      name.textContent = t.name;
+      card.append(thumbnail(t.play, state.orientation), name);
+      return card;
+    }));
+  });
+
+  grid.addEventListener('click', e => {
+    const card = e.target.closest('[data-template]');
+    if (!card) return;
+    const t = templates[Number(card.dataset.template)];
+    dialog.close();
+    if (!isEmptyPlay(state) && !confirm(`Start a new play from the "${t.name}" template? The current one is replaced (you can undo).`)) return;
+    replacePlay({ ...t.play, orientation: state.orientation });
+    render();
+  });
+}
+
 function initKeys() {
   document.addEventListener('keydown', e => {
     const mod = e.metaKey || e.ctrlKey;
@@ -823,6 +917,8 @@ function init() {
   initTopbar();
   initPhaseBar();
   initKeys();
+  initImageDialog();
+  initTemplatesDialog();
   const openSetPiece = initSetPieceDialog();
 
   document.querySelector('.toolbar').addEventListener('click', e => {

@@ -295,6 +295,8 @@ async function dragHold(page, from, to, during) {
   check('route selected with handles before export', (await page.$$('#handles-layer .handle')).length === 3 && (await page.$$('#ghost-layer [data-ghost]')).length > 0);
   await page.$eval('#play-name', i => { i.value = 'Blind side: 2nd "wave"'; i.dispatchEvent(new Event('input')); });
   await click(page, '[data-file="png"]');
+  check('Save image asks: this phase or all phases', await page.$eval('#image-dialog', d => d.open));
+  await click(page, '[data-image="phase"]');
   const png = await waitFile(dl, '.png');
   check('PNG downloaded with phase number', png && path.basename(png) === 'Blind side 2nd wave-phase-2.png', String(png));
   check('PNG is a real PNG', png && fs.readFileSync(png).subarray(1, 4).toString() === 'PNG');
@@ -373,6 +375,173 @@ async function dragHold(page, from, to, during) {
   await browser.close();
 }
 
+// ---------------- Templates and the all-phases PNG (desktop) ----------------
+{
+  console.log('\n== Templates and all-phases PNG (desktop) ==');
+  const dl = path.join(OUT, 'sheet');
+  fs.mkdirSync(dl);
+  const { browser, page, errors } = await open({ downloads: dl });
+  await captureSvgs(page);
+  const dialogs = [];
+  let accept = true;
+  page.on('dialog', d => { dialogs.push(d.message()); if (accept) d.accept(); else d.dismiss(); });
+
+  const index = JSON.parse(fs.readFileSync(new URL('../../templates/index.json', import.meta.url)));
+  const TEAMS = { Blank: [0, 0], 'Backline attack': [15, 0], 'Attack vs defense': [15, 15], Scrum: [15, 15], Lineout: [15, 15], 'Kick-off': [15, 15] };
+  check('index lists the six starter templates', eq(index.map(t => t.name), Object.keys(TEAMS)), JSON.stringify(index));
+  check('a new play starts with an empty pitch', (await state(page)).players.length === 0);
+
+  const openPicker = async () => { await click(page, '#templates-button'); await page.waitForSelector('#templates-dialog[open] .template-card'); };
+  await openPicker();
+  const cards = await page.$$eval('.template-card', cs => cs.map(c => ({
+    name: c.querySelector('span').textContent,
+    lines: c.querySelectorAll('svg .line').length,
+    attack: c.querySelectorAll('.thumb-player.attack').length,
+    defense: c.querySelectorAll('.thumb-player.defense').length,
+    h: c.querySelector('svg').getBoundingClientRect().height,
+  })));
+  check('picker: one card per template, in index order, name under it', eq(cards.map(c => c.name), index.map(t => t.name)));
+  check('picker: thumbnails drawn from the data (pitch lines, right players)', cards.every(c => c.lines > 10 && c.h > 40 && c.attack === TEAMS[c.name][0] && c.defense === TEAMS[c.name][1]), JSON.stringify(cards));
+  await page.screenshot({ path: path.join(OUT, 'templates-picker.png') });
+  const empty = await state(page);
+  await page.click('#templates-dialog .cancel');
+  check('picker: Cancel closes it and changes nothing', !(await page.$eval('#templates-dialog', d => d.open)) && eq(await state(page), empty) && dialogs.length === 0);
+
+  let prevEmpty = true;
+  for (const [i, t] of index.entries()) {
+    await openPicker();
+    dialogs.length = 0;
+    await page.$eval(`.template-card[data-template="${i}"]`, b => b.click());
+    const s = await state(page);
+    const pos = s.phases[0].positions;
+    const count = team => s.players.filter(p => p.team === team).length;
+    const ids = s.players.map(p => p.id);
+    check(`${t.name}: confirm only if the play had something in it`, dialogs.length === (prevEmpty ? 0 : 1), dialogs.join());
+    check(`${t.name}: ${TEAMS[t.name][0]} attack, ${TEAMS[t.name][1]} defense`, count('attack') === TEAMS[t.name][0] && count('defense') === TEAMS[t.name][1]);
+    check(`${t.name}: no duplicate ids, ids a/d + number 1-15, label = number`, new Set(ids).size === ids.length && s.players.every(p => p.id === (p.team === 'attack' ? 'a' : 'd') + p.label && Number(p.label) >= 1 && Number(p.label) <= 15), ids.join());
+    const off = ids.filter(id => !pos[id] || pos[id].x < 0 || pos[id].x > 100 || pos[id].y < 0 || pos[id].y > 70);
+    check(`${t.name}: everyone on the pitch`, off.length === 0 && Object.keys(pos).length === ids.length, off.join());
+    const close = [];
+    ids.forEach((a, j) => ids.slice(j + 1).forEach(b => { if (Math.hypot(pos[a].x - pos[b].x, pos[a].y - pos[b].y) < 2.4) close.push(`${a}-${b}`); }));
+    check(`${t.name}: no overlapping players`, close.length === 0, close.join());
+    check(`${t.name}: drawn on the pitch`, (await page.$$('#players-layer .player')).length === ids.length && s.phases.length === 1);
+    check(`${t.name}: name from the template`, (await page.$eval('#play-name', i => i.value)) === (t.name === 'Blank' ? 'Untitled play' : t.name));
+    if (t.name === 'Lineout') check('Lineout: a lineout marker 5 m in from touch, hooker by touch', s.phases[0].objects.some(o => o.type === 'lineout' && o.y === 5) && pos.a2.y < 5);
+    if (t.name === 'Scrum') check('Scrum: the preset scrum on the middle spot with both packs', s.phases[0].objects.some(o => o.type === 'scrum' && o.y === 35 && o.pack.length === 16));
+    if (t.name === 'Backline attack') check('Backline attack: a ruck with 9 at it', s.phases[0].objects.some(o => o.type === 'ruck' && Math.hypot(o.x - pos.a9.x, o.y - pos.a9.y) < 4));
+    if (t.name !== 'Blank') await page.screenshot({ path: path.join(OUT, `template-${t.file.replace('.json', '')}.png`) });
+    prevEmpty = t.name === 'Blank';
+  }
+
+  // Routes and phases work on a template: 10 runs, Add Phase moves him.
+  const kickOff = await state(page);
+  await tool(page, 'run');
+  await drag(page, [kickOff.phases[0].positions.a10.x, 35], [56, 40]);
+  await tool(page, null);
+  await click(page, '[data-phase="add"]');
+  let s = await state(page);
+  check('template players run and follow into the next phase', eq(s.phases[1].positions.a10, { x: 56, y: 40 }), JSON.stringify(s.phases[1].positions.a10));
+  await click(page, '[data-action="undo"]');
+  await click(page, '[data-action="undo"]');
+  check('back to the Kick-off template', eq(await state(page), kickOff));
+
+  // Confirm declined: nothing changes. Accepted: one undo step back.
+  await openPicker();
+  accept = false;
+  dialogs.length = 0;
+  await page.$eval('.template-card[data-template="3"]', b => b.click());
+  check('declining the confirm keeps the play', dialogs.length === 1 && eq(await state(page), kickOff));
+  accept = true;
+  await openPicker();
+  await page.$eval('.template-card[data-template="3"]', b => b.click());
+  const scrum = await state(page);
+  check('accepting loads Scrum', scrum.name === 'Scrum');
+  await click(page, '[data-action="undo"]');
+  check('choosing a template is one undo step', eq(await state(page), kickOff));
+  await click(page, '[data-action="redo"]');
+  check('redo brings the template back', eq(await state(page), scrum));
+
+  // Thumbnails and the loaded play follow the current orientation.
+  await click(page, '[data-orientation="vertical"]');
+  await openPicker();
+  const ar = await page.$eval('.template-card svg', svg => { const r = svg.getBoundingClientRect(); return r.width / r.height; });
+  check('vertical: thumbnails are vertical', ar < 1, String(ar));
+  await page.$eval('.template-card[data-template="4"]', b => b.click());
+  check('vertical: the template loads vertical', (await state(page)).orientation === 'vertical');
+  await click(page, '[data-orientation="horizontal"]');
+
+  // --- All-phases PNG ---
+  // Leaves `n` phases (from a blank play), with notes, then saves all phases and reads back the sheet.
+  async function sheet(n, { orientation = 'horizontal', longNote = false } = {}) {
+    await page.evaluate(() => localStorage.clear());
+    accept = true;
+    await click(page, '[data-file="new"]');
+    await click(page, `[data-orientation="${orientation}"]`);
+    await page.$eval('#play-name', i => { i.value = 'Sheet: test'; i.dispatchEvent(new Event('input')); });
+    await click(page, '[data-action="add-attack"]');
+    await click(page, '[data-action="add-attack"]');
+    for (let i = 0; i < n; i++) {
+      if (i) await click(page, '[data-phase="add"]');
+      const note = longNote && i === 0 ? 'Long note that goes on and on. '.repeat(20) : `note ${i + 1}`;
+      await page.$eval('#phase-note', (t, v) => { t.value = v; t.dispatchEvent(new Event('input')); t.blur(); }, note);
+    }
+    // Draw a pass and keep it selected, with the ghost on, so the export has something to leave out.
+    await tool(page, 'pass');
+    const st = await state(page);
+    const [p1, p2] = [st.phases.at(-1).positions.a1, st.phases.at(-1).positions.a2];
+    await drag(page, [p1.x, p1.y], [p2.x, p2.y]);
+    await tool(page, null);
+    await page.evaluate(() => { window.__svgs.length = 0; });
+    for (const f of fs.readdirSync(dl)) fs.rmSync(path.join(dl, f));
+    await click(page, '[data-file="png"]');
+    await click(page, '[data-image="all"]');
+    const file = await waitFile(dl, '.png');
+    const pics = await svgs(page);
+    const info = await page.evaluate(xml => {
+      const doc = new DOMParser().parseFromString(xml, 'image/svg+xml');
+      const root = doc.documentElement;
+      const tiles = [...root.children].filter(e => e.tagName === 'svg' && e.getAttribute('class') === 'tile');
+      const texts = cls => [...root.querySelectorAll(`.${cls}`)].map(t => t.textContent);
+      return {
+        width: Number(root.getAttribute('width')),
+        height: Number(root.getAttribute('height')),
+        cols: new Set(tiles.map(t => t.getAttribute('x'))).size,
+        rows: new Set(tiles.map(t => t.getAttribute('y'))).size,
+        tiles: tiles.length,
+        title: texts('sheet-title'),
+        labels: texts('tile-label'),
+        notes: texts('tile-note'),
+      };
+    }, pics.at(-1) ?? '<svg/>');
+    const bytes = file ? fs.readFileSync(file) : Buffer.alloc(24);
+    return { file, pics, info, png: { w: bytes.readUInt32BE(16), h: bytes.readUInt32BE(20) } };
+  }
+  const grids = [[1, 'horizontal', 1, 1], [3, 'horizontal', 2, 2], [5, 'horizontal', 2, 3], [1, 'vertical', 1, 1], [3, 'vertical', 3, 1], [5, 'vertical', 3, 2]];
+  for (const [n, orientation, cols, rows] of grids) {
+    const r = await sheet(n, { orientation, longNote: n === 5 && orientation === 'horizontal' });
+    const tag = `${n} phase${n > 1 ? 's' : ''} ${orientation}`;
+    check(`all phases, ${tag}: one PNG named <play>-all-phases.png`, r.file && path.basename(r.file) === 'Sheet test-all-phases.png' && r.pics.length === 1, String(r.file));
+    check(`all phases, ${tag}: ${cols} x ${rows} grid`, r.info.tiles === n && r.info.cols === cols && r.info.rows === rows, JSON.stringify(r.info));
+    check(`all phases, ${tag}: PNG is the sheet's size`, r.png.w === r.info.width && r.png.h === r.info.height && r.png.w > 0, JSON.stringify(r.png));
+    check(`all phases, ${tag}: play name on top, "Phase n" on each tile`, eq(r.info.title, ['Sheet: test']) && eq(r.info.labels, Array.from({ length: n }, (_, i) => `Phase ${i + 1}`)));
+    check(`all phases, ${tag}: no ghost, handles or highlight`, !/class="(ghost|ghost-routes|handle[^"]*|route-highlight|snap-ring)"/.test(noCss(r.pics[0] ?? 'class="ghost"')));
+    if (n === 5 && orientation === 'horizontal') {
+      const first = r.info.notes.filter(t => t.startsWith('Long') || !/^note \d$/.test(t));
+      check('long note cut to two lines ending in "…"', first.length === 2 && first[1].endsWith('…'), JSON.stringify(first));
+      check('other notes under their tiles', ['note 2', 'note 3', 'note 4', 'note 5'].every(t => r.info.notes.includes(t)));
+      fs.copyFileSync(r.file, path.join(OUT, 'all-phases-horizontal.png'));
+    }
+    if (n === 5 && orientation === 'vertical') fs.copyFileSync(r.file, path.join(OUT, 'all-phases-vertical.png'));
+  }
+  check('selection survives the all-phases export', (await page.$$('#handles-layer .handle')).length === 3);
+  await click(page, '[data-file="png"]');
+  await page.click('#image-dialog .cancel');
+  check('Cancel in Save image saves nothing', !(await page.$eval('#image-dialog', d => d.open)));
+
+  check('templates/sheet: no console errors', errors.length === 0, errors.join(' | '));
+  await browser.close();
+}
+
 // ---------------- Phone 390 portrait, touch ----------------
 {
   console.log('\n== Phone 390 portrait (touch) ==');
@@ -440,9 +609,30 @@ async function dragHold(page, from, to, during) {
   await page.evaluate(() => { window.__shared = null; window.__svgs.length = 0; });
   await page.tap('summary');
   await page.tap('[data-file="png"]');
+  await page.tap('[data-image="phase"]');
   await page.waitForFunction(() => window.__shared, { timeout: 15000 }).catch(() => null);
   const sharedPng = await page.evaluate(() => window.__shared);
   check('phone PNG goes to the share sheet', sharedPng?.[0]?.name === 'Untitled play-phase-2.png', JSON.stringify(sharedPng));
+  await page.evaluate(() => { window.__shared = null; });
+  await page.tap('summary');
+  await page.tap('[data-file="png"]');
+  await page.tap('[data-image="all"]');
+  await page.waitForFunction(() => window.__shared, { timeout: 15000 }).catch(() => null);
+  const sharedAll = await page.evaluate(() => window.__shared);
+  check('phone all-phases PNG goes to the share sheet', sharedAll?.[0]?.name === 'Untitled play-all-phases.png' && sharedAll[0].type === 'image/png', JSON.stringify(sharedAll));
+  await page.evaluate(() => { window.__shared = null; navigator.canShare = undefined; });
+  await page.tap('summary');
+  await page.tap('[data-file="png"]');
+  await page.tap('[data-image="all"]');
+  await page.waitForSelector('#save-dialog[open]', { timeout: 15000 }).catch(() => null);
+  check('phone all-phases PNG falls back to the save box without sharing', await page.evaluate(() => document.getElementById('save-dialog').open && !document.getElementById('save-preview').hidden && document.getElementById('save-title').textContent === 'Save image'));
+  await page.evaluate(() => document.getElementById('save-dialog').close());
+  await page.tap('#templates-button');
+  await page.waitForSelector('.template-card');
+  const thumbs = await page.$$eval('.template-card', cs => cs.map(c => { const r = c.getBoundingClientRect(); return { r: r.right, h: c.querySelector('svg').getBoundingClientRect().height }; }));
+  check('phone: template cards fit on screen, thumbnails vertical like the pitch', thumbs.length === 6 && thumbs.every(t => t.r <= 390 && t.h > 100), JSON.stringify(thumbs));
+  await page.screenshot({ path: path.join(OUT, 'phone-templates.png') });
+  await page.tap('#templates-dialog .cancel');
   check('phone PNG has no ghost', !/class="ghost/.test(noCss((await svgs(page))[0] ?? 'class="ghost')));
   await page.screenshot({ path: path.join(OUT, 'phone.png') });
   check('phone: no console errors', errors.length === 0, errors.join(' | '));

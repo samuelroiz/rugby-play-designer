@@ -281,6 +281,17 @@ dialog .cancel { margin: .75rem 0 0 auto; }
 #save-dialog .choices > * { flex: 1; justify-content: center; }
 #save-dialog [hidden] { display: none; }
 
+/* Templates picker: a grid of cards, each a pitch thumbnail with the name under it */
+#templates-dialog { max-width: min(46rem, calc(100vw - 2rem)); width: 100%; }
+#templates-status[hidden] { display: none; }
+.template-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: .6rem; }
+.template-card { flex-direction: column; align-items: stretch; gap: .4rem; padding: .4rem; white-space: normal; text-align: center; }
+.template-card span { font-weight: 600; }
+.thumb { display: block; width: 100%; height: auto; aspect-ratio: var(--ar, 1.714); border-radius: 3px; }
+.thumb-player { stroke: #fff; stroke-width: .25; }
+.thumb-player.attack { fill: #d32f2f; }
+.thumb-player.defense { fill: #1565c0; }
+
 /* SVG: pitch. All sizes are in metres (SVG user units). */
 .grass { fill: #3d8b40; }
 .stripe { fill: #43944a; }
@@ -376,4 +387,5 @@ dialog .cancel { margin: .75rem 0 0 auto; }
   #phase-note { flex-basis: 100%; min-width: 0; resize: none; }
   .legend { left: .75rem; bottom: .75rem; grid-template-columns: repeat(3, auto auto); font-size: .7rem; }
   .legend .route-sample { width: 1.8rem; }
+  .template-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
