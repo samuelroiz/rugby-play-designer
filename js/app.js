@@ -4,7 +4,7 @@
 
 import { drawPitch, setView, viewCentre, startSpot, svgEl, uprightTurn, PLAYER_R } from './pitch.js';
 import { initEditor, routeGeometry, nextId, isAttached, drawingFrom } from './editor.js';
-import { placeScrum, moveScrum, placeLineout } from './setpiece.js';
+import { placeScrum, moveScrum, placeLineout, moveLineout } from './setpiece.js';
 import { appendPhase, insertPhaseAfter, movePhase } from './phases.js';
 import { createHistory } from './history.js';
 import { blankPlay, loadAutosave, saveAutosave, downloadPlay, downloadBlob, readPlayFile, safeFileName } from './storage.js';
@@ -377,14 +377,23 @@ function label(g, text, x = 0, y = 0) {
   }, g).textContent = text;
 }
 
-// The scrum's "S" block shows only while the scrum or one of its players is selected.
-function scrumActive(o) {
+// A set piece's drag block (S for a scrum, L for a lineout) shows only while it or one of its players is selected.
+function groupActive(o) {
   const sel = ui.selected;
   return !!sel && ((sel.kind === 'object' && sel.id === o.id) || (sel.kind === 'player' && o.pack.includes(sel.id)));
 }
 
 // Markers go under the routes and players; balls go in their own layer above the players, so a player
 // holding the ball never hides it.
+// The drag block of a scrum or lineout, at (x, y) from its mark. Pressing it drags the whole set piece.
+function groupTab(g, x, y, letter, selected) {
+  const tab = svgEl('g', { transform: `translate(${x} ${y})`, class: 'group-tab' }, g);
+  svgEl('circle', { r: 1.9, class: 'hit' }, tab);
+  if (selected) svgEl('circle', { r: 1.9, class: 'select-ring' }, tab);
+  svgEl('rect', { x: -1.2, y: -1.2, width: 2.4, height: 2.4, rx: 0.4, class: 'outline' }, tab);
+  label(tab, letter);
+}
+
 function renderObjects() {
   layers.objects.replaceChildren();
   layers.balls.replaceChildren();
@@ -397,13 +406,20 @@ function renderObjects() {
       // Scrum preset: the mark between the front rows, and (when active) an "S" block clear of the
       // packs, which cover the mark, to drag the whole scrum by. The ball is its own object.
       svgEl('line', { x1: 0, y1: -3.8, x2: 0, y2: 3.8, class: 'scrum-mark' }, g);
-      if (!scrumActive(o)) continue;
+      if (!groupActive(o)) continue;
       const side = o.putIn === 'defense' ? 1 : -1; // the ball's side; the block goes on the other
-      const tab = svgEl('g', { transform: `translate(0 ${-side * 6.5})`, class: 'scrum-tab' }, g);
-      svgEl('circle', { r: 1.9, class: 'hit' }, tab);
-      if (selected) svgEl('circle', { r: 1.9, class: 'select-ring' }, tab);
-      svgEl('rect', { x: -1.2, y: -1.2, width: 2.4, height: 2.4, rx: 0.4, class: 'outline' }, tab);
-      label(tab, 'S');
+      groupTab(g, 0, -side * 6.5, 'S', selected);
+      continue;
+    }
+
+    if (o.type === 'lineout' && o.pack) {
+      // Lineout preset: the marker on the 5 m line, which can be selected and dragged, and (when active) an
+      // "L" block beside the defense's line, into the field, to drag the whole lineout by.
+      svgEl('circle', { r: 2.4, class: 'hit' }, g);
+      if (selected) svgEl('circle', { r: 2.4, class: 'select-ring' }, g);
+      svgEl('line', { x1: -0.7, y1: -2, x2: -0.7, y2: 2, class: 'outline' }, g);
+      svgEl('line', { x1: 0.7, y1: -2, x2: 0.7, y2: 2, class: 'outline' }, g);
+      if (groupActive(o)) groupTab(g, 5, (o.y <= 35 ? 1 : -1) * 5, 'L', selected);
       continue;
     }
 
@@ -560,6 +576,7 @@ function addScrum(putIn) {
 
 function moveObject(o, x, y) {
   if (o.type === 'scrum') moveScrum(phase(), o, x, y);
+  else if (o.type === 'lineout' && o.pack) moveLineout(phase(), o, x);
   else Object.assign(o, { x, y });
 }
 
@@ -839,24 +856,23 @@ const legendItems = () => Object.entries(ROUTE_TYPES).map(([type, st]) => [type,
 // previous-phase ghost is always left out, and so are selection highlights and handles (nothing is
 // selected while it is drawn). `legend: false` leaves the route key off even if its layer is on.
 // Redraws the shown phase afterwards.
-function phasePicture(i, { width, height, scale, css, cols, idPrefix, legend = true, print = false }) {
+function phasePicture(i, { width, height, scale, css, idPrefix, legend = true, print = false }) {
   const keep = { phase: ui.phase, selected: ui.selected, snap: ui.snap, snapTo: ui.snapTo, preview: ui.preview, layers: ui.layers };
   Object.assign(ui, { phase: i, selected: null, snap: null, snapTo: null, preview: null, layers: { ...ui.layers, ghost: false } });
   drawScene();
-  const legendOn = legend && ui.layers.legend ? { items: legendItems(), sample: routeSample, cols } : null;
+  const legendOn = legend && ui.layers.legend ? { items: legendItems(), sample: routeSample } : null;
   const picture = pictureSvg(svg, { width, height, scale, css, legend: legendOn, idPrefix, print });
   Object.assign(ui, keep);
   drawScene();
   return picture;
 }
 
-// The shown phase as a PNG at twice its on-screen size.
+// The shown phase as a PNG at twice its on-screen size, with the route key under the pitch.
 async function savePng() {
   const { width, height } = svg.getBoundingClientRect();
-  const cols = getComputedStyle(legend).gridTemplateColumns.split(' ').length / 2 || 1;
   let blob;
   try {
-    blob = await svgToPng(phasePicture(ui.phase, { width, height, scale: 2, css: pageCss(), cols }));
+    blob = await svgToPng(phasePicture(ui.phase, { width, height, scale: 2, css: pageCss() }));
   } catch (err) {
     showToast(err.message);
     return;
