@@ -34,12 +34,16 @@ const SHEET = { margin: 24, gap: 24, titlePx: 22, labelPx: 15, notePx: 13, noteL
 const MAX_PIXELS = 16e6;
 
 // Copy of the pitch as a standalone SVG of width x height (CSS px), drawn `scale` times larger.
-// legend: { items: [[type, label]], sample: type -> <svg>, cols } draws the route key bottom left.
+// legend: { items: [[type, label]], sample: type -> <svg> } adds the route key in a white strip under the
+// pitch (never on it), in as many columns as fit, which makes the picture that much taller.
 // css: style rules to embed, needed when the SVG is used as an image rather than inside the page.
 // idPrefix keeps marker ids unique when several copies sit in one page. print darkens the pitch lines.
 export function pictureSvg(svg, { width, height, scale = 1, legend = null, css = '', idPrefix = 'x-', print = false }) {
-  const out = svgEl('svg', { xmlns: NS, width: width * scale, height: height * scale, viewBox: `0 0 ${width} ${height}`, class: print ? 'print' : null });
+  const key = legend ? fitLegend(legend, width - 16) : null;
+  const fullH = key ? height + key.h + 16 : height;
+  const out = svgEl('svg', { xmlns: NS, width: width * scale, height: fullH * scale, viewBox: `0 0 ${width} ${fullH}`, class: print ? 'print' : null });
   if (css || print) svgEl('style', {}, out).textContent = css + (print ? PRINT_CSS : '');
+  if (key) svgEl('rect', { width, height: fullH, fill: '#fff' }, out);
 
   const pitch = svg.cloneNode(true);
   for (const attr of ['id', 'class', 'style', 'role', 'aria-label']) pitch.removeAttribute(attr);
@@ -52,9 +56,8 @@ export function pictureSvg(svg, { width, height, scale = 1, legend = null, css =
   }
   out.appendChild(pitch);
 
-  if (legend) {
-    const key = legendBox(legend);
-    key.g.setAttribute('transform', `translate(8 ${height - 8 - key.h})`);
+  if (key) {
+    key.g.setAttribute('transform', `translate(8 ${height + 8})`);
     out.appendChild(key.g);
   }
   // Arrowheads on the pitch and in the legend point at the renamed markers.

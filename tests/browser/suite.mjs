@@ -890,6 +890,153 @@ async function dragHold(page, from, to, during) {
   await browser.close();
 }
 
+// ---------------- Lineout group drag, single PNG route key ----------------
+{
+  console.log('\n== Lineout group drag, PNG key (desktop) ==');
+  const dl = path.join(OUT, 'group');
+  fs.mkdirSync(dl);
+  const { browser, page, errors } = await open({ downloads: dl });
+  await captureSvgs(page);
+  const tabText = () => page.$$eval('#objects-layer .marker.lineout .group-tab text', ts => ts.map(t => t.textContent));
+  // The marker's free part: its half towards touch (its middle is under the front lifters' touch areas).
+  const markerSpot = o => [o.x, o.y + (o.y <= 35 ? -1.5 : 1.5)];
+  const underIsMarker = async o => {
+    const p = await toScreen(page, ...markerSpot(o));
+    return page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[data-kind]')?.dataset.kind === 'object', p);
+  };
+  const lineoutPreset = async team => {
+    await click(page, '[data-action="set-piece"]');
+    await page.click(`#set-piece-dialog button[value="lineout-${team}"]`);
+    await sleep(200);
+  };
+  await addPlayer(page, 'attack', { n: 12 });
+  await lineoutPreset('attack');
+  let s = await state(page);
+  let ph = s.phases[0];
+  let lo = ph.objects.find(o => o.type === 'lineout');
+  check('the lineout preset records its players (1-9 of both teams) and who throws', lo.pack.length === 18 && !lo.pack.includes('a12') && lo.throwIn === 'attack', JSON.stringify(lo));
+  check('the L block shows while the lineout is selected (just placed)', eq(await tabText(), ['L']));
+  await page.keyboard.press('Escape');
+  check('nothing selected: no L block', (await tabText()).length === 0);
+  await tapPlayer(page, 'a4');
+  check('one of its players selected: the L block shows', eq(await tabText(), ['L']));
+  await tapPlayer(page, 'a12');
+  check('a player outside it selected: no L block', (await tabText()).length === 0);
+  await page.keyboard.press('Escape');
+  check('the marker can be pressed (its half towards touch is clear of players)', await underIsMarker(lo));
+  await tap(page, ...markerSpot(lo));
+  check('clicking the marker selects it and shows the block', eq(await tabText(), ['L']) && (await page.$$('#objects-layer .marker.lineout > .select-ring')).length === 1);
+
+  // Drag by the L block: along the touchline only, 5 m line kept.
+  const before = await state(page);
+  const tabAt = await page.$eval('#objects-layer .marker.lineout .group-tab rect', el => { const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+  const target = await toScreen(page, lo.x + 5 + 12, lo.y + 5 + 9); // 12 m along, and 9 m into the field (ignored)
+  await page.mouse.move(tabAt.x, tabAt.y);
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(tabAt.x + (target.x - tabAt.x) * i / 8, tabAt.y + (target.y - tabAt.y) * i / 8);
+  await page.mouse.up();
+  s = await state(page);
+  ph = s.phases[0];
+  const lo2 = ph.objects.find(o => o.type === 'lineout');
+  const moved = id => [Math.round((ph.positions[id].x - before.phases[0].positions[id].x) * 10) / 10, Math.round((ph.positions[id].y - before.phases[0].positions[id].y) * 10) / 10];
+  check('dragging the L block moves the marker along the touchline, still on the 5 m line', Math.abs(lo2.x - lo.x - 12) < 0.6 && lo2.y === 5, JSON.stringify(lo2));
+  const dx = Math.round((lo2.x - lo.x) * 10) / 10;
+  check('every lineout player moves with it by the same amount', lo.pack.every(id => eq(moved(id), [dx, 0])), JSON.stringify(lo.pack.map(id => [id, moved(id)])));
+  const b0 = before.phases[0].objects.find(o => o.type === 'ball');
+  const b1 = ph.objects.find(o => o.type === 'ball');
+  check('the ball moves with the thrower', Math.round((b1.x - b0.x) * 10) / 10 === dx && b1.y === b0.y, JSON.stringify([b0, b1]));
+  check('a player outside the lineout stays put', eq(ph.positions.a12, before.phases[0].positions.a12));
+  await click(page, '[data-action="undo"]');
+  check('the group drag is one undo step', eq(await state(page), before));
+  await click(page, '[data-action="redo"]');
+
+  // Dragging the marker itself does the same; it can't leave the field of play.
+  lo = (await state(page)).phases[0].objects.find(o => o.type === 'lineout');
+  await drag(page, markerSpot(lo), [lo.x + 80, lo.y + 30]);
+  s = await state(page);
+  const lo3 = s.phases[0].objects.find(o => o.type === 'lineout');
+  check('dragging the marker moves the group too, kept in the field (x 97 at most), on 5 m', lo3.x === 97 && lo3.y === 5 && s.phases[0].positions.a1.x === 95.8, JSON.stringify([lo3, s.phases[0].positions.a1]));
+  // Players can still be dragged one at a time.
+  const a4 = s.phases[0].positions.a4;
+  await page.keyboard.press('Escape');
+  await drag(page, [a4.x, a4.y], [a4.x - 6, a4.y + 4]);
+  s = await state(page);
+  check('a lineout player can still be dragged on their own', Math.hypot(s.phases[0].positions.a4.x - (a4.x - 6), s.phases[0].positions.a4.y - (a4.y + 4)) < 0.3 && s.phases[0].positions.a1.x === 95.8);
+  // A scrum takes its players out of the lineout's group.
+  await click(page, '[data-action="set-piece"]');
+  await page.click('#set-piece-dialog button[value="scrum-attack"]');
+  await sleep(200);
+  s = await state(page);
+  check('a scrum takes 1-9 out of the lineout group (no player in two)', s.phases[0].objects.find(o => o.type === 'lineout').pack.length === 0 && s.phases[0].objects.find(o => o.type === 'scrum').pack.length === 18);
+  await click(page, '[data-action="undo"]');
+
+  // Far touchline, defense throwing: the 65 m line is kept.
+  await click(page, '[data-file="new"]');
+  await answerConfirm(page);
+  await click(page, '[data-object="lineout"]');
+  await page.evaluate(() => { const o = window.playState.phases[0].objects.find(q => q.type === 'lineout'); Object.assign(o, { x: 40, y: 60 }); });
+  await lineoutPreset('defense');
+  lo = (await state(page)).phases[0].objects.find(o => o.type === 'lineout');
+  check('far touchline: the marker can be pressed too', await underIsMarker(lo));
+  await drag(page, markerSpot(lo), [lo.x - 10, lo.y - 40]);
+  s = await state(page);
+  const far = s.phases[0].objects.find(o => o.type === 'lineout');
+  check('far touchline: the drag keeps it on its 5 m line (y 65)', far.y === 65 && Math.abs(far.x - 30) < 0.6 && Math.abs(s.phases[0].positions.d2.x - (far.x + 0.5)) < 0.01, JSON.stringify([far, s.phases[0].positions.d2]));
+  await page.screenshot({ path: path.join(OUT, 'lineout-group.png') });
+  // A plain lineout marker (not from the preset) still moves on its own.
+  await click(page, '[data-file="new"]');
+  await answerConfirm(page);
+  await addPlayer(page, 'attack');
+  await click(page, '[data-object="lineout"]');
+  const plain = (await state(page)).phases[0].objects.find(o => o.type === 'lineout');
+  await page.keyboard.press('Escape');
+  check('a plain lineout marker has no block', (await tabText()).length === 0);
+  const p1 = (await state(page)).phases[0].positions.a1;
+  await drag(page, [plain.x, plain.y], [plain.x + 5, plain.y + 7]);
+  s = await state(page);
+  const plain2 = s.phases[0].objects.find(o => o.type === 'lineout');
+  check('a plain marker drags freely and moves nobody', Math.abs(plain2.x - plain.x - 5) < 0.3 && Math.abs(plain2.y - plain.y - 7) < 0.3 && eq(s.phases[0].positions.a1, p1), JSON.stringify(plain2));
+
+  // --- Single-phase PNG: route key under the pitch, never on it ---
+  const png = async () => {
+    for (const f of fs.readdirSync(dl)) fs.rmSync(path.join(dl, f));
+    await page.evaluate(() => { window.__svgs.length = 0; });
+    await click(page, '[data-file="png"]');
+    await click(page, '[data-image="phase"]');
+    const file = await waitFile(dl, '.png');
+    const xml = (await svgs(page)).at(-1);
+    const info = await page.evaluate(xml => {
+      const root = new DOMParser().parseFromString(xml, 'image/svg+xml').documentElement;
+      const pitch = [...root.children].find(e => e.tagName === 'svg');
+      const key = [...root.children].find(e => e.getAttribute('class') === 'legend-key');
+      return {
+        h: Number(root.getAttribute('viewBox').split(' ')[3]),
+        pitchH: Number(pitch.getAttribute('height')),
+        keyY: key ? Number(key.getAttribute('transform').match(/translate\([-\d.]+ ([-\d.]+)\)/)[1]) : null,
+        keyInPitch: !!pitch.querySelector('.legend-key'),
+      };
+    }, xml);
+    const bytes = fs.readFileSync(file);
+    return { ...info, png: { w: bytes.readUInt32BE(16), h: bytes.readUInt32BE(20) }, file };
+  };
+  const pitchBox = await page.$eval('#pitch', el => { const r = el.getBoundingClientRect(); return { w: r.width, h: r.height }; });
+  let r = await png();
+  check('PNG: the route key sits under the pitch, not on it', r.keyY >= r.pitchH && !r.keyInPitch && r.h > r.pitchH && Math.abs(r.pitchH - pitchBox.h) < 1, JSON.stringify(r));
+  check('PNG: the picture is taller by the key\'s strip, at twice the size', Math.abs(r.png.h - r.h * 2) <= 1 && Math.abs(r.png.w - pitchBox.w * 2) <= 1, JSON.stringify([r.png, r.h, pitchBox]));
+  fs.copyFileSync(r.file, path.join(OUT, 'png-key-below.png'));
+  await page.$eval('[data-layer="legend"]', c => c.click());
+  r = await png();
+  check('PNG with the Legend layer off: just the pitch, no key', r.keyY === null && r.h === r.pitchH, JSON.stringify(r));
+  await page.$eval('[data-layer="legend"]', c => c.click());
+  await click(page, '[data-orientation="vertical"]');
+  r = await png();
+  check('vertical PNG: key under the pitch too', r.keyY >= r.pitchH && !r.keyInPitch, JSON.stringify(r));
+  fs.copyFileSync(r.file, path.join(OUT, 'png-key-below-vertical.png'));
+
+  check('group/PNG: no console errors or native dialogs', errors.length === 0, errors.join(' | '));
+  await browser.close();
+}
+
 // ---------------- Phone 390 portrait, touch ----------------
 {
   console.log('\n== Phone 390 portrait (touch) ==');
