@@ -1,4 +1,5 @@
 import { startSpot } from './pitch.js';
+import { OPTION_LABEL_MAX, OPTION_TYPES } from './options.js';
 
 // Autosave to localStorage, and saving/loading plays as .json files.
 // Storage can be missing or throw (private mode, blocked site data, full quota), so every access is
@@ -7,7 +8,6 @@ import { startSpot } from './pitch.js';
 export const SCHEMA_VERSION = 1;
 export const CATEGORIES = ['attack', 'defense', 'lineout', 'scrum'];
 
-const AUTOSAVE_KEY = 'rugby-play-designer.autosave';
 const TEAMS = ['attack', 'defense'];
 
 export function blankPlay({ view = 'full', orientation = 'horizontal' } = {}) {
@@ -25,20 +25,53 @@ export function blankPlay({ view = 'full', orientation = 'horizontal' } = {}) {
 
 // --- Autosave ---
 
-export function loadAutosave() {
+// The autosave: { play, phase }. A broken one is moved to the backup key at startup (see app.js init), so
+// starting afresh doesn't overwrite it.
+export const AUTOSAVE_KEY = 'rugby-play-designer.autosave';
+export const AUTOSAVE_BACKUP_KEY = 'rugby-play-designer.autosave-backup';
+
+// The raw autosave text, or null if there is none (or storage can't be read).
+export function readAutosave() {
   try {
-    const raw = localStorage.getItem(AUTOSAVE_KEY);
-    if (!raw) return null;
-    const saved = JSON.parse(raw);
-    return { play: parsePlay(saved.play), phase: Number.isInteger(saved.phase) ? saved.phase : 0 };
+    return localStorage.getItem(AUTOSAVE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+// Turns autosave text into { play, phase }. Throws if it can't be used.
+export function parseAutosave(raw) {
+  const saved = JSON.parse(raw);
+  if (!saved || typeof saved !== 'object') throw new Error('The autosave is empty.');
+  return { play: parsePlay(saved.play), phase: Number.isInteger(saved.phase) ? saved.phase : 0 };
+}
+
+export function loadAutosave() {
+  const raw = readAutosave();
+  if (!raw) return null;
+  try {
+    return parseAutosave(raw);
   } catch {
     return null; // unreadable or unusable: start fresh rather than fail
   }
 }
 
-export function saveAutosave(play, phase) {
+// The text an autosave of this play would store, so a caller can tell whether anything changed.
+export const autosaveText = (play, phase) => JSON.stringify({ play, phase });
+
+// Returns false if it couldn't be saved (storage full, blocked or missing).
+export function saveAutosave(play, phase, text = autosaveText(play, phase)) {
   try {
-    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ play, phase }));
+    localStorage.setItem(AUTOSAVE_KEY, text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function backupAutosave(raw) {
+  try {
+    localStorage.setItem(AUTOSAVE_BACKUP_KEY, raw);
     return true;
   } catch {
     return false;
@@ -84,7 +117,12 @@ export async function readPlayFile(file) {
   return parsePlay(data);
 }
 
+export const NAME_MAX = 60;
+const LABEL_MAX = 3;
+
 // Checks a play object and fills in optional fields. Throws a friendly Error if it can't be used.
+// Every optional field is checked and dropped (or given its default) if it's the wrong type, so a hand-edited
+// or damaged file can't crash the app later: ids that name nobody are dropped too.
 export function parsePlay(data) {
   const fail = why => { throw new Error(`That file isn't a rugby play: ${why}.`); };
   if (!data || typeof data !== 'object' || Array.isArray(data)) fail('it has no play in it');
@@ -94,30 +132,63 @@ export function parsePlay(data) {
   if (!Array.isArray(data.phases) || !data.phases.length) fail('it has no phases');
 
   const isNum = v => typeof v === 'number' && Number.isFinite(v);
-  const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
+  const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
   const isPoint = p => Array.isArray(p) && p.length === 2 && isNum(p[0]) && isNum(p[1]);
+  const isPos = p => isObj(p) && isNum(p.x) && isNum(p.y);
+  const isOrder = v => Number.isInteger(v) && v >= 1;
+  // The checked fields, in the order the file had them (new ones last), so a play saved and loaded again is
+  // the same JSON.
+  const inOrder = (src, out) => {
+    const sorted = {};
+    for (const key of Object.keys(src)) if (key in out) sorted[key] = out[key];
+    return Object.assign(sorted, out);
+  };
 
-  const players = data.players.map(p => {
-    if (!isObj(p) || typeof p.id !== 'string' || !TEAMS.includes(p.team)) fail('a player is missing its id or team');
-    return { id: p.id, team: p.team, label: String(p.label ?? p.id.slice(1)).slice(0, 3) };
-  });
+  const players = [];
+  for (const p of data.players) {
+    if (!isObj(p) || typeof p.id !== 'string' || !p.id || !TEAMS.includes(p.team)) fail('a player is missing its id or team');
+    if (players.some(q => q.id === p.id)) continue; // the same player twice: keep the first
+    const label = typeof p.label === 'string' || isNum(p.label) ? String(p.label).trim().slice(0, LABEL_MAX) : '';
+    players.push({ id: p.id, team: p.team, label: label || p.id.slice(1).slice(0, LABEL_MAX) || '?' });
+  }
+  const ids = new Set(players.map(p => p.id));
+  const known = id => (typeof id === 'string' && ids.has(id) ? id : null);
+  const team = v => (TEAMS.includes(v) ? v : undefined);
 
   const phases = data.phases.map(ph => {
     if (!isObj(ph)) fail('a phase is broken');
-    const positions = ph.positions ?? {};
+    const rawPositions = ph.positions ?? {};
     const objects = ph.objects ?? [];
     const routes = ph.routes ?? [];
-    if (!isObj(positions) || !Array.isArray(objects) || !Array.isArray(routes)) fail('a phase is broken');
-    for (const pos of Object.values(positions)) if (!isObj(pos) || !isNum(pos.x) || !isNum(pos.y)) fail('a player position is broken');
-    for (const o of objects) if (!isObj(o) || typeof o.id !== 'string' || typeof o.type !== 'string' || !isNum(o.x) || !isNum(o.y)) fail('a marker is broken');
-    for (const r of routes) {
+    if (!isObj(rawPositions) || !Array.isArray(objects) || !Array.isArray(routes)) fail('a phase is broken');
+    // Only players in the play have a position; a broken one is filled in like a missing one (below).
+    const positions = {};
+    for (const [id, pos] of Object.entries(rawPositions)) if (ids.has(id) && isPos(pos)) positions[id] = { x: pos.x, y: pos.y };
+
+    const checkedObjects = objects.map(o => {
+      if (!isObj(o) || typeof o.id !== 'string' || typeof o.type !== 'string' || !isNum(o.x) || !isNum(o.y)) fail('a marker is broken');
+      const out = { id: o.id, type: o.type, x: o.x, y: o.y };
+      // A set piece's group: only players in the play, each once. Without a list it's a plain marker.
+      if (Array.isArray(o.pack)) out.pack = [...new Set(o.pack.filter(id => ids.has(id)))];
+      if (team(o.putIn)) out.putIn = o.putIn;
+      if (team(o.throwIn)) out.throwIn = o.throwIn;
+      return inOrder(o, out);
+    });
+
+    const checkedRoutes = routes.map(r => {
       if (!isObj(r) || typeof r.id !== 'string' || typeof r.type !== 'string' || !Array.isArray(r.points) || r.points.length < 2 || !r.points.every(isPoint)) fail('a route is broken');
-    }
-    // A route's "from" and a pass's "to" must name a player in the play; otherwise that end is loose.
-    const ids = new Set(players.map(p => p.id));
-    const end = id => (typeof id === 'string' && ids.has(id) ? id : null);
-    const checked = routes.map(r => ({ ...r, from: end(r.from), ...(r.type === 'pass' ? { to: end(r.to) } : {}) }));
-    return { ...ph, note: typeof ph.note === 'string' ? ph.note : '', positions, objects, routes: checked };
+      // A route's "from" and a pass's "to" must name a player in the play; otherwise that end is loose.
+      const out = { id: r.id, type: r.type, from: known(r.from), points: r.points.map(([x, y]) => [x, y]) };
+      if ('curve' in r) out.curve = isNum(r.curve) ? r.curve : 0;
+      if (r.type === 'pass') out.to = known(r.to);
+      if (isOrder(r.order)) out.order = r.order;
+      // Only passes and kicks can be options.
+      if (typeof r.option === 'string' && /^[A-Z]$/.test(r.option) && OPTION_TYPES.has(r.type)) out.option = r.option;
+      else if ('option' in r) out.option = null;
+      if (out.option && typeof r.optionLabel === 'string' && r.optionLabel.trim()) out.optionLabel = r.optionLabel.trim().slice(0, OPTION_LABEL_MAX);
+      return inOrder(r, out);
+    });
+    return { note: typeof ph.note === 'string' ? ph.note : '', positions, objects: checkedObjects, routes: checkedRoutes };
   });
 
   let tags = data.tags ?? [];
@@ -126,9 +197,9 @@ export function parsePlay(data) {
 
   return {
     schemaVersion: SCHEMA_VERSION,
-    name: typeof data.name === 'string' ? data.name : 'Untitled play',
+    name: typeof data.name === 'string' ? data.name.slice(0, NAME_MAX) : 'Untitled play',
     category: CATEGORIES.includes(data.category) ? data.category : 'attack',
-    tags: tags.map(t => String(t).trim()).filter(Boolean),
+    tags: tags.filter(t => typeof t === 'string').map(t => t.trim()).filter(Boolean),
     view: data.view === 'half' ? 'half' : 'full',
     orientation: data.orientation === 'vertical' ? 'vertical' : 'horizontal',
     players,

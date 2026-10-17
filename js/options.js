@@ -3,8 +3,11 @@
 // order number. "A" is the main plan, the one the next phase is built from. A lone pass or kick has
 // option null. route.optionLabel is an optional short note for an option, e.g. "if 13 bites".
 
-export const OPTION_TYPES = new Set(['pass', 'kick']);
+import { BALL_ROUTES, isOtherOption } from './model.js';
+
+export const OPTION_TYPES = BALL_ROUTES;
 export const OPTION_LABEL_MAX = 25;
+export { isOtherOption };
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const letterIndex = r => (r.option ? LETTERS.indexOf(r.option) : Infinity);
@@ -46,5 +49,7 @@ export function makeMainOption(routes, route) {
   [route, ...rest].forEach((r, i) => { r.option = LETTERS[i]; });
 }
 
-// Whether a route is an alternative to the main plan (B, C …), which the next phase ignores.
-export const isOtherOption = r => !!r.option && r.option !== 'A';
+// The option letters used in a phase, in order: [] when nobody has options, else e.g. ['A', 'B'].
+export function optionLetters(routes) {
+  return [...new Set(routes.filter(r => r.option && OPTION_TYPES.has(r.type)).map(r => r.option))].sort();
+}

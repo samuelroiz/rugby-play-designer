@@ -2,7 +2,7 @@
 
 A browser whiteboard for drawing rugby plays: put attackers and defenders on a pitch, drag them around, draw runs, passes, kicks and other routes, and drop ball, ruck, scrum and lineout markers.
 
-It is plain HTML, CSS, JavaScript (ES modules) and SVG. There is no framework and no build step, and the site needs no npm packages (they are only for the tests). This is **Stage 2a**: a play has several phases, and it is autosaved in the browser and can be saved to and loaded from `.json` files. A play can start from a template. A phase, or every phase on one sheet, can be saved as a PNG, and the whole play as a PDF. Every change can be undone. Animation comes later.
+It is plain HTML, CSS, JavaScript (ES modules) and SVG. There is no framework and no build step, and the site needs no npm packages (they are only for the tests). This is **Stage 3**: a play has several phases, and it is autosaved in the browser and can be saved to and loaded from `.json` files. A play can start from a template. A phase, or every phase on one sheet, can be saved as a PNG, and the whole play as a PDF. Every change can be undone. The play can be animated phase by phase, and shown full screen in Present mode, with a pen to draw on it. A link can open the play on a given phase.
 
 ## Using it
 
@@ -30,7 +30,7 @@ It is plain HTML, CSS, JavaScript (ES modules) and SVG. There is no framework an
 
   A tap on a handle that doesn't drag goes through to whatever is under it, such as a player or a badge.
 - **Route action bar**: when a route is selected (and no route tool is on), a small bar appears next to it, clear of its handles: **Label** (options only) opens the option box with the label field ready, **Make main** (options other than A), **Order** opens the order editor (the number box, or the option box at its order field for an option), and **Delete**.
-- **Route order**: each route shows a small numbered badge beside its start, placed clear of the players, balls and other badges there. New routes get the next number (1, 2, 3 …). Tap or click a badge to change its number in a small box (Enter or clicking away saves, Escape cancels). Deleting a route doesn't renumber the others. Stage 3 animation will use this order.
+- **Route order**: each route shows a small numbered badge beside its start, placed clear of the players, balls and other badges there. New routes get the next number (1, 2, 3 …). Tap or click a badge to change its number in a small box (Enter or clicking away saves, Escape cancels). Deleting a route doesn't renumber the others. **Play** runs the routes in this order (see *Playing the play*).
 - **Pass and kick options**: when a player has two or more passes and/or kicks in the same phase, they are alternatives, not a sequence. Drawing a second pass or kick from a player who already has one makes both options: the one already there is **A**, the new one **B**, the next **C**, and so on. They all take the order number of the first, and their badges read e.g. *2A*, *2B*. Each option's badge sits on its own route, a short way along it from the passer and just to one side, placed so it is clearly nearer its own route than any other option of that player. Runs and the other route types are never options.
   - **A is the main plan** and draws as normal. B, C … draw a little fainter, in their usual colours.
   - Tap an option's badge to open its box. Its title names the route, e.g. *Option A: Pass to 12* (the receiver's label) or *Option B: Kick*. While it's open that route is highlighted in yellow and the other routes fade, and on a computer the box sits on the side of the pitch away from it. The box has the **order number** (shared by all of that player's options, so changing it changes them all), a short **label** of up to 25 characters (e.g. *if 13 bites*), shown just past the end of the route (as large as a player's number, on screen and in exports), and **Make this the main option**, which makes it A and re-letters the others in their old order. Each save is one undo step.
@@ -43,11 +43,11 @@ It is plain HTML, CSS, JavaScript (ES modules) and SVG. There is no framework an
   The lineout then moves as a group, like the scrum. While the marker or one of its players is selected, an **L** block shows beside the defense's line. Drag it, or the marker itself (its half nearer touch), to move every player the preset placed, along with the ball at the thrower. It moves along the touchline only: it stays on the 5 m line of its own touchline, and far enough in for both lines to stay in the field of play. To set up at the other touchline, drag the marker there before running the preset. Players can still be dragged one at a time afterwards and keep their offset. Running the scrum preset takes its players out of the lineout's group (and the other way round), so no player belongs to both. A lineout marker added on its own, without the preset, drags freely and moves nobody.
 - **Select** by clicking a player, route or marker. **Delete** (key or button) removes it. **Esc** clears the selection and the route tool.
 - **Full / Half** switches the view. Half shows exactly halfway (x = 50) to the dead ball line (x = 110), touchline to touchline, and the pitch is sized to fill the space without showing any extra field.
-- **Horizontal / Vertical** turns the pitch. Vertical puts the try lines at the top and bottom, with x = 110 at the top. Only the view turns: the data stays the same, and numbers, labels and badges stay upright. It starts vertical on a phone held upright and horizontal otherwise.
+- **Horizontal / Vertical** turns the pitch. Vertical puts the try lines at the top and bottom, with x = 110 at the top. Only the view turns: the data stays the same, and numbers, labels and badges stay upright. It starts vertical on a phone held upright and horizontal otherwise, and follows the phone as it turns until you pick one yourself. Turning the pitch, by hand or by itself, is not an undo step: it doesn't clear Redo, and Undo never turns the pitch back.
 - **Layers**:
   - *Distances* labels the lines like a real pitch (5m, 22, 10, 50). Halfway is labelled "50" only, and the 10 m labels sit further along their lines (20 m in from touch), so the three don't run together.
   - *Grid* adds a faint 5 m grid.
-  - *Legend* shows or hides the route key.
+  - *Legend* shows or hides the route key (never shown in Present mode).
   - *Previous phase* draws the last phase's players as faint dashed outlines with their numbers, and its routes as faint lines in their usual colours, so you can see who moved where. None of it can be clicked, and the ghost routes have no order badges or handles, so they can't be mistaken for the current phase's. Saved images and PDFs never include it.
 
   - *Direction* shows **Attack** and an arrow in the attack's red near the bottom edge of the pitch, pointing the way attack plays (towards x = 110): right on a horizontal pitch, up on a vertical one. It's included in saved images and PDFs.
@@ -63,8 +63,8 @@ The starter templates (attack plays towards x = 110, as always):
 - **Blank**: an empty pitch.
 - **Backline attack**: all 15 attackers. A ruck 20 m in from the left touchline with 9 at it, the forwards in a pod off the ruck (two guarding the short side), and the backs in a flat-ish line out to 14 on the open side, with 11 on the short side and 15 deep.
 - **Attack vs defense**: the same attack, and the defense in a flat line 3 m beyond the ruck, with their 9 behind it and 15 sweeping.
-- **Scrum**: both packs and 9s from the scrum preset on the middle spot (attack's put-in), and both backlines 5 m behind their No. 8.
-- **Lineout**: the lineout preset (see *Set piece → Lineout*) at a marker 5 m in from touch on the attack's 10 m line, with the attack throwing in, and both backlines 10 m back.
+- **Scrum**: both packs and 9s from the scrum preset on the middle spot (attack's put-in), and both backlines 5 m behind their No. 8, on the put-in side, so each 10 stands on the same side of the scrum as their 9 and the 9 to 10 pass never crosses a pack.
+- **Lineout**: the lineout preset (see *Set piece → Lineout*) at a marker 5 m in from touch on the attack's 10 m line, with the attack throwing in, and both backlines 10 m back, further infield than the 9s, so 9 to 10 is clear of the lineout.
 - **Kick-off**: 10 kicking off from the centre spot with the attack spread behind halfway, and the receiving team spread in their half, 10 m or more back.
 
 Players are discs 2.4 m across, which is wider than a real body, so tight formations (the scrum, the lineout) are spaced to stop the discs overlapping, as in the scrum preset.
@@ -84,30 +84,65 @@ To turn a play into a template, save it from the app (**File → Save file**), c
 
 ### Phases
 
-The bar under the pitch shows the phase tabs (**1 2 3 … +**), **Prev** and **Next**, and "Phase 2 of 4". The **←** and **→** keys also go back and forward.
+The bar under the pitch shows the phase tabs (**1 2 3 … +**), **Prev** and **Next**, the play controls (see *Playing the play*), and "Phase 2 of 4". The **←** and **→** keys also go back and forward.
 
 - **+** (after the tabs) adds a phase at the end, built from the last phase, whichever phase is shown.
 - **Insert after** adds a phase straight after the current one, built from it. The phases after it are kept exactly as they were (positions, routes, notes, markers); only their numbers move up by one.
 - A new phase is built the same way either way:
   - Each player with a run, drift, blitz or decoy starting on them moves to the end of that route. If a player has several, the highest order number wins.
-  - The ball follows the highest-order pass or kick. Options other than A (B, C …) are left out, so with options the ball follows A.
-    - For a pass, the ball moves to the receiver, where they stand after their own run. The receiver is the pass's `to` player. If the pass has none, it's the nearest team-mate of the passer within 5 m of where the pass ends; if nobody is that close, the ball goes to the end of the pass.
+  - The ball follows the passes and kicks and ends with the highest-order one. Options other than A (B, C …) are left out, so with options the ball follows A. If the phase has more than one ball, the one that moves is the ball nearest the start of the first pass or kick.
+    - For a pass, the ball moves to the receiver, where they stand after their own run. The receiver is the pass's `to` player. If the pass has none, it's the nearest team-mate of the passer within 5 m of where the pass lands, with everyone where they stand at that point (after their runs up to the pass's order); if nobody is that close, the ball goes to the end of the pass.
     - For a kick, the ball goes to where the kick ends.
     - With no passes or kicks the ball stays where it is.
   - Routes aren't copied, so the new phase starts with none. Markers (ruck, scrum, lineout, ball) are copied.
+  - The animation uses the same rules (they live in `js/model.js`), so it always moves the same ball to the same receiver as the next phase was built with.
 - **◂ Move / Move ▸** swaps the current phase with its neighbour. It never changes what is in any phase. **Delete phase** asks first.
 - Adding, inserting, moving and deleting a phase are each one undo step.
-- The **note** box beside them belongs to the current phase. It keeps a usable width however many phases there are (the phase tabs scroll sideways instead), and grows with a long note to about four lines, wrapping it, before it scrolls. On narrower screens it gets a row of its own.
-- Players belong to the whole play: deleting a player removes them from every phase, along with their routes and any passes to them.
+- The **note** box beside them belongs to the current phase. It keeps a usable width however many phases there are (the phase tabs scroll sideways instead), and grows with a long note to about four lines, wrapping it, before it scrolls. When the tabs, play controls and phase tools don't fit on one row, the tools and note move to a second row; on narrower screens the note gets a row of its own. In Present mode it is the caption under the pitch.
+- Players belong to the whole play: deleting a player removes them from every phase, along with their routes and any passes to them, and takes them out of any scrum or lineout group.
+
+### Playing the play
+
+**Play** in the phase bar animates the play from the phase shown through to the last one.
+
+- Within a phase, the routes run in badge order. Routes with the same order number start together; order 2 starts once everything in order 1 has finished.
+- A player with a run, drift, blitz or decoy moves along the route's curve to its end. A player with two such routes does them one after the other.
+- The ball travels along each pass or kick, starting once the passer has finished their own movement in that order step (so a player who runs and passes in step 1 runs first, then passes). Before that the ball is carried: a ball within 3 m of the passer at the start of the phase moves with them. A pass to a team-mate (`to`) ends in their hands, even if they're running. If a phase has a pass but no ball marker, a ball is drawn for the animation only.
+- Only option **A** plays. B, C … stay faint and never move (in Present mode another option can be played, see below).
+- A route's order badge disappears as soon as that route starts moving, and comes back when the play stops or another phase is shown.
+- Then a short slide moves everyone, including players with no route, and the markers (ball, ruck …) to exactly where they are in the next phase, and that phase's routes play. Markers that aren't in the next phase fade out on the way.
+- **Play / Pause**: the button or the **space bar**. Pausing freezes the exact frame on screen, with Loop on or off, mid-route or mid-slide, and Play carries on from that moment. The frame gives way to the phase as it really is (so editing always uses real positions) when the play is changed, another phase is shown, or an edit starts: a press on the pitch, a new selection, or a route tool picked. After the last phase it stops on the last phase's final frame; Play then starts again from phase 1.
+- **Loop**: after the last phase, the play holds it for 1.5 seconds, then everyone slides back to their places in phase 1 (no jump) and it plays again. Turning Loop on or off while the last phase is showing keeps the frame where it is.
+- **Step back / forward one phase**: **Prev** / **Next**, or the **←** / **→** keys (in Present mode, ‹ and ›; ⏮ goes back to phase 1). While playing, it carries on playing from the start of that phase; while paused, it just shows it. Clicking a phase tab works the same way. None of these (nor a `#phase` link) change the phase in the middle of a drag.
+- **Speed**: 0.5×, 1× or 2×. 1× is an easy pace to follow on a TV (what used to be 0.5×): a run goes at about 3.5 m/s, a pass at 9 m/s and a kick at 11 m/s, within limits so that very short and very long routes stay watchable.
+- While playing, editing is locked: nothing on the pitch can be dragged or drawn, and the tools, undo and redo (buttons and keys), Templates and the phase editing buttons are greyed out. The File menu, the play name, category and tags can't be used with the mouse or the keyboard (the menu is inert and the boxes are disabled, so Tab skips them), and the note can't be typed in. The previous-phase ghost is hidden. Pause (or the end of the play) returns to normal editing on the phase it stopped at. **Esc** pauses.
+- Each animation frame only moves the players and markers whose place has changed (it uses `requestAnimationFrame`).
+
+### Present mode
+
+**Present** in the top bar shows the pitch alone, for a TV or a screen recording: full screen (when the browser allows it), with the toolbar, top bar, status line, phase bar and route key hidden, and the pitch as large as fits. The phase's note is a large caption under the pitch, always shown in full (the pitch gets smaller for a long note), and *Phase n of N* sits in the top right corner.
+
+- The play controls (⏮ to phase 1, ‹ previous phase, Play/Pause, › next phase, speed, Loop) sit between the pitch and the caption, with **I play**, **Pen**, **Clear** and **Exit**, so they never cover the pitch or the note. They fade out (and so does the mouse pointer) after 2 seconds without mouse movement, and come back when the mouse moves. The keys work as usual: **Space**, **←** / **→**.
+- **Option A / B / C**: when the phase shown has pass or kick options, a button for each appears. **Option B** plays that phase with B instead of A, so the ball follows B (B draws as the main option meanwhile), and stops at the end of the phase, since the next phase was built from A. **Option A**, the default, plays on as usual.
+- **I play**: click a player on the pitch (or pick one from the list) and the rest of their team, with their routes, fades; the opposition stays at full strength. The chosen player gets a yellow ring. Clicking them again (or **None** in the list) clears it. It stays on through Play and phase changes, and goes when you leave Present mode.
+- **Pen**: **P** (or the Pen button) turns on a freehand pen over the pitch, black with a white outline (a colour no route or team uses) and thick enough to see on a TV. Picking up the pen pauses the play, so you draw on a still picture. The marks stay, through phase changes, until **C** (or Clear); they aren't saved and go when you leave.
+- Nothing can be edited while presenting: there are no hover hints, handles, selection highlights or tooltips, the ghost is hidden, and undo and redo (buttons and keys) do nothing.
+- **Escape** (or Exit) leaves Present mode. Leaving stops the play and drops the paused frame, so editing is unlocked straight away on the phase shown. In full screen the browser's own Escape leaves full screen, and Present mode with it.
+
+### Links to a phase
+
+The address shows the phase being shown, e.g. `…/#phase=3`, and follows it as phases change (including while playing). Opening an address with `#phase=n` starts on that phase (a number past the end opens the last one). The play itself still comes from this browser's autosave, so the link is for coming back to a phase, or for sharing one together with the play's `.json` file.
 
 ### Undo, autosave and files
 
-- **Undo / Redo** (top bar, or Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z) covers every change to the play, including phases, labels, order numbers, name, note, details, New play and Load. A whole drag is one step, and so is a burst of typing in one box. At least 100 steps are kept. History is cleared on refresh.
-- The play is **autosaved** in this browser (`localStorage`) shortly after every change, and straight away when the page is hidden or closed. It comes back when you reload. If storage is blocked (some private modes), everything else still works; it just isn't kept.
+- **Undo / Redo** (top bar, or Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z) covers every change to the play, including phases, labels, order numbers, name, note, details, New play and Load. A whole drag is one step, and so is a burst of typing in one box. Up to 200 steps are kept, fewer if the history would pass about 20 MB (the oldest go first). Turning the pitch isn't a step (see *Horizontal / Vertical*), and nor is anything that only shows a hint (hovering, the click-to-draw preview, rings). Undo and redo do nothing while playing, presenting or making a picture. History is cleared on refresh.
+- The play is **autosaved** in this browser (`localStorage`) shortly after every change, and straight away when the page is hidden or closed. It comes back when you reload. If storage is blocked or full, everything else still works, and the status line says *Couldn't autosave. Save to a file to keep your work.*
+  - If the autosave can't be opened (or can't be drawn) when the page loads, it is kept under a backup key (`rugby-play-designer.autosave-backup`), a blank play starts, and the status line says *Your last play couldn't be opened. A backup was kept.*
+  - Every tab of the site shares the autosave. If another tab saves a different play, this one asks *This play was changed in another tab*: **Use theirs** loads it (one undo step), **Keep mine** saves this one again. Nothing is autosaved while the question is open. Another tab only moving between phases or turning the pitch doesn't count as a change.
 - The **File** menu holds the play's details (*category*: attack, defense, lineout or scrum; *tags*, comma separated) and:
   - **New play**: asks first, then starts a blank play.
   - **Save file**: downloads the play as `<play name>.json`. The name is cleaned of characters that aren't allowed in file names, and the JSON is pretty-printed.
-  - **Load file…**: reads a `.json` play. It checks the file has `schemaVersion`, `players` and `phases`, and shows a short error if not. Loading replaces the current play after asking, and can be undone.
+  - **Load file…**: reads a `.json` play. It checks the file has `schemaVersion`, `players` and `phases`, and shows a short error if not. Every other field is checked too, and one of the wrong type is dropped or given its default, so a damaged or hand-edited file can't break the app (see *Coordinates and data*). Loading replaces the current play after asking, and can be undone.
   - **Save image (PNG)…**: asks *This phase* or *All phases*.
 
     *This phase* is the phase being shown, at twice its size on screen, in the current view and orientation, with the layers that are on (distances, grid, direction). If the Legend layer is on, the route key goes in a white strip under the pitch, never on it. The previous-phase ghost, selection highlights and handles are always left out. It is named `<play name>-phase-<n>.png`. On a phone or tablet it opens the share sheet instead of downloading (on iPhone, *Save Image* puts it in Photos). If the share sheet can't open, the picture is shown in a box: press and hold it to save, or use *Open in new tab* or *Share…*.
@@ -117,7 +152,7 @@ The bar under the pitch shows the phase tabs (**1 2 3 … +**), **Prev** and **N
 
     The PDF is made with [jsPDF](https://github.com/parallax/jsPDF) **4.2.1** (MIT licence), kept in the repo as `vendor/jspdf.umd.min.js` with its licence in `vendor/jspdf.LICENSE`. It isn't fetched from a CDN, and it is only loaded the first time you save a PDF, so ordinary page loads don't download it. To update it, replace both files from the `dist/jspdf.umd.min.js` and `LICENSE` of the new npm package and change the version here.
 
-  Every save and export shows a short message in the status line, e.g. *Saved Blind side.pdf*. A PDF says *Making the PDF…* while it's being made.
+  Every save and export shows a short message in the status line, e.g. *Saved Blind side.pdf*. A PDF says *Making the PDF…* while it's being made. Each picture is made from a copy of the play taken when you ask for it, and editing is locked (as while playing) until it's ready, so a change can't end up half in it.
 
   Loading a play (from a file or the autosave) also repairs it: a player missing from a phase is given their spot from the nearest earlier phase, or the nearest later one if there is no earlier one. Older versions could leave a player out of some phases, e.g. one deleted and added back while on phase 1.
 
@@ -142,9 +177,11 @@ npm test
 
 `npm test` serves the repo on a free local port, then runs:
 
-- `tests/*.test.js`: Node tests for the phase logic (building, adding, inserting and moving phases), pass/kick options, and a check that every template in `templates/index.json` loads like a saved play. They need nothing but Node 22 or newer, so you can also run them alone with `node --test tests/*.test.js`.
+- `tests/*.test.js`: Node tests for the phase logic (building, adding, inserting and moving phases), the shared rules in `model.js` (the next phase and the animation agree on the ball and the receiver, chosen options, Loop's hold, the 1× pace), the animation timing and frames, pass/kick options, the undo history (200 steps, the size limit, turning the pitch), checking loaded files (every optional field with the wrong type), and the templates (each loads like a saved play; 9 to 10 clears the pack in the scrum and lineout). They need nothing but Node 22 or newer, so you can also run them alone with `node --test tests/*.test.js`. `tests/anim-play.mjs` is the small play the animation tests share.
 - `tests/browser/suite.mjs`: headless Chrome on desktop and phone (touch). Any native browser dialog (prompt, alert, confirm) fails the run. It covers dragging, routes and passes, ghost routes, phases, undo/redo, autosave, save/load, templates and the picker, the number picker, renaming, set pieces, the direction arrow, badge placement (including option badges on their own routes), the option box title and highlight, the route action bar, passes and kicks drawn above the players, kick lines, renaming the play, the status line and Tips popup, the phase bar with many phases, tool hints, and the PNG (one phase and all phases) and PDF exports and their messages.
 - `tests/browser/clickdraw.mjs`: click-to-draw routes from the selected player, and pass/kick options (lettering, deleting, labels, making one main, Add Phase following A, ghost and exports).
+- `tests/browser/playback.mjs`: animation order (same-order routes start together, the ball leaves after the passer's run, order 2 waits), option B never animating, positions at the end of a phase's animation matching the next phase exactly, Play/Pause, step, speed and Loop with their buttons and keys, editing locked while playing and back after pausing, Present mode entering and leaving (layout, caption, corner count, nothing selected, controls fading), the I-play fade, the pen drawing and clearing, and `#phase` in the address. Then the coach-test fixes: Pause keeping the exact frame with Loop on, Loop's hold and slide back, the 1× pace, badges going as routes move, no legend in Present mode, ⏮ ‹ ›, the Option buttons, the pen pausing and keeping its marks, I play by clicking, the controls never covering a long caption, Exit stopping the play, and the Scrum template's 10s.
+- `tests/browser/stability.mjs`: damaged files (the wrong type in every optional field), empty and one-phase plays through Play, Present, PNG and PDF, a broken autosave on startup (unreadable, and one whose first drawing fails), two tabs, full storage, phase changes during a drag and a drag whose route vanishes, the paused frame giving way to edits, undo and the details locked while playing and presenting, turning the pitch without an undo step, the route bar's Order on a route with no order, deleting a scrum player, hover redraws recording nothing, one redraw per frame while dragging, and exports made from a copy with editing locked. The animation clock is stopped with the test hook `window.rugbyPlayback.timeScale = 0` and moved on with `rugbyPlayback.advance(ms)`, so these checks don't wait in real time; one run at `timeScale = 20` checks that it also plays by itself.
 
 Downloads and screenshots go to a temporary folder; the path is printed at the start of each suite. To use your installed Chrome instead of puppeteer's, set `PUPPETEER_EXECUTABLE_PATH`, for example `PUPPETEER_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" npm test`.
 
@@ -166,15 +203,20 @@ js/app.js        play state, toolbar and phase bar wiring, redraw (which also re
 js/pitch.js      pitch markings and screen-to-metre conversion
 js/editor.js     dragging, drawing routes and editing them with handles, selecting
 js/setpiece.js   scrum and lineout presets: formations, snapping the mark, moving each set piece's players and ball together
+js/model.js      the shared play rules: route curves, ball routes, ids, rounding, which ball moves and who catches it
 js/phases.js     building the next phase (players follow their runs, ball follows option A's pass or kick); add, insert, move
+js/animate.js    animation timing and frames, as pure functions of the play and a time
+js/playback.js   Play/Pause, speed, Loop, a chosen option; draws each frame by moving only what changed
+js/present.js    Present mode: full screen layout, controls that fade, I play, the pen
 js/options.js    pass/kick options: lettering A, B, C, closing up, making one the main option
-js/history.js    undo/redo by snapshots of the play
+js/history.js    undo/redo by snapshots of the play (200 steps, about 20 MB)
 js/storage.js    autosave, saving and loading .json files, checking and repairing loaded plays
 js/export.js     PNG of a phase, PNG of all phases in a grid, PDF of all phases (loads jsPDF on first use)
 js/templates.js  fetching templates/index.json and the template plays, picker thumbnails
 templates/       starter templates (play files) and index.json listing them
 vendor/          jsPDF 4.2.1 (jspdf.umd.min.js) and its licence
-tests/           Node tests for the phase logic; run.mjs (npm test); browser/ headless Chrome suites
+tests/           *.test.js Node tests (phases, model rules, animation, options, history, loading files, templates);
+                 anim-play.mjs, their shared play; run.mjs (npm test); browser/ headless Chrome suites
 plays/<category>/  for saved plays (later stages)
 ```
 
@@ -215,11 +257,12 @@ The whole play is a single state object, exposed as `window.playState` for debug
 - A route's `from` is a player id, or `null` if it was drawn from open grass. A pass also has `to`: the receiver's id, or `null` for a loose end. Its last point sits on the receiver. Loading a play sets a `from` or `to` that names a player who isn't in the play to `null`.
 - `curve` is how far, in metres, the middle of the route is pushed sideways from the straight line between its first and last point. Positive bends to the right of the direction of travel, as seen on screen. The route is drawn as a quadratic Bézier.
 - A pass or kick that is one of a player's options has `option`: `"A"`, `"B"`, `"C"` …, and may have `optionLabel`, a string of up to 25 characters. Other routes have `option: null` (or no `option`, in older plays). A player's options in a phase share one `order`.
-- A route's `order` is a whole number from 1 to 99 and sets the order routes run in. New routes get one more than the highest existing order. Numbers can repeat, and gaps are fine. Routes without `order` (older data) simply show no badge.
+- A route's `order` is a whole number from 1 to 99 and sets the order routes run in. New routes get one more than the highest existing order. Numbers can repeat, and gaps are fine. Routes without `order` (older data) simply show no badge; **Order** in the route bar gives one the next number.
+- Loading checks every optional field, and drops it (or uses its default) if it's the wrong type: `option` (a single capital letter, passes and kicks only), `optionLabel` (text, cut to 25 characters), `order` (a whole number of 1 or more), `curve` (a finite number, else 0), `pack` (a list of ids of players in the play), `putIn` and `throwIn` (`"attack"` or `"defense"`), `tags` (text only), `name` (cut to 60 characters) and `note` (text). Positions of players who aren't in the play are dropped, and missing or broken ones are filled in.
 - `orientation` is `"horizontal"` or `"vertical"`. It only changes how the pitch is drawn: all coordinates stay in the same pitch metres. Vertical is a quarter turn anticlockwise, so pitch (x, y) is drawn at SVG (y, −x).
 - A lineout made with the preset has `throwIn` (`"attack"` or `"defense"`) and `pack`, the ids of the players that move with it; its `y` is always 5 or 65. A plain `lineout` marker without `pack` is just a marker.
 - A scrum made with the preset has `putIn` (`"attack"` or `"defense"`) and `pack`, the ids of the players that move with it. Its `x, y` is the mark between the front rows, with `y` always 15, 35 or 55. A plain `scrum` object without `pack` (older data) still draws as an "S" marker.
 - `category` is one of `attack`, `defense`, `lineout` and `scrum`. `tags` is a list of strings.
 - `phases` is in play order. Each phase has its own `note`, player `positions`, `objects` (markers) and `routes`. Players are listed once, in `players`, and every player has a position in every phase (loading fills in any that are missing).
-- Which phase is being shown, the layer checkboxes, and the undo history are view settings and aren't part of the play. The autosave stores the shown phase alongside the play.
+- Which phase is being shown (also in the address as `#phase=n`), the layer checkboxes, the play speed, Loop and chosen option, Present mode and its pen drawings, and the undo history are view settings and aren't part of the play. The autosave stores the shown phase alongside the play. `orientation` is saved with the play but is a view choice too: turning the pitch is not an undo step.
 - `schemaVersion` is still 1: `tags` and the newer fields are optional, and older plays load as they are.

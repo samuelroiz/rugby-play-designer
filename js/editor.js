@@ -3,6 +3,7 @@
 
 import { BOUNDS, toMetres } from './pitch.js';
 import { syncOptions } from './options.js';
+import { nextId, nextOrder, round1 as round, round3, curveControl, curvePoint } from './model.js';
 
 const DOUBLE_TAP_MS = 400;
 const MIN_ROUTE_LENGTH = 1; // metres; shorter drags are treated as a mis-tap
@@ -10,7 +11,6 @@ const MOVE_THRESHOLD = 0.3; // metres a press must travel before it counts as a 
 const SNAP_RADIUS = 2; // metres from a player's centre: a route starting (or a pass ending) this close attaches to them
 const HANDLE_MODES = ['start', 'end', 'bend'];
 
-const round = v => Math.round(v * 10) / 10;
 const clampX = x => Math.min(BOUNDS.maxX, Math.max(BOUNDS.minX, x));
 const clampY = y => Math.min(BOUNDS.maxY, Math.max(BOUNDS.minY, y));
 
@@ -28,39 +28,19 @@ export function movePlayer(phase, id, x, y) {
 // A route that follows a player at either end can't be dragged by its line.
 export const isAttached = r => !!(r.from || r.to);
 
-// Order number for a new route: one more than the highest so far. Deleting a route leaves the others as they are.
-const nextOrder = routes => routes.reduce((max, r) => Math.max(max, r.order || 0), 0) + 1;
-
-// Next free id like "r3" given existing items with ids "r1", "r2".
-export function nextId(prefix, items) {
-  let max = 0;
-  for (const item of items) {
-    if (item.id.startsWith(prefix)) max = Math.max(max, Number(item.id.slice(prefix.length)) || 0);
-  }
-  return prefix + (max + 1);
-}
-
-// A route is a quadratic bezier from its first to its last point.
-// "curve" is how far (metres) the route's midpoint is pushed sideways from the
-// straight line; the bezier control point sits at twice that offset.
+// A route is drawn as the quadratic Bézier in model.js (curveControl, curvePoint).
 // endGap (metres) stops the drawn line that far short of its end, so a pass's arrowhead touches the
 // receiver's disc instead of hiding under it. Handles still use the full route.
 export function routeGeometry(route, { endGap = 0 } = {}) {
   const [x1, y1] = route.points[0];
   const [x2, y2] = route.points[route.points.length - 1];
-  const len = Math.hypot(x2 - x1, y2 - y1) || 1;
-  const normal = { x: -(y2 - y1) / len, y: (x2 - x1) / len };
-  const mid = { x: (x1 + x2) / 2, y: (y1 + y2) / 2 };
+  const { control, mid, normal, len } = curveControl(route);
+  const { x: cx, y: cy } = control;
   const c = route.curve || 0;
-  const cx = mid.x + 2 * normal.x * c;
-  const cy = mid.y + 2 * normal.y * c;
   let d = `M${x1} ${y1} Q${cx} ${cy} ${x2} ${y2}`;
   if (endGap && len > endGap * 1.5) {
     // Find t where the curve is endGap from the end, then keep the part of the curve before it.
-    const at = t => ({
-      x: (1 - t) ** 2 * x1 + 2 * (1 - t) * t * cx + t * t * x2,
-      y: (1 - t) ** 2 * y1 + 2 * (1 - t) * t * cy + t * t * y2,
-    });
+    const at = t => curvePoint(route, t);
     let lo = 0;
     let hi = 1;
     for (let i = 0; i < 24; i++) {
@@ -70,13 +50,12 @@ export function routeGeometry(route, { endGap = 0 } = {}) {
     }
     const t = lo;
     const e = at(t);
-    const k = v => Math.round(v * 1000) / 1000;
-    d = `M${x1} ${y1} Q${k(x1 + (cx - x1) * t)} ${k(y1 + (cy - y1) * t)} ${k(e.x)} ${k(e.y)}`;
+    d = `M${x1} ${y1} Q${round3(x1 + (cx - x1) * t)} ${round3(y1 + (cy - y1) * t)} ${round3(e.x)} ${round3(e.y)}`;
   }
   return {
     d,
     handle: { x: mid.x + normal.x * c, y: mid.y + normal.y * c },
-    control: { x: cx, y: cy },
+    control,
     mid,
     normal,
   };
@@ -95,7 +74,11 @@ export function drawingFrom(ui, phase) {
 // ui.snap is the player a route being drawn (or about to be, or whose start is being dragged) attaches to;
 // ui.snapTo is the receiver a pass being drawn (or whose end is being dragged) will end on.
 // ui.preview is where a click-to-draw route would end if the pointer were pressed (or released) now.
-export function initEditor(svg, space, { state, ui, phase, render, editLabel, editOrder, moveObject }) {
+// locked(): true while the play is playing, presented or exported, when nothing on the pitch can be edited.
+// render() redraws and records the change; renderSoon() redraws on the next animation frame (several pointer
+// moves in one frame make one redraw); hint() redraws for hover feedback only, recording nothing.
+// pressed(): a press on the pitch is about to edit, so a paused animation frame gives way to the real positions.
+export function initEditor(svg, space, { state, ui, phase, render, renderSoon, hint, editLabel, editOrder, moveObject, locked, pressed }) {
   let drag = null;
   let lastTap = { id: null, time: 0 };
   const findRoute = id => phase().routes.find(r => r.id === id);
@@ -172,8 +155,9 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
   }
 
   svg.addEventListener('pointerdown', e => {
-    if (!e.isPrimary || e.button !== 0 || drag) return;
+    if (!e.isPrimary || e.button !== 0 || drag || locked()) return;
     document.activeElement?.blur(); // so Delete/Escape reach the editor, not a text field
+    pressed();
     const p = toMetres(space, e);
     const hit = e.target.closest('[data-kind]');
     const kind = hit?.dataset.kind;
@@ -229,11 +213,12 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
   });
 
   svg.addEventListener('pointermove', e => {
+    if (locked()) return;
     if (!drag) {
       if (drawingFrom(ui, phase())) {
         // Click-to-draw: the preview line follows a hovering mouse or pen.
         aim(toMetres(space, e));
-        render();
+        hint();
       } else if (ui.tool && e.pointerType !== 'touch') {
         // With a route tool and a mouse or pen hovering, show which player a press here would attach to.
         setSnap(playerAt(toMetres(space, e)));
@@ -242,11 +227,16 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
     }
     if (drag.mode === 'aim') {
       aim(toMetres(space, e));
-      render();
+      renderSoon();
       return;
     }
     const p = toMetres(space, e);
     const r = drag.mode === 'move' ? null : findRoute(drag.id);
+    // What's being dragged can vanish under the pointer (the play replaced from another tab): drop the drag.
+    if (drag.mode === 'move' ? !(drag.kind === 'player' ? phase().positions[drag.id] : findObject(drag.id)) : !r) {
+      cancelDrag();
+      return;
+    }
     if (HANDLE_MODES.includes(drag.mode) && !drag.moved) {
       if (Math.hypot(p.x - drag.start.x, p.y - drag.start.y) <= MOVE_THRESHOLD) return;
       drag.moved = true;
@@ -284,8 +274,16 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
       r.points = r.points.map(([x, y]) => [round(x + dx), round(y + dy)]);
       drag.last = { x: drag.last.x + dx, y: drag.last.y + dy };
     }
-    render();
+    renderSoon();
   });
+
+  function cancelDrag() {
+    drag = null;
+    ui.dragging = false;
+    ui.snap = null;
+    ui.snapTo = null;
+    render();
+  }
 
   const endDrag = e => {
     if (!drag) return;
@@ -297,7 +295,7 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
 
     if (done.mode === 'aim' && e.type === 'pointerup') finishAim(e);
 
-    if (done.mode === 'route') {
+    if (done.mode === 'route' && findRoute(done.id)) {
       const r = findRoute(done.id);
       const [a, b] = [r.points[0], r.points[r.points.length - 1]];
       if (e.type === 'pointercancel' || Math.hypot(b[0] - a[0], b[1] - a[1]) < MIN_ROUTE_LENGTH) {
@@ -362,14 +360,14 @@ export function initEditor(svg, space, { state, ui, phase, render, editLabel, ed
   function setSnap(id) {
     if (ui.snap === id) return;
     ui.snap = id;
-    render();
+    hint();
   }
   svg.addEventListener('pointerleave', () => {
     if (drag) return;
     if (ui.preview) {
       ui.preview = null;
       ui.snapTo = null;
-      render();
+      hint();
     }
     setSnap(null);
   });

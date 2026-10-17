@@ -3,7 +3,8 @@
 // x=-10, so the packs face +x and -x. Players that already exist are moved rather than duplicated;
 // missing ones are added to every phase (ids 1-9 are always within the 15 limit).
 
-import { movePlayer, nextId } from './editor.js';
+import { movePlayer } from './editor.js';
+import { nextId, round1 as round } from './model.js';
 
 // Across the pitch a scrum mark sits on the left 15 m line, the middle, or the right 15 m line.
 const SCRUM_SPOTS_Y = [15, 35, 55];
@@ -27,7 +28,7 @@ const BALL_AT_SCRUM = 8;
 // Nearest legal mark: x anywhere in the field of play, y snapped to the closest of the three spots.
 export function snapScrum(x, y) {
   return {
-    x: Math.round(Math.min(100, Math.max(0, x)) * 10) / 10,
+    x: round(Math.min(100, Math.max(0, x))),
     y: SCRUM_SPOTS_Y.reduce((best, s) => (Math.abs(s - y) < Math.abs(best - y) ? s : best)),
   };
 }
@@ -36,8 +37,6 @@ export function snapScrum(x, y) {
 const putInSide = putIn => (putIn === 'defense' ? 1 : -1);
 
 const ballNear = (objects, mark) => objects.find(o => o.type === 'ball' && Math.hypot(o.x - mark.x, o.y - mark.y) <= BALL_AT_SCRUM);
-
-const round = v => Math.round(v * 10) / 10;
 
 // Puts player `n` of `team` at (x, y) in this phase, adding them to the play (in every phase, at the same
 // spot) if they aren't in it yet. Returns their id.
@@ -146,7 +145,7 @@ export function moveScrum(phase, scrum, x, y) {
   const dy = to.y - scrum.y;
   if (!dx && !dy) return;
   const ball = ballNear(phase.objects, scrum);
-  if (ball) Object.assign(ball, { x: Math.round((ball.x + dx) * 10) / 10, y: Math.round((ball.y + dy) * 10) / 10 });
+  if (ball) Object.assign(ball, { x: round(ball.x + dx), y: round(ball.y + dy) });
   for (const id of scrum.pack ?? []) {
     const pos = phase.positions[id];
     if (pos) movePlayer(phase, id, pos.x + dx, pos.y + dy);

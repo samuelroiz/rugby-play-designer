@@ -1,7 +1,7 @@
 // Headless Chrome checks: the four fixes plus regressions of earlier features. Desktop 1440x900 + phone 390 touch.
 import fs from 'node:fs';
 import path from 'node:path';
-import { open, drag, tap, click, state, shown, check, failed, toScreen, outDir, addPlayer, answerConfirm } from './lib.mjs';
+import { open, drag, tap, click, state, shown, check, failed, toScreen, outDir, addPlayer, answerConfirm, nextFrame } from './lib.mjs';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 const OUT = outDir('suite');
@@ -77,6 +77,7 @@ async function dragHold(page, from, to, during) {
   await page.mouse.move(a.x, a.y);
   await page.mouse.down();
   for (let i = 1; i <= 8; i++) await page.mouse.move(a.x + (b.x - a.x) * i / 8, a.y + (b.y - a.y) * i / 8);
+  await nextFrame(page); // a drag redraws once per animation frame
   const r = await during();
   await page.mouse.up();
   return r;
