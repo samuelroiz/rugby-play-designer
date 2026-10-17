@@ -20,8 +20,8 @@ const PASS_END_GAP = PLAYER_R + 0.2;
 // PDF pages: the pitch picture is drawn at this many times its size in CSS px on the page (about 190 dpi).
 const PDF_SCALE = 2;
 // All-phases PNG: width of each pitch tile in CSS px, and tiles per row (fewer if there are fewer phases).
-const SHEET_TILE_W = { horizontal: 520, vertical: 260 };
-const SHEET_COLS = { horizontal: 2, vertical: 3 };
+const SHEET_TILE_W = { horizontal: 900, vertical: 420 };
+const SHEET_COLS = { horizontal: 1, vertical: 2 };
 const AUTOSAVE_MS = 400;
 // Smallest touch target for route handles and lines, in screen pixels (converted to metres at draw time).
 const HANDLE_HIT_PX = 22;
@@ -32,11 +32,16 @@ const LINE_HIT_PX = 14;
 const ROUTE_TYPES = {
   run:   { label: 'Run',   color: '#ffe14d', width: 0.3 },
   pass:  { label: 'Pass',  color: '#ffffff', width: 0.25, dash: '1 0.7' },
-  kick:  { label: 'Kick',  color: '#ffa033', width: 0.3,  dash: '0.01 0.6', cap: 'round' },
+  kick:  { label: 'Kick',  color: '#ffa033', width: 0.5,  dash: '0.01 0.95', cap: 'round' },
   decoy: { label: 'Decoy', color: '#b8b8b8', width: 0.2,  dash: '0.4 0.8' },
   drift: { label: 'Drift', color: '#cfa6ff', width: 0.3 },
   blitz: { label: 'Blitz', color: '#ff8fd0', width: 0.6 },
 };
+// Routes the ball travels along. They're drawn above the players, so a pass over a lineout reads; the
+// others stay under them.
+const BALL_ROUTES = new Set(['pass', 'kick']);
+// Option label text, in metres: at least as large as a player's number (1.2).
+const OPTION_LABEL_SIZE = 1.25;
 
 // A phone held upright gets the vertical pitch; anything else starts horizontal.
 const portraitPhone = matchMedia('(max-width: 700px) and (orientation: portrait)');
@@ -45,7 +50,6 @@ const touchScreen = matchMedia('(pointer: coarse)');
 // The phone layout (toolbar at the bottom): pickers open in the middle of the screen, not by their button.
 const phoneLayout = matchMedia('(max-width: 700px)');
 const CATEGORY_LABELS = { attack: 'Attack', defense: 'Defense', lineout: 'Lineout', scrum: 'Scrum' };
-const TIPS_KEY = 'rugby-play-designer.tips';
 
 // The play. Always the same object (window.playState): undo, load and New play replace its contents.
 const state = blankPlay({ orientation: portraitPhone.matches ? 'vertical' : 'horizontal' });
@@ -60,6 +64,7 @@ const ui = {
   snap: null, // player a route being drawn will attach to (highlighted)
   snapTo: null, // receiver a pass being drawn will end on (highlighted)
   preview: null, // click-to-draw: where the next route would end, { x, y }
+  optionFocus: null, // the route whose option box is open, highlighted on the pitch
   layers: { distances: true, grid: false, legend: true, ghost: true, direction: true },
   orientationChosen: false, // once the user picks one, stop following the phone's rotation
 };
@@ -74,6 +79,7 @@ const layers = {
   objects: $('objects-layer'),
   routes: $('routes-layer'),
   players: $('players-layer'),
+  ballRoutes: $('ball-routes-layer'),
   balls: $('ball-layer'),
   badges: $('badges-layer'),
   handles: $('handles-layer'),
@@ -113,7 +119,7 @@ function flushAutosave() {
   saveAutosave(state, ui.phase);
 }
 
-// A short message over the pitch: an error (the default), or `ok` for "Saved …".
+// A short message in the status line under the pitch: an error (the default), or `ok` for "Saved …".
 function showToast(message, kind = 'error') {
   const toast = $('toast');
   toast.classList.toggle('ok', kind === 'ok');
@@ -155,6 +161,7 @@ function render(commitKey = null) {
   updateToolbar();
   updatePhaseBar();
   syncInputs();
+  updateRouteBar();
 
   if (!ui.dragging) history.commit(commitKey);
   updateHistoryButtons();
@@ -223,6 +230,56 @@ function badgePosition(r, geometry, taken) {
   return first;
 }
 
+// Points along a route's curve (the full curve, to its last point), for measuring distances to it.
+function curveSamples(r, n = 40) {
+  const { control: c } = routeGeometry(r);
+  const [x1, y1] = r.points[0];
+  const [x2, y2] = r.points[r.points.length - 1];
+  return Array.from({ length: n + 1 }, (_, i) => {
+    const t = i / n;
+    const u = 1 - t;
+    return { x: u * u * x1 + 2 * u * t * c.x + t * t * x2, y: u * u * y1 + 2 * u * t * c.y + t * t * y2 };
+  });
+}
+const distanceTo = (samples, p) => Math.min(...samples.map(q => Math.hypot(q.x - p.x, q.y - p.y)));
+
+// An option's badge sits on its own route: a short way along it from the start (past the passer's disc),
+// just to one side, where it is clearly nearer its own route than any other option of the same player.
+// It tries points further along, either side, then right on the line; if none is clear of `taken`, the
+// one that best tells the options apart.
+function optionBadgePosition(r, siblings, taken) {
+  const own = curveSamples(r);
+  const others = siblings.map(o => curveSamples(o));
+  const otherDist = p => (others.length ? Math.min(...others.map(o => distanceTo(o, p))) : Infinity);
+  const lengths = [0];
+  for (let i = 1; i < own.length; i++) lengths.push(lengths[i - 1] + Math.hypot(own[i].x - own[i - 1].x, own[i].y - own[i - 1].y));
+  const total = lengths.at(-1);
+  const clearOfStart = PLAYER_R + BADGE_R + 0.4;
+  const candidates = [];
+  for (const along of [3.4, 4.4, 5.6, 7, 8.8, 11]) {
+    const at = Math.min(along, Math.max(total * 0.7, Math.min(clearOfStart, total * 0.85)));
+    const i = Math.max(1, lengths.findIndex(l => l >= at));
+    const q = own[i];
+    const [dx, dy] = [own[i].x - own[i - 1].x, own[i].y - own[i - 1].y];
+    const len = Math.hypot(dx, dy) || 1;
+    const normal = { x: -dy / len, y: dx / len };
+    // The side away from the other options first.
+    const probe = s => otherDist({ x: q.x + normal.x * s, y: q.y + normal.y * s });
+    const sides = probe(1) >= probe(-1) ? [1, -1] : [-1, 1];
+    for (const offset of [BADGE_R + 0.3, 0]) {
+      for (const s of offset ? sides : [1]) {
+        const p = { x: q.x + normal.x * s * offset, y: q.y + normal.y * s * offset };
+        const margin = otherDist(p) - offset;
+        const clear = taken.every(o => Math.hypot(o.x - p.x, o.y - p.y) >= o.r + BADGE_R + 0.1);
+        candidates.push({ p, margin, clear });
+        if (clear && margin >= BADGE_R + 0.5) return p;
+      }
+    }
+  }
+  const pool = candidates.some(c => c.clear) ? candidates.filter(c => c.clear) : candidates;
+  return pool.reduce((best, c) => (c.margin > best.margin ? c : best)).p;
+}
+
 // Discs a badge mustn't cover: every player and ball in the shown phase.
 function badgeObstacles() {
   const ph = phase();
@@ -242,21 +299,41 @@ function renderRoutes() {
   layers.handles.replaceChildren();
   const ppm = pxPerMetre();
   const lineHit = Math.max(1.6, LINE_HIT_PX / ppm);
+  layers.ballRoutes.replaceChildren();
+  svg.classList.toggle('option-focusing', !!ui.optionFocus);
   const taken = badgeObstacles();
-  for (const r of phase().routes) {
+  const routes = phase().routes;
+  // Option badges are placed first, so the start-of-route badges make way for them.
+  const ordered = [...routes.filter(r => r.option), ...routes.filter(r => !r.option)];
+  const badgeAt = new Map();
+  for (const r of ordered) {
+    if (!Number.isFinite(r.order)) continue;
+    const b = r.option
+      ? optionBadgePosition(r, optionGroup(routes, r.from).filter(o => o !== r), taken)
+      : badgePosition(r, routeGeometry(r), taken);
+    taken.push({ ...b, r: BADGE_R });
+    badgeAt.set(r.id, b);
+  }
+  for (const r of routes) {
     const selected = isSelected('route', r.id);
-    const cls = `route${selected ? ' selected' : ''}${isAttached(r) ? '' : ' loose'}${isOtherOption(r) ? ' option-alt' : ''}`;
+    const focus = ui.optionFocus === r.id;
+    const extra = `${isOtherOption(r) ? ' option-alt' : ''}${focus ? ' option-focus' : ''}`;
+    const cls = `route${selected ? ' selected' : ''}${isAttached(r) ? '' : ' loose'}${extra}`;
     const g = svgEl('g', { class: cls, 'data-kind': 'route', 'data-id': r.id }, layer);
     const geometry = routeGeometry(r);
     const { d } = drawnGeometry(r);
-    if (selected) svgEl('path', { d, class: 'route-highlight', 'stroke-width': (ROUTE_TYPES[r.type]?.width ?? 0.3) + 0.9 }, g);
     svgEl('path', { d, class: 'route-hit', 'stroke-width': lineHit }, g);
-    routePaths(g, 'path', { d }, r.type);
+    // Passes and kicks are seen above the players; their touch area stays under them, so a press on the
+    // passer still picks up the passer.
+    const lines = BALL_ROUTES.has(r.type) ? svgEl('g', { class: `route-line${extra}`, 'data-id': r.id }, layers.ballRoutes) : g;
+    const width = ROUTE_TYPES[r.type]?.width ?? 0.3;
+    if (focus) svgEl('path', { d, class: 'route-focus', 'stroke-width': width + 1.3 }, lines);
+    else if (selected) svgEl('path', { d, class: 'route-highlight', 'stroke-width': width + 0.9 }, lines);
+    routePaths(lines, 'path', { d }, r.type);
 
     // Badges go in their own layer above the players, so a nearby player can't cover them.
-    if (Number.isFinite(r.order)) {
-      const b = badgePosition(r, geometry, taken);
-      taken.push({ ...b, r: BADGE_R });
+    if (badgeAt.has(r.id)) {
+      const b = badgeAt.get(r.id);
       const badge = svgEl('g', { class: 'badge', 'data-kind': 'badge', 'data-id': r.id, transform: `translate(${b.x} ${b.y})${turn()}` }, layers.badges);
       svgEl('circle', { r: BADGE_R, stroke: ROUTE_TYPES[r.type]?.color ?? '#fff' }, badge);
       // "2", or "2A" / "2B" for options.
@@ -290,7 +367,7 @@ function optionLabel(parent, r) {
     transform: `translate(${round1(ex + tx * gap)} ${round1(ey + ty * gap)})${turn()}`,
     'text-anchor': across ? (sx > 0 ? 'start' : 'end') : 'middle',
     'dominant-baseline': across ? 'central' : sy > 0 ? 'hanging' : 'alphabetic',
-    'font-size': 1.1,
+    'font-size': OPTION_LABEL_SIZE,
   }, parent).textContent = text;
 }
 const round1 = v => Math.round(v * 100) / 100;
@@ -346,6 +423,7 @@ function playerText(g, label) {
 
 // The previous phase's routes and players, faintly, so you can see who moved where. The whole layer
 // ignores the pointer. Routes have no badges or handles, so nothing in it reads as the current phase.
+// Of a player's options only A, the plan the phase was built from, is shown.
 function renderGhost() {
   const layer = layers.ghost;
   layer.replaceChildren();
@@ -353,9 +431,8 @@ function renderGhost() {
   if (!ui.layers.ghost || !prev) return;
   const routes = svgEl('g', { class: 'ghost-routes' }, layer);
   for (const r of prev.routes) {
-    // Options look as they do on screen: B, C … fainter, labels by their ends.
-    const g = isOtherOption(r) ? svgEl('g', { class: 'option-alt' }, routes) : routes;
-    routePaths(g, 'path', { d: drawnGeometry(r).d }, r.type);
+    if (isOtherOption(r)) continue;
+    routePaths(routes, 'path', { d: drawnGeometry(r).d }, r.type);
     optionLabel(routes, r);
   }
   for (const p of state.players) {
@@ -461,6 +538,7 @@ function updateToolbar() {
 // while click-to-draw from a player is on.
 function updateDrawHint() {
   const hint = $('draw-hint');
+  const wasHidden = hint.hidden;
   hint.hidden = !ui.tool;
   if (!ui.tool) return;
   const touch = touchScreen.matches;
@@ -478,7 +556,11 @@ function updateDrawHint() {
     const where = ui.tool === 'pass' ? `${who}'s pass ends, or on a team-mate` : `${who}'s ${type} ends`;
     text = `${verb} where ${where}. ${verb} again for another, ${touch ? 'tap the tool again' : 'Esc'} to stop.`;
   }
-  if (hint.textContent !== text) hint.textContent = text;
+  // A new hint is what the user needs now, so it replaces an older "Saved …" message in the status line.
+  if (hint.textContent !== text || wasHidden) {
+    hint.textContent = text;
+    $('toast').hidden = true;
+  }
 }
 
 function updateHistoryButtons() {
@@ -532,7 +614,17 @@ function syncInputs() {
   $('title-size').dataset.value = inputs.name.value;
   set(inputs.category, state.category, force);
   set(inputs.tags, state.tags.join(', '), force);
-  set(inputs.note, phase().note, forceNote);
+  if (inputs.note.value !== phase().note || forceNote) {
+    set(inputs.note, phase().note, forceNote);
+    fitNote();
+  }
+}
+
+// The note box grows with its text up to a few lines (then scrolls), so a long note wraps in view.
+function fitNote() {
+  const t = inputs.note;
+  t.style.height = 'auto';
+  t.style.height = `${t.scrollHeight + t.offsetHeight - t.clientHeight}px`;
 }
 
 // --- Actions ---
@@ -750,33 +842,123 @@ function initNumberPicker() {
   });
 }
 
+// "Option A: Pass to 12", "Option B: Kick", "Option C: Pass" (a pass with a loose end).
+function optionTitle(route) {
+  const receiver = route.to && state.players.find(p => p.id === route.to);
+  const what = ROUTE_TYPES[route.type]?.label ?? 'Route';
+  return `Option ${route.option}: ${what}${receiver ? ` to ${receiver.label}` : ''}`;
+}
+
 // An option's badge opens a box for its order number (shared by all its options), its label, and
-// "Make this the main option". Saving is one undo step.
-function editOption(route) {
+// "Make this the main option". Saving is one undo step. While it is open the route is highlighted (the
+// others fade) and, on a computer, the box sits on the side of the pitch away from it.
+// focus: 'label' or 'order', the field to start in.
+function editOption(route, focus = 'order') {
   const dialog = $('option-dialog');
   dialog.dataset.route = route.id;
-  $('option-title').textContent = `Option ${route.option}`;
+  $('option-title').textContent = optionTitle(route);
   $('option-order').value = route.order ?? '';
   $('option-label').value = route.optionLabel ?? '';
   $('option-main').hidden = route.option === 'A';
   dialog.returnValue = '';
+  ui.optionFocus = route.id;
+  render();
+  dialog.style.cssText = '';
   dialog.showModal();
+  if (!phoneLayout.matches) placeAwayFromRoute(dialog, route.id);
+  const field = $(focus === 'label' ? 'option-label' : 'option-order');
+  field.focus();
+  field.select();
+}
+
+// Puts a dialog beside the pitch's left or right edge, whichever is further from the route on screen.
+function placeAwayFromRoute(dialog, id) {
+  const line = document.querySelector(`#ball-routes-layer [data-id="${id}"], #routes-layer [data-id="${id}"]`);
+  if (!line) return;
+  const r = line.getBoundingClientRect();
+  const pitch = svg.getBoundingClientRect();
+  const w = dialog.offsetWidth;
+  const h = dialog.offsetHeight;
+  const routeMid = r.left + r.width / 2;
+  const left = routeMid > pitch.left + pitch.width / 2 ? Math.max(8, pitch.left + 12) : Math.min(innerWidth - w - 8, pitch.right - w - 12);
+  // If that still covers the route (a long one), go above or below it instead.
+  let top = Math.max(8, pitch.top + (pitch.height - h) / 2);
+  if (left < r.right && left + w > r.left && top < r.bottom && top + h > r.top) {
+    top = r.top - h - 12 >= 8 ? r.top - h - 12 : Math.min(innerHeight - h - 8, r.bottom + 12);
+  }
+  dialog.style.cssText = `margin: 0; inset: auto; left: ${left}px; top: ${top}px;`;
 }
 
 function initOptionDialog() {
   const dialog = $('option-dialog');
   $('option-label').maxLength = OPTION_LABEL_MAX;
   dialog.addEventListener('close', () => {
+    ui.optionFocus = null;
     const route = phase().routes.find(r => r.id === dialog.dataset.route);
     const action = dialog.returnValue;
-    if (!route || !action) return;
-    const n = Number($('option-order').value);
-    if (Number.isInteger(n) && n >= 1 && n <= 99) for (const r of optionGroup(phase().routes, route.from)) r.order = n;
-    const label = $('option-label').value.trim().slice(0, OPTION_LABEL_MAX);
-    if (label) route.optionLabel = label;
-    else delete route.optionLabel;
-    if (action === 'main') makeMainOption(phase().routes, route);
+    if (route && action) {
+      const n = Number($('option-order').value);
+      if (Number.isInteger(n) && n >= 1 && n <= 99) for (const r of optionGroup(phase().routes, route.from)) r.order = n;
+      const label = $('option-label').value.trim().slice(0, OPTION_LABEL_MAX);
+      if (label) route.optionLabel = label;
+      else delete route.optionLabel;
+      if (action === 'main') makeMainOption(phase().routes, route);
+    }
     render();
+  });
+}
+
+// The bar of actions beside a selected route (when no route tool is on): Label and Make main for options,
+// Order and Delete for any route. It sits above the route (or below, or beside it, if there's no room),
+// clear of the route's handles and their touch areas.
+function updateRouteBar() {
+  const bar = $('route-bar');
+  const sel = ui.selected;
+  const route = sel?.kind === 'route' && !ui.tool && !ui.dragging && !ui.optionFocus ? phase().routes.find(r => r.id === sel.id) : null;
+  bar.hidden = !route;
+  if (!route) return;
+  bar.dataset.id = route.id;
+  bar.querySelector('[data-route-action="label"]').hidden = !route.option;
+  bar.querySelector('[data-route-action="main"]').hidden = !route.option || route.option === 'A';
+
+  const wrap = bar.parentElement.getBoundingClientRect();
+  const handles = [...layers.handles.querySelectorAll('.handle-hit')].map(h => h.getBoundingClientRect());
+  const hit = layers.routes.querySelector(`[data-id="${route.id}"] .route-hit`)?.getBoundingClientRect();
+  const boxes = hit ? [hit, ...handles] : handles;
+  if (!boxes.length) { bar.hidden = true; return; }
+  // The line's own touch area reaches half its width beyond the line.
+  const pad = Math.max(1.6 * pxPerMetre(), LINE_HIT_PX) / 2;
+  const box = {
+    left: Math.min(...boxes.map(b => b.left)) - pad, right: Math.max(...boxes.map(b => b.right)) + pad,
+    top: Math.min(...boxes.map(b => b.top)) - pad, bottom: Math.max(...boxes.map(b => b.bottom)) + pad,
+  };
+  const { offsetWidth: w, offsetHeight: h } = bar;
+  const gap = 6;
+  const minX = wrap.left + 4;
+  const maxX = wrap.right - w - 4;
+  const clampX = x => Math.min(Math.max(minX, x), maxX);
+  const midX = clampX((box.left + box.right - w) / 2);
+  let at;
+  if (box.top - gap - h >= wrap.top + 4) at = { x: midX, y: box.top - gap - h };
+  else if (box.bottom + gap + h <= wrap.bottom - 4) at = { x: midX, y: box.bottom + gap };
+  else {
+    const y = Math.min(Math.max(wrap.top + 4, (box.top + box.bottom - h) / 2), wrap.bottom - h - 4);
+    at = { x: box.right + gap <= maxX ? box.right + gap : clampX(box.left - gap - w), y };
+  }
+  bar.style.left = `${at.x - wrap.left}px`;
+  bar.style.top = `${at.y - wrap.top}px`;
+}
+
+function initRouteBar() {
+  $('route-bar').addEventListener('click', e => {
+    const b = e.target.closest('[data-route-action]');
+    const route = phase().routes.find(r => r.id === $('route-bar').dataset.id);
+    if (!b || !route) return;
+    const action = b.dataset.routeAction;
+    if (action === 'label') editOption(route, 'label');
+    else if (action === 'order') editOrder(route.id);
+    else if (action === 'main') { makeMainOption(phase().routes, route); render(); }
+    else if (action === 'delete') { deleteSelected(); render(); }
   });
 }
 
@@ -822,6 +1004,7 @@ async function fileAction(action) {
   } else if (action === 'png') {
     $('image-dialog').showModal();
   } else if (action === 'pdf') {
+    showToast('Making the PDF…', 'ok');
     savePdf();
   } else if (action === 'load') {
     $('load-input').click();
@@ -1050,7 +1233,17 @@ function initTopbar() {
     state.tags = inputs.tags.value.split(',').map(t => t.trim()).filter(Boolean);
     render('tags');
   });
-  inputs.note.addEventListener('input', () => { phase().note = inputs.note.value; render(`note-${ui.phase}`); });
+  inputs.note.addEventListener('input', () => { phase().note = inputs.note.value; fitNote(); render(`note-${ui.phase}`); });
+  addEventListener('resize', fitNote);
+  // Clicking the name or its pencil selects the whole name, so typing replaces it. A press on the box
+  // itself would otherwise put the cursor where it landed, so the first press focuses it by hand; once it
+  // has the focus, clicks place the cursor as usual.
+  inputs.name.addEventListener('focus', () => inputs.name.select());
+  inputs.name.addEventListener('mousedown', e => {
+    if (document.activeElement === inputs.name) return;
+    e.preventDefault();
+    inputs.name.focus();
+  });
 
   document.querySelector('[data-action="undo"]').addEventListener('click', undo);
   document.querySelector('[data-action="redo"]').addEventListener('click', redo);
@@ -1156,12 +1349,15 @@ function initTemplatesDialog() {
   });
 }
 
-// The tips at the top of the sidebar start open; closing them is remembered in this browser.
+// "? Tips" at the top of the sidebar opens a small popup beside it (a popover, so clicking away or
+// Escape closes it). It floats over the page and never moves the toolbar.
 function initTips() {
-  const help = $('help');
-  try { if (localStorage.getItem(TIPS_KEY) === 'closed') help.open = false; } catch { /* storage blocked */ }
-  help.addEventListener('toggle', () => {
-    try { localStorage.setItem(TIPS_KEY, help.open ? 'open' : 'closed'); } catch { /* storage blocked */ }
+  const tips = $('tips');
+  tips.addEventListener('beforetoggle', e => {
+    if (e.newState !== 'open') return;
+    const b = $('help').getBoundingClientRect();
+    tips.style.left = `${b.right + 8}px`;
+    tips.style.top = `${b.top}px`;
   });
 }
 
@@ -1210,6 +1406,7 @@ function init() {
   initOptionDialog();
   initNumberPicker();
   initTips();
+  initRouteBar();
   initTemplatesDialog();
   const openSetPiece = initSetPieceDialog();
 

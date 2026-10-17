@@ -230,12 +230,12 @@ async function setup(page, { touch = false } = {}) {
 
   // Editing a label and the shared order.
   await openOption(A.id);
-  check('A\'s badge opens the option box without "make main"', await page.$eval('#option-dialog', d => d.open) && (await page.$eval('#option-title', t => t.textContent)) === 'Option A' && await page.$eval('#option-main', b => b.hidden));
+  check('A\'s badge opens the option box without "make main"', await page.$eval('#option-dialog', d => d.open) && (await page.$eval('#option-title', t => t.textContent)) === 'Option A: Pass to 3' && await page.$eval('#option-main', b => b.hidden));
   await page.click('#option-dialog .cancel');
   await sleep(100);
   check('Cancel changes nothing', eq(tags(await fromP('a2')), ['1A', '1B', '1C']));
   await openOption(B.id);
-  check('B\'s badge: "Option B" with "make main"', (await page.$eval('#option-title', t => t.textContent)) === 'Option B' && !(await page.$eval('#option-main', b => b.hidden)));
+  check('B\'s badge: "Option B: Pass to 1" with "make main"', (await page.$eval('#option-title', t => t.textContent)) === 'Option B: Pass to 1' && !(await page.$eval('#option-main', b => b.hidden)));
   await page.$eval('#option-order', i => { i.value = ''; });
   await page.type('#option-order', '4');
   await page.focus('#option-label');
@@ -309,11 +309,13 @@ async function setup(page, { touch = false } = {}) {
   };
   check('Add Phase: ball to A\'s receiver (3), B and C ignored', eq(await ballNext(), [51.1, 25.9]));
   const ghost = await page.evaluate(() => ({
+    paths: document.querySelectorAll('#ghost-layer .ghost-routes path').length,
     labels: [...document.querySelectorAll('#ghost-layer .option-label')].map(t => t.textContent),
     alt: document.querySelectorAll('#ghost-layer .option-alt').length,
     badges: document.querySelectorAll('#ghost-layer .badge').length,
   }));
-  check('ghost shows options fainter and their labels, no badges', eq(ghost, { labels: ['if 13 bites'], alt: 3, badges: 0 }), JSON.stringify(ghost));
+  // 12's A and 1's A only (2 lines each: casing and colour); B's label goes with B.
+  check('ghost shows only option A of each player, no badges', eq(ghost, { paths: 4, labels: [], alt: 0, badges: 0 }), JSON.stringify(ghost));
   await page.screenshot({ path: path.join(OUT, 'options-ghost.png') });
   await click(page, '[data-action="undo"]');
   await openOption(B.id);

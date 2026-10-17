@@ -120,7 +120,7 @@ async function dragHold(page, from, to, during) {
   s = await state(page);
   let pass = s.phases[0].routes.find(r => r.type === 'pass');
   check('pass end snaps onto a2 within 2 m and stores "to"', pass.from === 'a1' && pass.to === 'a2' && eq(pass.points[1], [50, 15]), JSON.stringify(pass));
-  const passD = await page.$eval(`#routes-layer [data-id="${pass.id}"] path:last-child`, p => p.getAttribute('d'));
+  const passD = await page.$eval(`#ball-routes-layer [data-id="${pass.id}"] path:last-child`, p => p.getAttribute('d'));
   const endPt = passD.split(' ').slice(-2).map(Number);
   const gap = Math.hypot(endPt[0] - 50, endPt[1] - 15);
   check('drawn pass stops at the receiver disc edge', gap > 1.2 && gap < 1.6, passD);
@@ -519,6 +519,7 @@ async function dragHold(page, from, to, during) {
         cols: new Set(tiles.map(t => t.getAttribute('x'))).size,
         rows: new Set(tiles.map(t => t.getAttribute('y'))).size,
         tiles: tiles.length,
+        tileW: Math.min(...tiles.map(t => Number(t.getAttribute('width')))),
         title: texts('sheet-title'),
         labels: texts('tile-label'),
         notes: texts('tile-note'),
@@ -527,12 +528,14 @@ async function dragHold(page, from, to, during) {
     const bytes = file ? fs.readFileSync(file) : Buffer.alloc(24);
     return { file, pics, info, png: { w: bytes.readUInt32BE(16), h: bytes.readUInt32BE(20) } };
   }
-  const grids = [[1, 'horizontal', 1, 1], [3, 'horizontal', 2, 2], [5, 'horizontal', 2, 3], [1, 'vertical', 1, 1], [3, 'vertical', 3, 1], [5, 'vertical', 3, 2]];
+  // One pitch per row for a horizontal play, two for a vertical one, so they're drawn large.
+  const grids = [[1, 'horizontal', 1, 1], [3, 'horizontal', 1, 3], [5, 'horizontal', 1, 5], [1, 'vertical', 1, 1], [3, 'vertical', 2, 2], [5, 'vertical', 2, 3]];
   for (const [n, orientation, cols, rows] of grids) {
     const r = await sheet(n, { orientation, longNote: n === 5 && orientation === 'horizontal' });
     const tag = `${n} phase${n > 1 ? 's' : ''} ${orientation}`;
     check(`all phases, ${tag}: one PNG named <play>-all-phases.png`, r.file && path.basename(r.file) === 'Sheet test-all-phases.png' && r.pics.length === 1, String(r.file));
     check(`all phases, ${tag}: ${cols} x ${rows} grid`, r.info.tiles === n && r.info.cols === cols && r.info.rows === rows, JSON.stringify(r.info));
+    check(`all phases, ${tag}: large pitches`, r.info.tileW >= (orientation === 'horizontal' ? 800 : 400), String(r.info.tileW));
     check(`all phases, ${tag}: PNG is the sheet's size`, r.png.w === r.info.width && r.png.h === r.info.height && r.png.w > 0, JSON.stringify(r.png));
     check(`all phases, ${tag}: play name on top, "Phase n" on each tile`, eq(r.info.title, ['Sheet: test']) && eq(r.info.labels, Array.from({ length: n }, (_, i) => `Phase ${i + 1}`)));
     check(`all phases, ${tag}: no ghost, handles or highlight`, !/class="(ghost|ghost-routes|handle[^"]*|route-highlight|snap-ring)"/.test(noCss(r.pics[0] ?? 'class="ghost"')));
@@ -811,17 +814,10 @@ async function dragHold(page, from, to, during) {
   const hint2 = await page.$eval('#draw-hint', h => (h.hidden ? null : h.textContent));
   check('with a player selected: where to click, again, Esc', hint2 === "Click where attacker 5's pass ends, or on a team-mate. Click again for another, Esc to stop.", hint2);
   await page.keyboard.press('Escape');
-  check('tips are at the top of the sidebar, open at first', await page.evaluate(() => {
+  check('"? Tips" is at the top of the sidebar', await page.evaluate(() => {
     const help = document.querySelector('.toolbar').firstElementChild;
-    return help.id === 'help' && help.open && help.textContent.includes('Double-click a player') && help.querySelector('summary').textContent.includes('?');
+    return help.id === 'help' && help.textContent.includes('?') && document.getElementById('tips').textContent.includes('Double-click a player');
   }));
-  await page.click('#help summary');
-  await sleep(100); // the toggle event comes just after the click
-  await page.reload();
-  await page.waitForSelector('#phase-tabs button');
-  await captureSvgs(page);
-  check('closing the tips is remembered', !(await page.$eval('#help', h => h.open)));
-  await page.click('#help summary');
 
   // --- 8. Title pencil, halfway labels ---
   await page.$eval('#play-name', i => { i.value = 'Polish: test'; i.dispatchEvent(new Event('input')); });
@@ -1037,6 +1033,314 @@ async function dragHold(page, from, to, during) {
   await browser.close();
 }
 
+// ---------------- Second first-use fixes (desktop) ----------------
+{
+  console.log('\n== Second first-use fixes (desktop) ==');
+  const dl = path.join(OUT, 'second');
+  fs.mkdirSync(dl);
+  const { browser, page, errors } = await open({ downloads: dl });
+  await captureSvgs(page);
+  const rect = sel => page.$eval(sel, el => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height, cx: r.x + r.width / 2, cy: r.y + r.height / 2 }; });
+  const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+  const inside = (a, b) => a.left >= b.left - 0.5 && a.right <= b.right + 0.5 && a.top >= b.top - 0.5 && a.bottom <= b.bottom + 0.5;
+  // Presses an element (a badge or a route's touch line) by dispatching the pointer events on it.
+  const press = sel => page.evaluate(sel => {
+    const el = document.querySelector(sel);
+    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, isPrimary: true, button: 0, pointerId: 1 }));
+    document.getElementById('pitch').dispatchEvent(new PointerEvent('pointerup', { bubbles: true, isPrimary: true, button: 0, pointerId: 1 }));
+  }, sel);
+  const selectPlayer = async id => {
+    await sleep(450); // two taps within 400 ms would be a double-click
+    await tapPlayer(page, id);
+  };
+  const routesNow = async () => (await state(page)).phases[0].routes;
+  const dialogOpen = () => page.$eval('#option-dialog', d => d.open);
+  const closeOption = async () => { await page.click('#option-dialog .cancel'); await sleep(100); };
+  let s;
+
+  // 12 (a2) in the middle with 3 below, 1 above; 4 lower left with 5 near it.
+  for (let i = 0; i < 5; i++) await addPlayer(page, 'attack');
+  await page.evaluate(() => {
+    const p = window.playState.phases[0].positions;
+    Object.assign(p, { a1: { x: 52, y: 25 }, a2: { x: 50, y: 35 }, a3: { x: 52, y: 45 }, a4: { x: 40, y: 52 }, a5: { x: 46, y: 60 } });
+    window.playState.players.find(q => q.id === 'a2').label = '12';
+  });
+  await page.keyboard.press('Escape');
+  // 12: pass to 3 (A), pass to 1 (B), kick (C). 4: pass to 5 (A), kick (B), only about 25 degrees apart.
+  await selectPlayer('a2');
+  await click(page, '[data-route="pass"]');
+  await tap(page, 52.5, 45.5);
+  await tap(page, 52.5, 24.5);
+  await click(page, '[data-route="kick"]');
+  await tap(page, 80, 35);
+  await page.keyboard.press('Escape');
+  await selectPlayer('a4');
+  await click(page, '[data-route="pass"]');
+  await tap(page, 46.3, 60.3);
+  await click(page, '[data-route="kick"]');
+  await tap(page, 62, 63);
+  await page.keyboard.press('Escape');
+  s = await state(page);
+  const opts = s.phases[0].routes;
+  check('setup: 12 has options A, B, C and 4 has A, B', eq(opts.map(r => `${r.from}${r.option}`), ['a2A', 'a2B', 'a2C', 'a4A', 'a4B']), JSON.stringify(opts));
+  const [A, B, C, A4, B4] = opts;
+
+  // --- 1. Each option's badge is on its own route ---
+  const badgeFit = await page.evaluate(ids => {
+    const samples = id => {
+      const p = document.querySelector(`#ball-routes-layer [data-id="${id}"] path.route-casing`);
+      const len = p.getTotalLength();
+      return Array.from({ length: 81 }, (_, i) => p.getPointAtLength(len * i / 80));
+    };
+    const dist = (pts, b) => Math.min(...pts.map(q => Math.hypot(q.x - b.x, q.y - b.y)));
+    const route = id => window.playState.phases[0].routes.find(r => r.id === id);
+    return ids.map(id => {
+      const r = route(id);
+      const [x, y] = document.querySelector(`#badges-layer .badge[data-id="${id}"]`).getAttribute('transform').match(/translate\(([-\d.]+) ([-\d.]+)\)/).slice(1).map(Number);
+      const b = { x, y };
+      const siblings = window.playState.phases[0].routes.filter(o => o.from === r.from && o.option && o.id !== id);
+      return {
+        id,
+        own: dist(samples(id), b),
+        sibling: Math.min(...siblings.map(o => dist(samples(o.id), b))),
+        fromStart: Math.hypot(b.x - r.points[0][0], b.y - r.points[0][1]),
+      };
+    });
+  }, opts.map(r => r.id));
+  check('each option badge sits on its own route, clearly nearer it than any sibling option',
+    badgeFit.every(f => f.own < 1.6 && f.sibling - f.own >= 1), JSON.stringify(badgeFit));
+  check('... a short way along the route, clear of the passer', badgeFit.every(f => f.fromStart > 2.1 && f.fromStart < 9), JSON.stringify(badgeFit));
+  await page.screenshot({ path: path.join(OUT, 'option-badges.png') });
+
+  // The option box names the route and highlights it.
+  await press(`#badges-layer [data-id="${A.id}"] circle`);
+  await page.waitForSelector('#option-dialog[open]', { timeout: 3000 }).catch(() => null);
+  let title = await page.$eval('#option-title', t => t.textContent);
+  check('option box title names the route: "Option A: Pass to 3"', title === 'Option A: Pass to 3', title);
+  const focus = await page.evaluate(id => ({
+    focused: !!document.querySelector(`#ball-routes-layer .route-line.option-focus[data-id="${id}"] .route-focus`),
+    own: Number(getComputedStyle(document.querySelector(`#ball-routes-layer [data-id="${id}"]`)).opacity),
+    others: [...document.querySelectorAll('#ball-routes-layer .route-line')].filter(g => g.dataset.id !== id).map(g => Number(getComputedStyle(g).opacity)),
+  }), A.id);
+  check('while its box is open the route is highlighted strongly and the others fade', focus.focused && focus.own === 1 && focus.others.every(o => o <= 0.3), JSON.stringify(focus));
+  const aBox = await rect(`#ball-routes-layer [data-id="${A.id}"]`);
+  const dBox = await rect('#option-dialog');
+  check('the option box does not cover its route', !overlaps(aBox, dBox), JSON.stringify([aBox, dBox]));
+  await page.screenshot({ path: path.join(OUT, 'option-focus.png') });
+  await closeOption();
+  check('closing the box ends the highlight', (await page.$$('.route-focus, .option-focus')).length === 0 && !(await page.$eval('#pitch', p => p.classList.contains('option-focusing'))));
+  await press(`#badges-layer [data-id="${C.id}"] circle`);
+  await page.waitForSelector('#option-dialog[open]');
+  title = await page.$eval('#option-title', t => t.textContent);
+  check('a kick option: "Option C: Kick"', title === 'Option C: Kick', title);
+  await closeOption();
+  await press(`#badges-layer [data-id="${B.id}"] circle`);
+  await page.waitForSelector('#option-dialog[open]');
+  title = await page.$eval('#option-title', t => t.textContent);
+  check('"Option B: Pass to 1" uses the receiver\'s label', title === 'Option B: Pass to 1', title);
+  await closeOption();
+
+  // --- 2. Route action bar ---
+  await page.keyboard.press('Escape');
+  const bar = () => page.evaluate(() => {
+    const b = document.getElementById('route-bar');
+    if (b.hidden) return null;
+    return [...b.querySelectorAll('button')].filter(x => !x.hidden && x.offsetParent).map(x => x.textContent);
+  });
+  check('no bar with nothing selected', (await bar()) === null);
+  await press(`#routes-layer [data-id="${A.id}"] .route-hit`);
+  check('selecting option A shows Label, Order, Delete (no Make main)', eq(await bar(), ['Label', 'Order', 'Delete']), JSON.stringify(await bar()));
+  const clearOfHandles = async () => {
+    const b = await rect('#route-bar');
+    const hs = await page.$$eval('#handles-layer .handle-hit', els => els.map(e => { const r = e.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; }));
+    const wrap = await rect('.pitch-wrap');
+    return { ok: hs.length === 3 && hs.every(h => !overlaps(b, h)) && inside(b, wrap), b, hs };
+  };
+  let clear = await clearOfHandles();
+  check('the bar sits by the route, clear of its handles', clear.ok, JSON.stringify(clear));
+  const near = await page.evaluate(id => {
+    const b = document.getElementById('route-bar').getBoundingClientRect();
+    const l = document.querySelector(`#routes-layer [data-id="${id}"] .route-hit`).getBoundingClientRect();
+    return Math.max(0, b.top - l.bottom, l.top - b.bottom, b.left - l.right, l.left - b.right);
+  }, A.id);
+  check('... and next to it (within 60 px)', near < 60, String(near));
+  await page.screenshot({ path: path.join(OUT, 'route-bar.png') });
+  await press(`#routes-layer [data-id="${B.id}"] .route-hit`);
+  check('option B also gets Make main', eq(await bar(), ['Label', 'Make main', 'Order', 'Delete']), JSON.stringify(await bar()));
+  clear = await clearOfHandles();
+  check('B\'s bar is clear of its handles too', clear.ok, JSON.stringify(clear));
+  await click(page, '[data-route-action="label"]');
+  check('Label opens the option box on the label field', (await dialogOpen()) && (await page.evaluate(() => document.activeElement?.id)) === 'option-label');
+  await page.keyboard.type('if 13 bites');
+  await page.keyboard.press('Enter');
+  await sleep(100);
+  check('... and saves the label', (await routesNow()).find(r => r.id === B.id).optionLabel === 'if 13 bites');
+  await press(`#routes-layer [data-id="${B.id}"] .route-hit`);
+  await click(page, '[data-route-action="order"]');
+  check('Order on an option opens the option box on the order field', (await dialogOpen()) && (await page.evaluate(() => document.activeElement?.id)) === 'option-order');
+  await closeOption();
+  await press(`#routes-layer [data-id="${B.id}"] .route-hit`);
+  await click(page, '[data-route-action="main"]');
+  s = await state(page);
+  check('Make main makes B the main option', s.phases[0].routes.find(r => r.id === B.id).option === 'A' && s.phases[0].routes.find(r => r.id === A.id).option === 'B');
+  await click(page, '[data-action="undo"]');
+  check('... one undo step', (await routesNow()).find(r => r.id === A.id).option === 'A');
+  // A run: Order and Delete only; Order opens the number box.
+  await selectPlayer('a3');
+  await click(page, '[data-route="run"]');
+  await tap(page, 60, 50);
+  await click(page, '[data-route="run"]');
+  const runR = (await routesNow()).find(r => r.type === 'run');
+  await press(`#routes-layer [data-id="${runR.id}"] .route-hit`);
+  check('a run gets Order and Delete', eq(await bar(), ['Order', 'Delete']), JSON.stringify(await bar()));
+  await click(page, '[data-route-action="order"]');
+  const box = await page.$eval('#inline-edit', i => (i.hidden ? null : { numeric: i.classList.contains('numeric'), focused: document.activeElement === i }));
+  check('Order on a run opens the number box', box?.numeric && box.focused, JSON.stringify(box));
+  await page.keyboard.press('Escape');
+  await press(`#routes-layer [data-id="${runR.id}"] .route-hit`);
+  await click(page, '[data-route-action="delete"]');
+  check('Delete removes the route', !(await routesNow()).some(r => r.id === runR.id) && (await bar()) === null);
+  await press(`#routes-layer [data-id="${A.id}"] .route-hit`);
+  await click(page, '[data-route="pass"]');
+  check('turning a route tool on hides the bar', (await bar()) === null);
+  await page.keyboard.press('Escape');
+  check('the tips mention the bar', (await page.$eval('#tips', t => t.textContent)).includes('Make main'));
+
+  // --- 4. Passes and kicks above the players ---
+  check('pass/kick lines in a layer above the players, below balls and badges', await page.evaluate(() => {
+    const ids = [...document.getElementById('world').children].map(g => g.id);
+    const at = id => ids.indexOf(id);
+    return at('routes-layer') < at('players-layer') && at('players-layer') < at('ball-routes-layer') && at('ball-routes-layer') < at('ball-layer') && at('ball-layer') < at('badges-layer');
+  }));
+  check('a pass is drawn in the upper layer, its touch line under the players', await page.evaluate(id => !!document.querySelector(`#ball-routes-layer [data-id="${id}"] path.route-casing`) && !!document.querySelector(`#routes-layer [data-id="${id}"] .route-hit`) && !document.querySelector(`#routes-layer [data-id="${id}"] .route-casing`), A.id));
+
+  // --- 3. Kicks: thicker, bigger dots, dark outline ---
+  const kick = await page.$eval(`#ball-routes-layer [data-id="${C.id}"]`, g => {
+    const [casing, line] = g.querySelectorAll('path');
+    return { w: Number(line.getAttribute('stroke-width')), dash: line.getAttribute('stroke-dasharray'), cap: line.getAttribute('stroke-linecap'), casing: casing.getAttribute('class'), cw: Number(casing.getAttribute('stroke-width')), color: line.getAttribute('stroke') };
+  });
+  check('kick line is thicker with bigger dots, orange, with the dark outline', kick.w >= 0.45 && kick.cap === 'round' && /^0\.01 /.test(kick.dash) && kick.color === '#ffa033' && kick.casing === 'route-casing' && kick.cw > kick.w, JSON.stringify(kick));
+
+  // Exports: the option label is at least as large as the player numbers.
+  const exportPics = async (file, image) => {
+    for (const f of fs.readdirSync(dl)) fs.rmSync(path.join(dl, f));
+    await page.evaluate(() => { window.__svgs.length = 0; });
+    await click(page, `[data-file="${file}"]`);
+    if (image) await click(page, `[data-image="${image}"]`);
+    await waitFile(dl, file === 'pdf' ? '.pdf' : '.png');
+    return svgs(page);
+  };
+  const labelSizes = xml => page.evaluate(xml => {
+    const root = new DOMParser().parseFromString(xml, 'image/svg+xml').documentElement;
+    const sizes = sel => [...root.querySelectorAll(sel)].map(t => Number(t.getAttribute('font-size')));
+    return { labels: sizes('.option-label'), players: sizes('.player text'), kickW: [...root.querySelectorAll('[stroke="#ffa033"]')].map(p => Number(p.getAttribute('stroke-width'))) };
+  }, xml);
+  for (const [file, image] of [['png', 'phase'], ['pdf', null]]) {
+    const pics = await exportPics(file, image);
+    const z = await labelSizes(pics.map(noCss).find(p => p.includes('option-label')) ?? '<svg/>');
+    check(`${file.toUpperCase()}: option labels at least as large as player numbers, kicks thick`, z.labels.length === 1 && z.labels[0] >= Math.max(...z.players) && z.kickW.some(w => w >= 0.45), JSON.stringify(z));
+  }
+
+  // --- 7d. Ghost: only option A ---
+  await click(page, '[data-phase="add"]');
+  const ghost = await page.evaluate(() => ({
+    paths: document.querySelectorAll('#ghost-layer .ghost-routes path').length,
+    labels: document.querySelectorAll('#ghost-layer .option-label').length,
+  }));
+  check('previous-phase ghost shows only option A of each player (2 routes, no B label)', ghost.paths === 4 && ghost.labels === 0, JSON.stringify(ghost));
+  await click(page, '[data-action="undo"]');
+
+  // --- 4. A lineout throw drawn as a pass shows over the forwards ---
+  await click(page, '#templates-button');
+  await page.waitForSelector('.template-card');
+  await page.$eval('.template-card[data-template="4"]', b => b.click());
+  await answerConfirm(page);
+  await page.keyboard.press('Escape');
+  await tool(page, 'pass');
+  await drag(page, [39.5, 1.2], [38.8, 13.7]); // hooker down the line to 6, over 1, 4 and 3
+  await tool(page, null);
+  await page.keyboard.press('Escape');
+  const throwPass = (await routesNow()).find(r => r.type === 'pass');
+  check('lineout: a pass from the hooker down the line', throwPass?.from === 'a2' && throwPass.to === 'a6', JSON.stringify(throwPass));
+  // Inside 1's disc, the picture changes when the pass's layer is hidden: the pass is drawn over the player.
+  const disc = await rect('#players-layer [data-id="a1"] .body');
+  const clip = { x: disc.cx - disc.w * 0.35, y: disc.cy - disc.h * 0.35, width: disc.w * 0.7, height: disc.h * 0.7 };
+  const shownPx = await page.screenshot({ clip });
+  await page.$eval('#ball-routes-layer', g => { g.style.visibility = 'hidden'; });
+  const hiddenPx = await page.screenshot({ clip });
+  await page.$eval('#ball-routes-layer', g => { g.style.visibility = ''; });
+  check('lineout: the throw is visible over the forwards\' discs', !Buffer.from(shownPx).equals(Buffer.from(hiddenPx)));
+  await page.screenshot({ path: path.join(OUT, 'lineout-throw.png') });
+
+  // --- 5. Title rename selects the whole name ---
+  const nameBox = await rect('#play-name');
+  await page.mouse.click(nameBox.cx, nameBox.cy);
+  await page.keyboard.type('Blindside');
+  check('clicking the title selects it all: typing replaces the name', (await state(page)).name === 'Blindside', (await state(page)).name);
+  await page.$eval('#play-name', i => i.blur());
+  const pencil = await rect('.title-pencil');
+  await page.mouse.click(pencil.cx, pencil.cy);
+  await page.keyboard.type('Wide');
+  check('clicking the pencil selects it all too', (await state(page)).name === 'Wide', (await state(page)).name);
+  await page.$eval('#play-name', i => i.blur());
+
+  // --- 6. Nothing covers the pitch ---
+  const pitchBefore = await rect('#pitch');
+  await click(page, '[data-file="save"]'); // a "Saved" message still showing gives way to the hint
+  await tool(page, 'run');
+  const hintBox = await rect('#draw-hint');
+  const pitchAfter = await rect('#pitch');
+  check('the drawing hint is shown off the pitch', hintBox.w > 0 && !overlaps(hintBox, pitchBefore) && inside(hintBox, await rect('#statusbar')), JSON.stringify([hintBox, pitchBefore]));
+  check('showing the hint does not resize the pitch', eq(pitchBefore, pitchAfter), JSON.stringify([pitchBefore, pitchAfter]));
+  await tool(page, null);
+  await page.evaluate(() => { document.getElementById('toast').hidden = true; });
+  await click(page, '[data-file="save"]');
+  const toastBox = await rect('#toast');
+  check('the "Saved" message is shown off the pitch', toastBox.w > 0 && !overlaps(toastBox, pitchBefore) && (await page.$eval('#toast', t => t.textContent)) === 'Saved Wide.json', JSON.stringify(toastBox));
+
+  // --- 7a. Save PDF says "Saved <file>" like the images ---
+  for (const f of fs.readdirSync(dl)) fs.rmSync(path.join(dl, f));
+  await click(page, '[data-file="pdf"]');
+  const making = await page.$eval('#toast', t => (t.hidden ? null : t.textContent));
+  await waitFile(dl, '.pdf');
+  await page.waitForFunction(() => document.getElementById('toast').textContent.startsWith('Saved'), { timeout: 15000 }).catch(() => null);
+  check('Save PDF: "Making the PDF…", then "Saved Wide.pdf" in the status line', making === 'Making the PDF…' && (await page.$eval('#toast', t => (t.hidden ? null : t.textContent))) === 'Saved Wide.pdf', making);
+
+  // --- 7b. Tips popup ---
+  check('tips start closed', !(await page.$eval('#tips', t => t.matches(':popover-open'))));
+  const playersBefore = await rect('.toolbar .group');
+  await page.click('#help');
+  const tipsBox = await rect('#tips');
+  const helpBox = await rect('#help');
+  check('"? Tips" opens a small popup beside the button', (await page.$eval('#tips', t => t.matches(':popover-open'))) && tipsBox.left >= helpBox.right && Math.abs(tipsBox.top - helpBox.top) < 4, JSON.stringify([tipsBox, helpBox]));
+  check('... which doesn\'t push the toolbar down', eq(await rect('.toolbar .group'), playersBefore));
+  await page.keyboard.press('Escape');
+  check('Escape closes the tips', !(await page.$eval('#tips', t => t.matches(':popover-open'))));
+  await page.click('#help');
+  const empty = await toScreen(page, 90, 66);
+  await page.mouse.click(empty.x, empty.y);
+  check('clicking away closes the tips', !(await page.$eval('#tips', t => t.matches(':popover-open'))));
+
+  // --- 7c. The note keeps its width with many phases; long notes wrap ---
+  for (let i = 0; i < 29; i++) await click(page, '[data-phase="add"]');
+  const bar7 = await page.evaluate(() => {
+    const note = document.getElementById('phase-note').getBoundingClientRect();
+    const tabs = document.getElementById('phase-tabs');
+    const cur = tabs.querySelector('[aria-current="step"]').getBoundingClientRect();
+    const t = tabs.getBoundingClientRect();
+    return { phases: tabs.children.length, noteW: note.width, noteRight: note.right, scrolls: tabs.scrollWidth > tabs.clientWidth, curShown: cur.left >= t.left - 1 && cur.right <= t.right + 1, vw: innerWidth };
+  });
+  check('30 phases: the note keeps a usable width, tabs scroll sideways', bar7.phases === 30 && bar7.noteW >= 250 && bar7.noteRight <= bar7.vw && bar7.scrolls && bar7.curShown, JSON.stringify(bar7));
+  const longNote = 'Twelve hits the line hard, thirteen loops round the back and fifteen comes in at pace on the short side. ';
+  await page.$eval('#phase-note', (t, v) => { t.focus(); t.value = v; t.dispatchEvent(new Event('input')); }, longNote);
+  const fit = await page.$eval('#phase-note', t => ({ sh: t.scrollHeight, ch: t.clientHeight, sw: t.scrollWidth, cw: t.clientWidth }));
+  check('a long note wraps and shows in full (up to four lines)', fit.ch > 40 && fit.sh <= fit.ch + 2 && fit.sw <= fit.cw, JSON.stringify(fit));
+  await page.$eval('#phase-note', t => t.blur());
+
+  check('second fixes: no console errors or native dialogs', errors.length === 0, errors.join(' | '));
+  await browser.close();
+}
+
 // ---------------- Phone 390 portrait, touch ----------------
 {
   console.log('\n== Phone 390 portrait (touch) ==');
@@ -1073,6 +1377,13 @@ async function dragHold(page, from, to, during) {
   s = await state(page);
   const pass = s.phases[0].routes[0];
   check('touch-drawn pass attaches both ends', pass?.from === 'a1' && pass?.to === 'a2', JSON.stringify(pass));
+  const offPitch = await page.evaluate(() => {
+    const box = el => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width }; };
+    const p = box(document.getElementById('pitch'));
+    const h = box(document.getElementById('draw-hint'));
+    return { shown: !document.getElementById('draw-hint').hidden && h.w > 0, clear: h.top >= p.bottom || h.bottom <= p.top, fits: h.right <= innerWidth, p, h };
+  });
+  check('phone: the drawing hint is under the pitch, not on it', offPitch.shown && offPitch.clear && offPitch.fits, JSON.stringify(offPitch));
   await page.tap('[data-route="pass"]');
   await page.$eval('#phase-note', t => { t.value = 'p1'; t.dispatchEvent(new Event('input')); t.blur(); });
   await page.tap('[data-phase="add"]');
@@ -1122,6 +1433,13 @@ async function dragHold(page, from, to, during) {
   await page.waitForFunction(() => window.__shared, { timeout: 15000 }).catch(() => null);
   const sharedPng = await page.evaluate(() => window.__shared);
   check('phone PNG goes to the share sheet', sharedPng?.[0]?.name === 'Untitled play-phase-2.png', JSON.stringify(sharedPng));
+  await page.waitForFunction(() => document.getElementById('toast').textContent.startsWith('Saved'), { timeout: 5000 }).catch(() => null);
+  const phoneToast = await page.evaluate(() => {
+    const t = document.getElementById('toast').getBoundingClientRect();
+    const p = document.getElementById('pitch').getBoundingClientRect();
+    return { shown: !document.getElementById('toast').hidden && t.width > 0, clear: t.top >= p.bottom || t.bottom <= p.top, right: t.right };
+  });
+  check('phone: the "Saved" message is under the pitch, not on it', phoneToast.shown && phoneToast.clear && phoneToast.right <= 390, JSON.stringify(phoneToast));
   await page.evaluate(() => { window.__shared = null; });
   await page.tap('summary');
   await page.tap('[data-file="png"]');
