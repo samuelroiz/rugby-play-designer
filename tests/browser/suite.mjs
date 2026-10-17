@@ -1332,7 +1332,7 @@ async function dragHold(page, from, to, during) {
   });
   check('30 phases: the note keeps a usable width, tabs scroll sideways', bar7.phases === 30 && bar7.noteW >= 250 && bar7.noteRight <= bar7.vw && bar7.scrolls && bar7.curShown, JSON.stringify(bar7));
   const longNote = 'Twelve hits the line hard, thirteen loops round the back and fifteen comes in at pace on the short side. ';
-  await page.$eval('#phase-note', (t, v) => { t.focus(); t.value = v; t.dispatchEvent(new Event('input')); }, longNote);
+  await page.$eval('#phase-note', (t, v) => { t.focus(); t.value = v; t.dispatchEvent(new Event('input')); }, longNote.repeat(2));
   const fit = await page.$eval('#phase-note', t => ({ sh: t.scrollHeight, ch: t.clientHeight, sw: t.scrollWidth, cw: t.clientWidth }));
   check('a long note wraps and shows in full (up to four lines)', fit.ch > 40 && fit.sh <= fit.ch + 2 && fit.sw <= fit.cw, JSON.stringify(fit));
   await page.$eval('#phase-note', t => t.blur());
