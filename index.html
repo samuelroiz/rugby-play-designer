@@ -51,6 +51,7 @@
       </div>
     </details>
     <button type="button" id="templates-button" aria-haspopup="dialog">Templates</button>
+    <button type="button" id="present-button" title="Present: the pitch alone, full screen (Esc leaves)">Present</button>
 
     <div class="view-controls">
       <div class="segmented" role="group" aria-label="Pitch view">
@@ -118,10 +119,12 @@
         <g id="ball-layer"></g>
         <g id="badges-layer"></g>
         <g id="handles-layer"></g>
+        <g id="pen-layer" pointer-events="none"></g>
       </g>
     </svg>
     <div class="legend" id="legend" aria-hidden="true"></div>
     <input class="inline-edit" id="inline-edit" type="text" autocomplete="off" spellcheck="false" hidden>
+    <p class="present-count" id="present-count" aria-live="polite"></p>
     <div class="route-bar" id="route-bar" role="toolbar" aria-label="Selected route" hidden>
       <button type="button" data-route-action="label">Label</button>
       <button type="button" data-route-action="main">Make main</button>
@@ -136,12 +139,35 @@
     <div class="toast" id="toast" role="alert" hidden></div>
   </div>
 
+  <p class="present-caption" id="present-caption" hidden></p>
+
   <section class="phasebar" aria-label="Phases">
     <div class="phase-nav">
       <button type="button" data-phase="prev" aria-label="Previous phase" title="Previous phase (←)">‹<span class="long">&nbsp;Prev</span></button>
       <div class="phase-tabs" id="phase-tabs" role="group" aria-label="Phase"></div>
       <button type="button" data-phase="add" class="add-phase" aria-label="Add phase" title="Add a phase at the end, built from the last one: players move to the end of their runs, the ball goes to the receiver">+</button>
       <button type="button" data-phase="next" aria-label="Next phase" title="Next phase (→)"><span class="long">Next&nbsp;</span>›</button>
+    </div>
+    <!-- Play controls. In Present mode the phase bar shows only these, floating over the pitch. Tooltips
+         are set by the app outside Present mode only, so nothing pops up on a recording. -->
+    <div class="play-controls" id="play-controls" role="group" aria-label="Playback">
+      <button type="button" data-play="first" class="present-only step" aria-label="Go to phase 1" data-tip="Go to phase 1">⏮</button>
+      <button type="button" data-play="back" class="present-only step" aria-label="Previous phase" data-tip="Previous phase (←)">‹</button>
+      <button type="button" data-play="toggle" id="play-button" class="play-button" aria-label="Play" aria-keyshortcuts="Space" data-tip="Play from this phase to the last (Space)"><span class="play-icon" aria-hidden="true">▶</span><span class="play-text">Play</span></button>
+      <button type="button" data-play="forward" class="present-only step" aria-label="Next phase" data-tip="Next phase (→)">›</button>
+      <div class="segmented present-only option-buttons" id="option-buttons" role="group" aria-label="Play an option" hidden></div>
+      <div class="segmented speed" role="group" aria-label="Speed">
+        <button type="button" data-speed="0.5" aria-label="Half speed">0.5×</button>
+        <button type="button" data-speed="1" aria-label="Normal speed">1×</button>
+        <button type="button" data-speed="2" aria-label="Double speed">2×</button>
+      </div>
+      <button type="button" data-play="loop" aria-pressed="false" data-tip="Loop: after the last phase, hold it, then go back to phase 1">Loop</button>
+      <label class="present-only i-play">I play
+        <select id="i-play" aria-label="I play: fade the rest of that player's team"></select>
+      </label>
+      <button type="button" data-play="pen" class="present-only" aria-pressed="false" aria-keyshortcuts="P">Pen</button>
+      <button type="button" data-play="clear" class="present-only" aria-keyshortcuts="C" aria-label="Clear the pen drawings">Clear</button>
+      <button type="button" data-play="exit" class="present-only" aria-keyshortcuts="Escape">Exit</button>
     </div>
     <div class="phase-tools">
       <strong id="phase-count" aria-live="polite">Phase 1 of 1</strong>
@@ -184,6 +210,16 @@
       <div class="choices">
         <button value="ok" id="confirm-ok">OK</button>
         <button value="" class="cancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="tab-dialog" aria-labelledby="tab-message">
+    <form method="dialog">
+      <p id="tab-message">This play was changed in another tab.</p>
+      <div class="choices">
+        <button value="theirs" id="tab-theirs">Use theirs</button>
+        <button value="mine" id="tab-mine" class="cancel">Keep mine</button>
       </div>
     </form>
   </dialog>

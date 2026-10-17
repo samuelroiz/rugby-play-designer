@@ -1,0 +1,141 @@
+// Present mode: the pitch alone, full screen and as large as it fits, for a TV or a screen recording.
+// The phase note is a large caption under it and "Phase n of N" sits in a corner. The play controls sit
+// between the pitch and the caption and fade after a while without mouse movement. "I play" (click a player,
+// or pick one from the list) fades the rest of that player's team. The pen draws over the pitch for the
+// moment: never saved, kept through phase changes until Clear, and gone when Present mode ends.
+// Editing is off while presenting, so there are no hover hints, handles or selection highlights.
+
+import { svgEl, toMetres } from './pitch.js';
+import { round2 } from './model.js';
+
+const IDLE_MS = 2000;
+const PEN_STEP = 0.15; // metres the pointer must move before the stroke gets another point
+
+// render(): the app's redraw. phase(): the shown phase. penLayer: the group in pitch metres strokes go in.
+// playback: picking up the pen pauses it, and leaving stops it.
+export function initPresent({ state, ui, svg, world, penLayer, render, phase, playback }) {
+  const body = document.body;
+  const pick = document.getElementById('i-play');
+  const api = { idleMs: IDLE_MS, pen: false };
+  let idleTimer = 0;
+  let enteredFullscreen = false;
+  let stroke = null;
+
+  function enter() {
+    if (ui.presenting) return;
+    ui.presenting = true;
+    ui.selected = null;
+    ui.tool = null;
+    document.activeElement?.blur?.();
+    body.classList.add('presenting');
+    fillPicker();
+    wake();
+    render();
+    // Full screen needs a real click or key press; without one, or if the browser refuses, it presents
+    // in the window.
+    if (navigator.userActivation?.isActive !== false) {
+      document.documentElement.requestFullscreen?.().then(() => { enteredFullscreen = true; }, () => {});
+    }
+  }
+
+  function exit() {
+    if (!ui.presenting) return;
+    // Playing stops and the paused frame goes, so editing starts from the phase as it is.
+    playback.stop();
+    ui.presenting = false;
+    ui.focusPlayer = null;
+    setPen(false);
+    clearPen();
+    clearTimeout(idleTimer);
+    body.classList.remove('presenting', 'controls-idle');
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    enteredFullscreen = false;
+    render();
+  }
+
+  // In full screen the browser takes Escape for itself and leaves full screen: leave Present mode with it.
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement && enteredFullscreen) exit();
+  });
+
+  // The controls show while the mouse moves and fade after IDLE_MS without movement.
+  function wake() {
+    body.classList.remove('controls-idle');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { if (ui.presenting) body.classList.add('controls-idle'); }, api.idleMs);
+  }
+  document.addEventListener('pointermove', () => { if (ui.presenting) wake(); });
+
+  // "I play": None, then the attack and the defense by number.
+  function fillPicker() {
+    const sorted = [...state.players].sort((a, b) => (a.team === b.team ? Number(a.id.slice(1)) - Number(b.id.slice(1)) : a.team === 'attack' ? -1 : 1));
+    const none = new Option('None', '');
+    pick.replaceChildren(none, ...sorted.map(p => new Option(`${p.team === 'attack' ? 'Attack' : 'Defense'} ${p.label}`, p.id)));
+    pick.value = ui.focusPlayer ?? '';
+  }
+  pick.addEventListener('change', () => {
+    ui.focusPlayer = pick.value || null;
+    pick.blur(); // so Space and the arrow keys work again straight away
+    render();
+  });
+  // Clicking a player picks them; clicking them again clears it.
+  function pickPlayer(id) {
+    ui.focusPlayer = ui.focusPlayer === id ? null : id;
+    pick.value = ui.focusPlayer ?? '';
+    render();
+  }
+
+  // Picking up the pen pauses the play, so there's a still picture to draw on.
+  function setPen(on) {
+    if (on) playback.pause();
+    api.pen = on;
+    body.classList.toggle('pen-on', on);
+    document.querySelector('[data-play="pen"]').setAttribute('aria-pressed', on);
+  }
+  const togglePen = () => setPen(!api.pen);
+
+  function clearPen() {
+    penLayer.replaceChildren();
+    stroke = null;
+  }
+
+  // A stroke is a white outline under a black line: neither colour is a route's or a team's, and it reads
+  // on grass, on white lines and on players.
+  svg.addEventListener('pointerdown', e => {
+    if (!ui.presenting || !e.isPrimary || e.button !== 0) return;
+    if (!api.pen) {
+      const id = e.target.closest('[data-kind="player"]')?.dataset.id;
+      if (id) pickPlayer(id);
+      return;
+    }
+    const p = toMetres(world, e);
+    const g = svgEl('g', { class: 'pen-mark' }, penLayer);
+    const d = `M${round2(p.x)} ${round2(p.y)}l0 0`;
+    stroke = { points: [p], paths: [svgEl('path', { class: 'pen-outline', d }, g), svgEl('path', { class: 'pen-stroke', d }, g)] };
+    svg.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  svg.addEventListener('pointermove', e => {
+    if (!stroke) return;
+    const p = toMetres(world, e);
+    const lastPoint = stroke.points.at(-1);
+    if (Math.hypot(p.x - lastPoint.x, p.y - lastPoint.y) < PEN_STEP) return;
+    stroke.points.push(p);
+    const d = `M${stroke.points.map(q => `${round2(q.x)} ${round2(q.y)}`).join('L')}`;
+    for (const path of stroke.paths) path.setAttribute('d', d);
+  });
+  const endStroke = () => { stroke = null; };
+  svg.addEventListener('pointerup', endStroke);
+  svg.addEventListener('pointercancel', endStroke);
+
+  // Called from every render: the caption and the phase count follow the shown phase.
+  function update() {
+    const note = phase().note.trim();
+    const caption = document.getElementById('present-caption');
+    caption.textContent = note;
+    caption.hidden = !note;
+    document.getElementById('present-count').textContent = `Phase ${ui.phase + 1} of ${state.phases.length}`;
+  }
+
+  return Object.assign(api, { enter, exit, togglePen, clearPen, update });
+}

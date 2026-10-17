@@ -72,6 +72,9 @@ export async function tap(page, x, y, { touch = false } = {}) {
 
 export const click = (page, sel) => page.$eval(sel, b => b.click());
 
+// Resolves after the page's next animation frame (drags redraw once a frame).
+export const nextFrame = page => page.evaluate(() => new Promise(r => requestAnimationFrame(() => r())));
+
 // Add attack / Add defender: opens the number picker, then Enter adds the highlighted (next free) number,
 // or `n` picks that number. On a phone (`touch`) the buttons are tapped.
 export async function addPlayer(page, team, { n = null, touch = false } = {}) {

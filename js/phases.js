@@ -1,16 +1,9 @@
 // Building the next phase from the current one: players finish their runs, the ball follows the last pass
 // (or kick). Only option A of a player's pass/kick options counts. Also adding, inserting and moving
-// phases. None of these change the contents of any existing phase.
+// phases. None of these change the contents of any existing phase. Which ball moves and who catches it are
+// decided by the rules in model.js, which the animation uses too, so the two always agree.
 
-import { nextId } from './editor.js';
-import { isOtherOption } from './options.js';
-
-// Route types that carry their player to the end of the route.
-const MOVING_ROUTES = new Set(['run', 'drift', 'blitz', 'decoy']);
-// A pass with no receiver ("to") is caught by the nearest team-mate within this many metres of where it ends.
-const CATCH_RADIUS = 5;
-// The ball sits just off the receiver so it isn't hidden under their disc.
-const BALL_OFFSET = { x: 1.1, y: 0.9 };
+import { nextId, round1, ballFlights, positionsAfter, movingBall, receiverOf, BALL_OFFSET } from './model.js';
 
 // "+": a new phase at the end, built from the last one. Returns its index.
 export function appendPhase(phases, players) {
@@ -32,56 +25,25 @@ export function movePhase(phases, i, j) {
 }
 
 export function nextPhase(phase, players) {
-  const positions = structuredClone(phase.positions);
   const objects = structuredClone(phase.objects);
-  // Ascending order, so where a player has several routes the highest order is applied last and wins.
-  // Equal orders keep drawing order (sort is stable).
-  const routes = [...phase.routes].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  // Each player ends where their last moving route (in play order) ends.
+  const positions = structuredClone(positionsAfter(phase.routes, phase.positions));
 
-  for (const r of routes) {
-    if (r.from && MOVING_ROUTES.has(r.type) && positions[r.from]) {
-      const [x, y] = r.points[r.points.length - 1];
-      positions[r.from] = { x, y };
+  // The ball (the one nearest the first pass or kick) follows the passes and kicks, options other than A
+  // left out, and ends with the last one: in the receiver's hands, where they stand at the end, or where it lands.
+  const flights = ballFlights(phase.routes);
+  const last = flights.at(-1);
+  if (last) {
+    const catcher = receiverOf(last, players, positionsAfter(phase.routes, phase.positions, last.order ?? 0));
+    const end = last.points[last.points.length - 1];
+    const at = catcher ? [positions[catcher].x + BALL_OFFSET.x, positions[catcher].y + BALL_OFFSET.y] : end;
+    let ball = movingBall(objects, flights[0]);
+    if (!ball) {
+      ball = { id: nextId('o', objects), type: 'ball' };
+      objects.push(ball);
     }
+    ball.x = round1(at[0]);
+    ball.y = round1(at[1]);
   }
-
-  // The ball follows the highest-order pass or kick, leaving out options other than A.
-  const ballRoute = routes.filter(r => (r.type === 'pass' || r.type === 'kick') && !isOtherOption(r)).at(-1);
-  if (ballRoute?.type === 'pass') moveBallAlongPass(ballRoute, players, positions, objects);
-  else if (ballRoute) placeBall(objects, ballRoute.points[0], ballRoute.points[ballRoute.points.length - 1]);
-
   return { note: '', positions, objects, routes: [] };
-}
-
-function moveBallAlongPass(pass, players, positions, objects) {
-  const [sx, sy] = pass.points[0];
-  const [ex, ey] = pass.points[pass.points.length - 1];
-  const passer = players.find(p => p.id === pass.from);
-
-  // Receiver: the player the pass is attached to, where they stand after their own run. Failing that,
-  // the nearest player to the end of the pass; if the passer is known, only their team-mates can catch it.
-  let receiver = (pass.to && positions[pass.to] && players.find(p => p.id === pass.to)) || null;
-  let best = CATCH_RADIUS;
-  for (const p of receiver ? [] : players) {
-    const pos = positions[p.id];
-    if (!pos || p.id === pass.from || (passer && p.team !== passer.team)) continue;
-    const d = Math.hypot(pos.x - ex, pos.y - ey);
-    if (d <= best) { best = d; receiver = p; }
-  }
-  const at = receiver
-    ? [positions[receiver.id].x + BALL_OFFSET.x, positions[receiver.id].y + BALL_OFFSET.y]
-    : [ex, ey];
-  placeBall(objects, [sx, sy], at);
-}
-
-// Moves the ball nearest `from` to `at`; if there's no ball yet, adds one.
-function placeBall(objects, [sx, sy], [x, y]) {
-  const balls = objects.filter(o => o.type === 'ball');
-  let ball = balls.sort((a, b) => Math.hypot(a.x - sx, a.y - sy) - Math.hypot(b.x - sx, b.y - sy))[0];
-  if (!ball) {
-    ball = { id: nextId('o', objects), type: 'ball' };
-    objects.push(ball);
-  }
-  ball.x = Math.round(x * 10) / 10;
-  ball.y = Math.round(y * 10) / 10;
 }

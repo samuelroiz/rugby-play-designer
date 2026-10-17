@@ -304,7 +304,7 @@ button.danger { color: #b71c1c; }
 .phasebar {
   grid-area: phases;
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap; /* when the tabs, play controls and tools don't fit on one row, the tools and note go under */
   align-items: center;
   gap: .5rem 1rem;
   padding: .5rem .75rem;
@@ -335,9 +335,21 @@ button.danger { color: #b71c1c; }
   max-height: 5.6rem; /* grows with the text to about four lines (fitNote), then scrolls */
   overflow-wrap: anywhere;
 }
+/* Play controls in the phase bar: Play/Pause, speed and Loop (and, in Present mode, more) */
+.play-controls { display: flex; flex: none; align-items: center; gap: .4rem; }
+.play-button { min-width: 5.4rem; justify-content: center; gap: .4rem; font-weight: 600; }
+.play-icon { display: inline-block; width: 1em; text-align: center; font-size: .85em; }
+.speed button { min-width: 2.6rem; justify-content: center; font-variant-numeric: tabular-nums; }
+.present-only, .present-count, .present-caption { display: none; }
+.i-play { display: none; align-items: center; gap: .35rem; font-size: .85rem; }
+.i-play select { font: inherit; padding: .35rem .4rem; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--ink); }
+
+/* While playing, editing is locked: the tools are greyed out (and disabled by the app). */
+body.playing #file-menu { pointer-events: none; opacity: .45; }
+body.playing #pitch .player, body.playing #pitch .marker, body.playing #pitch .badge, body.playing #pitch .route-hit { cursor: default; }
+
 /* Narrower screens: the note gets a row of its own. */
 @media (max-width: 1100px) {
-  .phasebar { flex-wrap: wrap; }
   .phase-tools { flex-wrap: wrap; }
   #phase-note { flex-basis: 100%; }
 }
@@ -460,6 +472,19 @@ dialog .field input { font: inherit; font-size: .95rem; color: var(--ink); paddi
 .handle-dot { fill: #fff; stroke: #1d1d1d; stroke-width: .15; }
 .handle.bend .handle-dot { fill: #ffeb3b; }
 
+/* "I play" in Present mode: the rest of the chosen player's team and their routes fade (the opposition
+   stays at full strength); the chosen player gets a ring */
+.focus-player .dim { opacity: .18; }
+.me-ring { fill: none; stroke: #ffeb3b; stroke-width: .45; }
+
+/* Present mode's pen: black with a white outline, a colour no route or team uses, thick enough for a TV */
+.pen-outline, .pen-stroke { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.pen-outline { stroke: #fff; stroke-width: 1; }
+.pen-stroke { stroke: #000; stroke-width: .6; }
+
+/* While playing, a route's order badge goes once that route starts moving */
+.badge.moving { display: none; }
+
 /* Options other than A: a little fainter, so A reads as the main plan */
 .option-alt { opacity: .55; }
 .option-label {
@@ -481,6 +506,70 @@ dialog .field input { font: inherit; font-size: .95rem; color: var(--ink); paddi
 .badge { cursor: pointer; }
 .badge circle { fill: #1d1d1d; stroke-width: .2; }
 .badge text { fill: #fff; font-family: system-ui, sans-serif; font-weight: 700; pointer-events: none; }
+
+/* Present mode: the pitch alone, as large as it fits, the note as a caption under it (always in full: the
+   pitch gives way), "Phase n of N" in a corner, and the play controls between the pitch and the caption, so
+   they never cover either (they fade after a while without mouse movement).
+   No hover hints, handles or selection: editing is off. */
+body.presenting {
+  background: var(--surround);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-areas: "pitch" "phases" "caption";
+}
+.presenting .topbar, .presenting .toolbar, .presenting .statusbar, .presenting .route-bar, .presenting .inline-edit, .presenting .legend { display: none; }
+.presenting .pitch-wrap { padding: .75rem; }
+.presenting #pitch .player, .presenting #pitch .marker, .presenting #pitch .badge, .presenting #pitch .route-hit { cursor: default; }
+.presenting.pen-on #pitch { cursor: crosshair; }
+.presenting .present-count {
+  display: block;
+  position: absolute;
+  top: 1rem;
+  right: 1.25rem;
+  z-index: 4;
+  margin: 0;
+  padding: .3rem .75rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, .55);
+  color: #fff;
+  font-size: clamp(1rem, 1.6vw, 1.6rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.presenting .present-caption {
+  grid-area: caption;
+  display: block;
+  margin: 0;
+  padding: .4rem 2rem 1rem;
+  color: #fff;
+  font-size: clamp(1.2rem, 2.4vw, 2.6rem);
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.presenting .present-caption[hidden] { display: none; }
+.presenting .phasebar {
+  justify-self: center;
+  z-index: 8;
+  width: max-content;
+  max-width: calc(100vw - 2rem);
+  margin-bottom: .5rem;
+  padding: .4rem .5rem;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .4);
+  transition: opacity .4s;
+}
+.presenting .phasebar > :not(.play-controls) { display: none; }
+.presenting .play-controls { flex-wrap: wrap; justify-content: center; }
+.presenting .present-only { display: flex; }
+.presenting .play-controls .step { min-width: 2.4rem; justify-content: center; }
+.presenting .option-buttons[hidden] { display: none; }
+.presenting.controls-idle .phasebar { opacity: 0; pointer-events: none; }
+.presenting.controls-idle, .presenting.controls-idle * { cursor: none !important; }
 
 /* Phone: toolbar moves to the bottom and scrolls sideways */
 @media (max-width: 700px) {

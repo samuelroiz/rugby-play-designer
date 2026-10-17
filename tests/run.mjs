@@ -1,4 +1,4 @@
-// Runs every test: the Node tests, then both browser suites against the site served on a free local port.
+// Runs every test: the Node tests, then the browser suites against the site served on a free local port.
 // Used by `npm test`. The server is Node's own http module, so the site itself still needs no packages.
 
 import http from 'node:http';
@@ -31,6 +31,8 @@ const steps = [
   ['Node tests', ['--test', ...testFiles]],
   ['Browser suite', ['tests/browser/suite.mjs']],
   ['Click-to-draw suite', ['tests/browser/clickdraw.mjs']],
+  ['Playback and Present suite', ['tests/browser/playback.mjs']],
+  ['Stability suite', ['tests/browser/stability.mjs']],
 ];
 
 // Async child processes, so this process keeps serving while they run.

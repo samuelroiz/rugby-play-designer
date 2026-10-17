@@ -1,6 +1,8 @@
 // Pitch drawing and metre <-> screen helpers.
 // x: 0..100 between try lines (in-goal -10..0 and 100..110), y: 0..70 touchline to touchline.
 
+import { round1 } from './model.js';
+
 const NS = 'http://www.w3.org/2000/svg';
 
 export const BOUNDS = { minX: -10, maxX: 110, minY: 0, maxY: 70 };
@@ -50,7 +52,7 @@ export function viewCentre(view) {
 // Where a new player number n starts: each team lined up across the pitch either side of the view centre.
 export function startSpot(team, n, view) {
   const c = viewCentre(view);
-  return { x: c.x + (team === 'attack' ? -6 : 6), y: Math.round((5 + (n - 1) * 4.3) * 10) / 10 };
+  return { x: c.x + (team === 'attack' ? -6 : 6), y: round1(5 + (n - 1) * 4.3) };
 }
 
 // Pointer event -> pitch coordinates in metres. `space` is the element whose user space is in metres.
