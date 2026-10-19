@@ -33,6 +33,9 @@ const BALL_R = 0.75; // the ball's drawn half-length, for keeping badges off it
 // this browser (kept in localStorage), not of the play; pictures and PDFs use the size on screen.
 const PLAYER_SIZES = { small: 0.8, medium: 1, large: 1.2 };
 const PLAYER_SIZE_KEY = 'rugby-play-designer.player-size';
+// Layers → Step numbers: whether route order badges are shown, on screen and in every export. Also a
+// setting of this browser, not of the play.
+const STEP_NUMBERS_KEY = 'rugby-play-designer.step-numbers';
 // PDF pages: the pitch picture is drawn at this many times its size in CSS px on the page (about 190 dpi).
 const PDF_SCALE = 2;
 // All-phases PNG: width of each pitch tile in CSS px, and tiles per row (fewer if there are fewer phases).
@@ -80,7 +83,7 @@ const ui = {
   snapTo: null, // receiver a pass being drawn will end on (highlighted)
   preview: null, // click-to-draw: where the next route would end, { x, y }
   optionFocus: null, // the route whose option box is open, highlighted on the pitch
-  layers: { distances: true, grid: false, legend: true, ghost: true, direction: true },
+  layers: { distances: true, grid: false, legend: true, ghost: true, direction: true, steps: readStepNumbers() },
   orientationChosen: false, // once the user picks one, stop following the phone's rotation
   presenting: false, // Present mode
   focusPlayer: null, // Present mode's "I play": the rest of that player's team fades
@@ -100,6 +103,12 @@ function readPlayerSize() {
   } catch {
     return 'medium';
   }
+}
+function readStepNumbers() {
+  try { return localStorage.getItem(STEP_NUMBERS_KEY) !== 'off'; } catch { return true; }
+}
+function saveStepNumbers(on) {
+  try { localStorage.setItem(STEP_NUMBERS_KEY, on ? 'on' : 'off'); } catch { /* storage blocked: it lasts until the page closes */ }
 }
 function savePlayerSize(size) {
   try { localStorage.setItem(PLAYER_SIZE_KEY, size); } catch { /* storage blocked: it lasts until the page closes */ }
@@ -267,6 +276,24 @@ function createAndOpen(play) {
   render();
   playsPanel?.refresh();
   return rec;
+}
+
+// Paste play → Replace the open play: the pasted play takes the open play's place under the same library id,
+// as one undo step. The version it replaces goes to Recently deleted as its own entry, so it can be
+// restored (unless it's a blank, empty "Untitled play", which isn't worth keeping).
+function replaceOpenPlay(play) {
+  flushAutosave();
+  const old = library.get(currentId);
+  if (old && !(isEmptyPlay(old.play) && old.play.name === 'Untitled play')) {
+    Promise.all([library.save({ ...newRecord(old.play, old.phase), created: old.created, deletedAt: Date.now() }), library.prune()])
+      .catch(storageFailed);
+  }
+  finishInline?.(false);
+  if (playback.playing || playback.paused) playback.stop();
+  ui.placing = null;
+  replacePlay({ ...play, orientation: state.orientation });
+  render();
+  playsPanel?.refresh();
 }
 
 // A short message in the status line under the pitch: an error (the default), or `ok` for "Saved …".
@@ -517,6 +544,19 @@ function badgeObstacles() {
   ];
 }
 
+// The routes in `routes` (one phase's) that show an order badge. None when Layers → Step numbers is off,
+// or when every numbered route shares one number (the order says nothing then). A drift or blitz only
+// shows one when its number differs from every attacking route's, since defenders usually move with the
+// attack. A route with no order never has one.
+function badgedRoutes(routes) {
+  const numbered = routes.filter(r => Number.isFinite(r.order));
+  if (!ui.layers.steps || new Set(numbered.map(r => r.order)).size <= 1) return new Set();
+  const team = id => state.players.find(p => p.id === id)?.team;
+  const defensive = r => r.type === 'drift' || r.type === 'blitz';
+  const attackOrders = new Set(numbered.filter(r => (r.from ? team(r.from) === 'attack' : !defensive(r))).map(r => r.order));
+  return new Set(numbered.filter(r => !defensive(r) || !attackOrders.has(r.order)));
+}
+
 // The drawn shape of a route: a pass to a receiver stops at the edge of their disc.
 const drawnGeometry = r => routeGeometry(r, { endGap: r.to ? passEndGap() : 0 });
 
@@ -538,10 +578,11 @@ function renderRoutes() {
   // Of each player's options, the one that plays draws as the main plan: A, or the one chosen in Present mode.
   const played = new Set(playedRoutes(routes, playback.option));
   // Option badges are placed first, so the start-of-route badges make way for them.
+  const badged = badgedRoutes(routes);
   const ordered = [...routes.filter(r => r.option), ...routes.filter(r => !r.option)];
   const badgeAt = new Map();
   for (const r of ordered) {
-    if (!Number.isFinite(r.order)) continue;
+    if (!badged.has(r)) continue;
     const b = r.option
       ? optionBadgePosition(r, optionGroup(routes, r.from).filter(o => o !== r), taken)
       : badgePosition(r, routeGeometry(r), taken);
@@ -1154,8 +1195,13 @@ function editOrder(id) {
     route.order = nextOrder(phase().routes);
     render();
   }
-  const badge = layers.badges.querySelector(`.badge[data-id="${id}"]`)?.getBoundingClientRect();
-  if (!badge) return;
+  // The number box opens at the badge, or at the route's start when its badge isn't shown (see badgedRoutes).
+  let badge = layers.badges.querySelector(`.badge[data-id="${id}"]`)?.getBoundingClientRect();
+  if (!badge) {
+    const start = screenPoint(...route.points[0]);
+    const r = badgeR() * pxPerMetre();
+    badge = { x: start.x - r, y: start.y - r, width: 2 * r, height: 2 * r };
+  }
   // While the number is typed, its route is highlighted and the others fade (how a tap on a badge shows
   // its route on a touch screen).
   finishInline?.(true); // an edit already open is saved first (and drops its own highlight)
@@ -1442,10 +1488,11 @@ async function loadFromInput(input) {
 }
 
 // File → Paste play…: a play's JSON pasted as text (e.g. written by an AI assistant from the AI play guide),
-// checked like Load file. A good play opens as a new play in the library; a bad one leaves the box open with
-// the error and the text, so it can be fixed.
+// checked like Load file. A good play opens as a new play in the library, or, with "Replace the open play",
+// takes the open play's place; a bad one leaves the box open with the error and the text, so it can be fixed.
 function openPasteDialog() {
   $('paste-play-text').value = '';
+  document.querySelector('[name="paste-mode"][value="new"]').checked = true;
   $('paste-play-error').hidden = true;
   $('paste-dialog').showModal();
   $('paste-play-text').focus();
@@ -1477,7 +1524,8 @@ function initPasteDialog() {
       return;
     }
     dialog.close();
-    createAndOpen(play);
+    if (document.querySelector('[name="paste-mode"]:checked')?.value === 'replace') replaceOpenPlay(play);
+    else createAndOpen(play);
     showToast(`Imported ${play.name}`, 'ok');
   };
   $('paste-play-import').addEventListener('click', importPlay);
@@ -1804,7 +1852,11 @@ function initTopbar() {
 
   $('layers').addEventListener('change', e => {
     const key = e.target.dataset.layer;
-    if (key) { ui.layers[key] = e.target.checked; render(null, { record: false }); }
+    if (key) {
+      ui.layers[key] = e.target.checked;
+      if (key === 'steps') saveStepNumbers(e.target.checked);
+      render(null, { record: false });
+    }
     if (e.target.name === 'player-size' && e.target.value in PLAYER_SIZES) {
       ui.playerSize = e.target.value;
       savePlayerSize(ui.playerSize);
@@ -2248,23 +2300,27 @@ const playActions = {
     const rec = library.get(id);
     if (rec) library.save({ ...rec, play: { ...rec.play, name }, updated: Date.now() }).catch(storageFailed);
   },
-  // Deleting the open play opens the most recently edited other one (or a new blank play).
+  // Deleting the open play opens the most recently edited other one, or a new blank play if there is none.
+  // A blank, empty "Untitled play" goes for good rather than to Recently deleted, so deleting the blank
+  // that replaced a deleted play never fills Recently deleted with blanks.
   trash(id) {
-    if (id === currentId) {
-      flushAutosave();
-      const next = library.all().find(r => r.id !== id && r.deletedAt == null);
-      // The limit applies in memory straight away (the writes follow), so the list is right at once.
-      Promise.all([library.trash(id), library.prune()]).catch(storageFailed);
-      if (next) switchTo(next.id);
-      else {
-        const rec = newRecord(blankPlay({ view: state.view, orientation: state.orientation }));
-        library.save(rec).catch(storageFailed);
-        showRecord(rec);
-        render();
-      }
+    if (id === currentId) flushAutosave();
+    const rec = library.get(id);
+    if (!rec) return;
+    const blank = isEmptyPlay(rec.play) && rec.play.name === 'Untitled play';
+    // The limit applies in memory straight away (the writes follow), so the list is right at once.
+    if (blank) library.remove(id).catch(storageFailed);
+    else Promise.all([library.trash(id), library.prune()]).catch(storageFailed);
+    if (id !== currentId) return;
+    const next = library.all().find(r => r.id !== id && r.deletedAt == null);
+    if (next) {
+      switchTo(next.id);
       return;
     }
-    Promise.all([library.trash(id), library.prune()]).catch(storageFailed);
+    const fresh = newRecord(blankPlay({ view: state.view, orientation: state.orientation }));
+    library.save(fresh).catch(storageFailed);
+    showRecord(fresh);
+    render();
   },
   restore: id => { library.restore(id).catch(storageFailed); },
   async purge(id) {

@@ -105,6 +105,8 @@ for (const [width, height] of [[1080, 720], [1500, 780]]) {
   await addPlayer(page, 'attack', { n: 12, at: [40, 45] });
   await draw(page, 'pass', 'a9', [45, 38]);
   await draw(page, 'decoy', 'a12', [52, 50]);
+  // A second step, so the routes have badges (a phase whose routes all share one step shows none).
+  await draw(page, 'kick', 'a10', [70, 38]);
 
   // --- 2. Player size ---
   const sizes = () => page.evaluate(() => ({

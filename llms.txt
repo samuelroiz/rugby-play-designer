@@ -10,7 +10,7 @@ To make a play for someone:
 2. Write the play as JSON, following the guide.
 3. In the app, open File → Paste play… (the dialog `#paste-dialog`).
 4. Paste the JSON into the box labelled "Play JSON" (`#paste-play-text`).
-5. Press Import (`#paste-play-import`). The play opens as a new play; if it can't be used, the dialog shows why and keeps the text.
+5. Press Import (`#paste-play-import`). The play opens as a new play (or, with "Replace the open play" chosen, replaces the open one, whose old version goes to Recently deleted); if it can't be used, the dialog shows why and keeps the text.
 
 A saved `.json` file can also be opened with File → Load file….
 

@@ -98,6 +98,7 @@
           <label><input type="checkbox" data-layer="legend"> Legend</label>
           <label><input type="checkbox" data-layer="ghost"> Previous phase</label>
           <label><input type="checkbox" data-layer="direction"> Direction</label>
+          <label><input type="checkbox" data-layer="steps"> Step numbers</label>
           <fieldset class="player-size">
             <legend>Player size</legend>
             <label><input type="radio" name="player-size" value="small"> Small</label>
@@ -386,6 +387,10 @@
       <label class="field" for="paste-play-text">Paste a play's JSON, e.g. one an AI assistant wrote from the AI play guide.</label>
       <textarea id="paste-play-text" aria-label="Play JSON" rows="14" spellcheck="false" autocomplete="off" placeholder='{ "schemaVersion": 1, "players": [ … ], "phases": [ … ] }'></textarea>
       <p class="paste-error" id="paste-play-error" role="alert" hidden></p>
+      <fieldset class="paste-mode" aria-label="Where the play goes">
+        <label><input type="radio" name="paste-mode" value="new" checked> Add as a new play</label>
+        <label><input type="radio" name="paste-mode" value="replace"> Replace the open play</label>
+      </fieldset>
       <div class="choices">
         <button type="button" id="paste-play-import">Import</button>
         <button value="" class="cancel" id="paste-play-cancel">Cancel</button>

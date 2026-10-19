@@ -422,6 +422,8 @@ button.link:hover:not(:disabled) { background: none; }
 #paste-play-text { display: block; box-sizing: border-box; width: 100%; min-height: 14rem; resize: vertical; padding: .5rem; font: .8rem/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--ink); border: 1px solid var(--border); border-radius: 6px; }
 .paste-error { margin: .5rem 0 0; font-size: .85rem; color: #b3261e; }
 .paste-error[hidden] { display: none; }
+#paste-dialog .paste-mode { display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; margin-top: .6rem; font-size: .9rem; }
+.paste-mode label { display: flex; align-items: center; gap: .35rem; }
 #paste-dialog .choices { justify-content: flex-end; margin-top: .75rem; }
 #paste-dialog .choices button { flex: 0 0 auto; padding: .5rem 1.2rem; }
 #paste-dialog .cancel { margin: 0; }

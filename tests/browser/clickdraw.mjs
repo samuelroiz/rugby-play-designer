@@ -201,11 +201,12 @@ async function setup(page, { touch = false } = {}) {
   await click(page, '[data-route="pass"]');
   await tap(page, 50.8, 24.5); // to 3
   let rs = await routes(page);
-  check('one pass: a normal route (option null), badge "1"', rs.length === 1 && rs[0].option === null && eq(await badges(), ['1']), JSON.stringify(rs));
+  // Every route in the phase shares step 1, so no badges show (the order says nothing yet).
+  check('one pass: a normal route (option null), no badge (one step only)', rs.length === 1 && rs[0].option === null && eq(await badges(), []), JSON.stringify(rs));
   await tap(page, 44.6, 5.6); // to 1
   rs = await routes(page);
   check('pass + pass from 12: A and B, sharing order 1', eq(tags(rs), ['1A', '1B']) && rs[0].to === 'a3' && rs[1].to === 'a1', JSON.stringify(rs));
-  check('badges read 1A and 1B', eq((await badges()).sort(), ['1A', '1B']), (await badges()).join());
+  check('both on step 1, the only step: no badges yet', eq(await badges(), []), (await badges()).join());
   check('B drawn fainter, A as normal', eq(await alt(), [rs[1].id]) && Number(await page.$eval(`#routes-layer [data-id="${rs[1].id}"]`, g => getComputedStyle(g).opacity)) < 0.8);
   // three options
   await click(page, '[data-route="kick"]');
@@ -224,6 +225,7 @@ async function setup(page, { touch = false } = {}) {
   await click(page, '[data-route="run"]');
   await tap(page, 40, 2);
   check('a run from the same player is not an option', (await fromP('a1')).find(r => r.type === 'run').option === null && eq(tags(await fromP('a1')), ['2A', '2B', '2']));
+  check('with two steps the badges show: 1A 1B 1C 2A 2B 2', eq((await badges()).sort(), ['1A', '1B', '1C', '2', '2A', '2B']), (await badges()).join());
   await click(page, '[data-action="undo"]');
   await page.keyboard.press('Escape');
   const [A, B, C] = await fromP('a2');

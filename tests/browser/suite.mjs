@@ -628,6 +628,9 @@ async function dragHold(page, from, to, during) {
   await tool(page, 'run');
   const a1 = (await state(page)).phases[0].positions.a1;
   await drag(page, [a1.x, a1.y], [a1.x + 8, a1.y + 3]);
+  // A kick as a second step, so the run has a badge (routes that all share one step show none).
+  await tool(page, 'kick');
+  await drag(page, [a1.x, a1.y], [a1.x + 20, a1.y - 6]);
   await tool(page, null);
   const run = (await state(page)).phases[0].routes[0];
   const badge = await rect(`#badges-layer [data-id="${run.id}"] circle`);
