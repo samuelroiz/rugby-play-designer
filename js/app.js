@@ -18,6 +18,9 @@ import { syncOptions, makeMainOption, optionGroup, optionLetters, OPTION_LABEL_M
 import { nextId, nextOrder, round2, curvePoint, playedRoutes, BALL_ROUTES } from './model.js';
 import { createPlayback } from './playback.js';
 import { initPresent } from './present.js';
+import {
+  readLogoSettings, saveLogoSettings, logoSrc, readLogoFile, sanitizeSvg, exportLogo, LOGO_KEY, TEAM_NAME_MAX,
+} from './logo.js';
 
 const MAX_PER_TEAM = 15;
 const BADGE_R = 0.9;
@@ -132,6 +135,10 @@ const present = initPresent({ state, ui, svg, world, penLayer: layers.pen, rende
 // For tests and debugging, like window.playState.
 window.rugbyPlayback = playback;
 window.rugbyPresent = present;
+
+// The team logo: a setting of this browser, not of the play (see logo.js), so it never goes in the play,
+// its files, the autosave or the undo history.
+let teamLogo = readLogoSettings();
 
 // The autosave is written only when its text has changed. While another tab's change is waiting for an
 // answer (see initTabs), nothing is written, so theirs isn't overwritten before the user chooses.
@@ -1132,6 +1139,8 @@ async function fileAction(action) {
   } else if (action === 'save') {
     downloadPlay(state);
     showToast(`Saved ${safeFileName(state.name)}`, 'ok');
+  } else if (action === 'logo') {
+    openLogoDialog();
   } else if (action === 'png') {
     $('image-dialog').showModal();
   } else if (action === 'pdf') {
@@ -1202,7 +1211,7 @@ function withPlay(play, draw) {
 // previous-phase ghost is always left out, and so are selection highlights and handles (nothing is
 // selected while it is drawn). `legend: false` leaves the route key off even if its layer is on.
 // Redraws the shown phase afterwards.
-function phasePicture(play, i, { width, height, scale, css, idPrefix, legend = true, print = false }) {
+function phasePicture(play, i, { width, height, scale, css, idPrefix, legend = true, print = false, logo = null }) {
   const keep = { phase: ui.phase, selected: ui.selected, snap: ui.snap, snapTo: ui.snapTo, preview: ui.preview, layers: ui.layers };
   Object.assign(ui, { phase: i, selected: null, snap: null, snapTo: null, preview: null, layers: { ...ui.layers, ghost: false } });
   let picture;
@@ -1210,7 +1219,7 @@ function phasePicture(play, i, { width, height, scale, css, idPrefix, legend = t
     picture = withPlay(play, () => {
       drawScene();
       const legendOn = legend && ui.layers.legend ? { items: legendItems(), sample: routeSample } : null;
-      return pictureSvg(svg, { width, height, scale, css, legend: legendOn, idPrefix, print });
+      return pictureSvg(svg, { width, height, scale, css, legend: legendOn, idPrefix, print, logo });
     });
   } finally {
     Object.assign(ui, keep);
@@ -1225,7 +1234,8 @@ function savePng() {
   const i = ui.phase;
   const { width, height } = svg.getBoundingClientRect();
   return exportFile(async play => {
-    const blob = await svgToPng(phasePicture(play, i, { width, height, scale: 2, css: pageCss() }));
+    const logo = await exportLogo(teamLogo);
+    const blob = await svgToPng(phasePicture(play, i, { width, height, scale: 2, css: pageCss(), logo }));
     return new File([blob], safeFileName(play.name, `-phase-${i + 1}.png`), { type: 'image/png' });
   });
 }
@@ -1239,6 +1249,7 @@ function saveAllPng() {
     const tileW = SHEET_TILE_W[play.orientation];
     const tileH = Math.round(tileW * vbH / vbW);
     const css = pageCss();
+    const logo = await exportLogo(teamLogo);
     const tiles = play.phases.map((ph, i) => ({
       picture: phasePicture(play, i, { width: tileW, height: tileH, scale: 1, css: '', legend: false, idPrefix: `p${i + 1}-` }),
       label: `Phase ${i + 1}`,
@@ -1252,6 +1263,7 @@ function saveAllPng() {
       cols: Math.min(SHEET_COLS[play.orientation], tiles.length),
       css,
       legend: ui.layers.legend ? { items: legendItems(), sample: routeSample } : null,
+      logo,
     });
     const blob = await svgToPng(sheet);
     return new File([blob], safeFileName(play.name, '-all-phases.png'), { type: 'image/png' });
@@ -1287,7 +1299,7 @@ function savePdf() {
       const picture = phasePicture(play, i, { width: size.px.w, height: size.px.h, scale: PDF_SCALE, css, legend: false, print: true });
       pages.push({ title, meta, caption: `Phase ${i + 1} of ${n}`, note: ph.note.trim(), png: await svgToPng(picture) });
     }
-    const blob = await makePdf(pages, orientation, size, legend);
+    const blob = await makePdf(pages, orientation, size, legend, await exportLogo(teamLogo));
     return new File([blob], safeFileName(play.name, '.pdf'), { type: 'application/pdf' });
   });
 }
@@ -1554,6 +1566,115 @@ function initAboutDialog() {
   });
 }
 
+// Team logo: shown left of the play name, in a corner in Present mode, on exports (if "Show logo on exports"
+// is on) and, through the team name, in the About box. Every change in the box is kept straight away.
+function updateLogo() {
+  const src = logoSrc(teamLogo);
+  const name = teamLogo.name.trim();
+  for (const img of [$('topbar-logo'), $('present-logo')]) {
+    if (!src) { img.hidden = true; img.removeAttribute('src'); continue; }
+    img.alt = name ? `${name} logo` : 'Team logo';
+    if (img.getAttribute('src') !== src) { img.hidden = false; img.src = src; }
+  }
+  const about = $('about-team');
+  about.textContent = name ? `Made for ${name}` : '';
+  about.hidden = !name;
+}
+
+function openLogoDialog() {
+  const dialog = $('logo-dialog');
+  $('logo-name').value = teamLogo.name;
+  $('logo-exports').checked = teamLogo.exports;
+  logoStatus('');
+  updateLogoPreview();
+  dialog.returnValue = '';
+  dialog.showModal();
+}
+
+function updateLogoPreview() {
+  const src = logoSrc(teamLogo);
+  const preview = $('logo-preview');
+  preview.hidden = !src;
+  if (src) preview.src = src; else preview.removeAttribute('src');
+  $('logo-empty').hidden = !!src;
+  $('logo-remove').disabled = !src;
+}
+
+function logoStatus(message, error = false) {
+  const status = $('logo-status');
+  status.textContent = message;
+  status.classList.toggle('error', error);
+}
+
+// Keeps the setting; if storage is blocked or full it still applies until the page is closed.
+const LOGO_NOT_SAVED = "Couldn't save the logo setting in this browser. It's used until you close this page.";
+function keepLogo(done) {
+  updateLogo();
+  updateLogoPreview();
+  if (saveLogoSettings(teamLogo)) {
+    if (done) logoStatus(done);
+    return;
+  }
+  logoStatus(LOGO_NOT_SAVED, true);
+  showToast(LOGO_NOT_SAVED);
+}
+
+function initLogoDialog() {
+  const dialog = $('logo-dialog');
+  const input = $('logo-input');
+  const name = $('logo-name');
+  name.maxLength = TEAM_NAME_MAX;
+  $('logo-upload').addEventListener('click', () => input.click());
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    input.value = ''; // so picking the same file again still fires "change"
+    if (!file) return;
+    logoStatus('Reading the image…');
+    try {
+      teamLogo.logo = await readLogoFile(file);
+    } catch (err) {
+      logoStatus(err.message, true);
+      return;
+    }
+    keepLogo('Logo saved.');
+  });
+  $('logo-remove').addEventListener('click', () => {
+    teamLogo.logo = null;
+    keepLogo('Logo removed.');
+  });
+  $('logo-exports').addEventListener('change', e => {
+    teamLogo.exports = e.target.checked;
+    keepLogo('');
+  });
+  // The name shows in the About box as it's typed, and is kept when it's done (on change, or on closing).
+  let nameChanged = false;
+  name.addEventListener('input', () => {
+    teamLogo.name = name.value.slice(0, TEAM_NAME_MAX);
+    nameChanged = true;
+    updateLogo();
+  });
+  const keepName = () => { if (nameChanged) { nameChanged = false; keepLogo(''); } };
+  name.addEventListener('change', keepName);
+  dialog.addEventListener('close', keepName);
+  dialog.addEventListener('click', e => {
+    const r = dialog.getBoundingClientRect();
+    if (e.target === dialog && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) dialog.close();
+  });
+  // A logo that can't be shown (the default file missing, say) is hidden rather than drawn broken.
+  for (const img of [$('topbar-logo'), $('present-logo'), $('logo-preview')]) {
+    img.addEventListener('error', () => { img.hidden = true; });
+  }
+  // Another tab changed it.
+  addEventListener('storage', e => {
+    if (e.key !== LOGO_KEY) return;
+    teamLogo = readLogoSettings();
+    updateLogo();
+  });
+  updateLogo();
+}
+// For tests: the SVG cleaner, so a check can look at what it keeps.
+window.rugbyLogo = { sanitizeSvg, settings: () => ({ ...teamLogo }) };
+
 // "? Tips" at the top of the sidebar opens a small popup beside it (a popover, so clicking away or
 // Escape closes it). It floats over the page and never moves the toolbar.
 function initTips() {
@@ -1716,6 +1837,7 @@ function init() {
   initRouteBar();
   initTemplatesDialog();
   initAboutDialog();
+  initLogoDialog();
   initPlayControls();
   initTabs();
   const openSetPiece = initSetPieceDialog();

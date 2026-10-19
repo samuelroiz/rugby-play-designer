@@ -43,7 +43,7 @@ const snapshot = async page => ({
   check('About opens the box', await isOpen(page));
   const text = await page.$eval('#about-dialog', d => ({
     title: d.querySelector('h2').textContent,
-    paras: [...d.querySelectorAll('p:not(.tip)')].map(p => p.textContent),
+    paras: [...d.querySelectorAll('p:not(.tip):not(.about-team)')].map(p => p.textContent),
     actions: [...d.querySelectorAll('.choices > *')].map(b => b.textContent),
     footer: d.querySelector('.about-footer').textContent,
   }));
@@ -56,6 +56,11 @@ const snapshot = async page => ({
   ]), JSON.stringify(text.paras));
   check('actions: Try an example, Source on GitHub, Close', eq(text.actions, ['Try an example', 'Source on GitHub', 'Close']), text.actions.join());
   check('footer', text.footer === 'Built by Samuel Roiz', text.footer);
+  const team = await page.evaluate(() => {
+    const line = document.getElementById('about-team');
+    return { text: line.textContent, shown: !line.hidden, above: line.getBoundingClientRect().bottom <= document.getElementById('about-source').getBoundingClientRect().top };
+  });
+  check('"Made for <team name>" (the default team) above the GitHub link', team.text === 'Made for San Fernando Valley Rugby Club' && team.shown && team.above, JSON.stringify(team));
   const link = await page.$eval('#about-source', a => ({ href: a.getAttribute('href'), target: a.target, rel: a.rel }));
   check('GitHub link: URL, new tab, rel="noopener"', eq(link, { href: 'https://github.com/samuelroiz/rugby-play-designer', target: '_blank', rel: 'noopener' }), JSON.stringify(link));
 

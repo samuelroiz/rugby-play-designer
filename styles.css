@@ -33,6 +33,10 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+/* Team logo, left of the play name (a per-browser setting; hidden when there is none). */
+.team-logo { flex: none; height: 28px; width: auto; max-width: 84px; object-fit: contain; margin-right: -.4rem; }
+.team-logo[hidden] { display: none; }
+
 /* Play name: the box is as wide as its text (sized by a hidden copy of it), with a pencil after it. */
 .title-edit { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: .15rem; margin-right: auto; cursor: text; color: var(--muted); }
 .title-size { display: inline-grid; min-width: 0; max-width: 100%; }
@@ -340,7 +344,7 @@ button.danger { color: #b71c1c; }
 .play-button { min-width: 5.4rem; justify-content: center; gap: .4rem; font-weight: 600; }
 .play-icon { display: inline-block; width: 1em; text-align: center; font-size: .85em; }
 .speed button { min-width: 2.6rem; justify-content: center; font-variant-numeric: tabular-nums; }
-.present-only, .present-count, .present-caption { display: none; }
+.present-only, .present-count, .present-caption, .present-logo { display: none; }
 .i-play { display: none; align-items: center; gap: .35rem; font-size: .85rem; }
 .i-play select { font: inherit; padding: .35rem .4rem; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--ink); }
 
@@ -383,6 +387,19 @@ dialog .cancel { margin: .75rem 0 0 auto; }
 #about-dialog .choices > * { flex: 1; justify-content: center; }
 #about-dialog .cancel { margin: 0; }
 .about-footer { margin-top: .75rem; }
+#about-dialog .about-team { font-weight: 600; }
+#about-dialog .about-team[hidden] { display: none; }
+
+/* Team logo box */
+#logo-dialog { width: min(24rem, calc(100vw - 2rem)); }
+.logo-preview { display: grid; place-items: center; height: 8rem; margin-bottom: .6rem; border: 1px dashed var(--border); border-radius: 8px; background: #fafaf8; }
+.logo-preview img { max-width: calc(100% - 1rem); max-height: 7rem; object-fit: contain; }
+.logo-preview [hidden] { display: none; }
+#logo-empty { color: var(--muted); }
+#logo-dialog .choices { margin-bottom: .2rem; }
+#logo-dialog .check { display: flex; align-items: center; gap: .4rem; margin: .1rem 0 .4rem; }
+.logo-status:empty { display: none; }
+.logo-status.error { color: #b3261e; }
 /* About sits at the right end of the top bar; on a phone, where the top bar wraps, it's in the File menu. */
 .about-in-menu { display: none; }
 #confirm-dialog .cancel { margin: 0; }
@@ -545,6 +562,22 @@ body.presenting {
   font-size: clamp(1rem, 1.6vw, 1.6rem);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+/* The team logo in the top left corner, opposite the phase count, well clear of the controls and caption. */
+.presenting .present-logo:not([hidden]) {
+  display: block;
+  position: absolute;
+  top: 1rem;
+  left: 1.25rem;
+  z-index: 4;
+  height: clamp(2.25rem, 4vw, 4rem);
+  width: auto;
+  max-width: 12rem;
+  object-fit: contain;
+  padding: .25rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .85);
   pointer-events: none;
 }
 .presenting .present-caption {

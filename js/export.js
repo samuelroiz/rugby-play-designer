@@ -32,22 +32,44 @@ const JSPDF_URL = new URL('../vendor/jspdf.umd.min.js', import.meta.url).href;
 // it under the canvas size limit on iPhones (about 16.7 million pixels).
 const SHEET = { margin: 24, gap: 24, titlePx: 22, labelPx: 15, notePx: 13, noteLines: 2 };
 const MAX_PIXELS = 16e6;
+// The team logo on a PNG: this share of the picture's width (less for a very tall logo, which is kept to
+// LOGO_MAX_H of the width), in the top right corner.
+const LOGO_W = 0.08;
+const LOGO_MAX_H = 0.12;
+// In the PDF header line, left of the play name: this tall (mm), and at most LOGO_PDF_MAX_W wide.
+const LOGO_PDF_H = 7;
+const LOGO_PDF_MAX_W = 21;
+
+// The logo's size for a picture `width` wide. logo: { href, w, h } from exportLogo().
+function logoBox(logo, width) {
+  let w = width * LOGO_W;
+  let h = w * logo.h / logo.w;
+  if (h > width * LOGO_MAX_H) { h = width * LOGO_MAX_H; w = h * logo.w / logo.h; }
+  return { w, h };
+}
+const logoImage = (logo, attrs, parent) => svgEl('image', { href: logo.href, preserveAspectRatio: 'xMidYMid meet', class: 'export-logo', ...attrs }, parent);
 
 // Copy of the pitch as a standalone SVG of width x height (CSS px), drawn `scale` times larger.
 // legend: { items: [[type, label]], sample: type -> <svg> } adds the route key in a white strip under the
 // pitch (never on it), in as many columns as fit, which makes the picture that much taller.
 // css: style rules to embed, needed when the SVG is used as an image rather than inside the page.
 // idPrefix keeps marker ids unique when several copies sit in one page. print darkens the pitch lines.
-export function pictureSvg(svg, { width, height, scale = 1, legend = null, css = '', idPrefix = 'x-', print = false }) {
+// logo: { href, w, h } puts the team logo in the top right corner, in a white strip above the pitch so it
+// never covers it.
+export function pictureSvg(svg, { width, height, scale = 1, legend = null, css = '', idPrefix = 'x-', print = false, logo = null }) {
   const key = legend ? fitLegend(legend, width - 16) : null;
-  const fullH = key ? height + key.h + 16 : height;
+  const mark = logo ? logoBox(logo, width) : null;
+  const pad = Math.round(width * 0.012);
+  const top = mark ? mark.h + 2 * pad : 0;
+  const fullH = top + (key ? height + key.h + 16 : height);
   const out = svgEl('svg', { xmlns: NS, width: width * scale, height: fullH * scale, viewBox: `0 0 ${width} ${fullH}`, class: print ? 'print' : null });
   if (css || print) svgEl('style', {}, out).textContent = css + (print ? PRINT_CSS : '');
-  if (key) svgEl('rect', { width, height: fullH, fill: '#fff' }, out);
+  if (key || mark) svgEl('rect', { width, height: fullH, fill: '#fff' }, out);
+  if (mark) logoImage(logo, { x: width - pad - mark.w, y: pad, width: mark.w, height: mark.h }, out);
 
   const pitch = svg.cloneNode(true);
   for (const attr of ['id', 'class', 'style', 'role', 'aria-label']) pitch.removeAttribute(attr);
-  Object.entries({ x: 0, y: 0, width, height, preserveAspectRatio: 'xMidYMid meet' }).forEach(([k, v]) => pitch.setAttribute(k, v));
+  Object.entries({ x: 0, y: top, width, height, preserveAspectRatio: 'xMidYMid meet' }).forEach(([k, v]) => pitch.setAttribute(k, v));
   // Invisible touch targets aren't needed in a picture.
   for (const el of pitch.querySelectorAll('.hit, .route-hit, .handle')) el.remove();
   for (const el of pitch.querySelectorAll('[id]')) {
@@ -57,7 +79,7 @@ export function pictureSvg(svg, { width, height, scale = 1, legend = null, css =
   out.appendChild(pitch);
 
   if (key) {
-    key.g.setAttribute('transform', `translate(8 ${height + 8})`);
+    key.g.setAttribute('transform', `translate(8 ${top + height + 8})`);
     out.appendChild(key.g);
   }
   // Arrowheads on the pitch and in the legend point at the renamed markers.
@@ -128,14 +150,17 @@ export function legendSvg(legend, { maxW, scale = 1, css = '', defs }) {
 // Every phase on one sheet: the play name at the top, then a grid of tiles, each "Phase n" over its pitch
 // with the note under it (cut to two lines with "…"), and the route key under the grid if `legend` is set.
 // tiles: [{ picture (from pictureSvg, tileW x tileH at scale 1), label, note }]. legend: { items, sample }.
-export function allPhasesSvg({ title, tiles, tileW, tileH, cols, scale = 2, css = '', legend = null }) {
+// logo: { href, w, h } puts the team logo in the top right corner, beside the title; the title row grows
+// to fit it, so it never reaches the first pitch.
+export function allPhasesSvg({ title, tiles, tileW, tileH, cols, scale = 2, css = '', legend = null, logo = null }) {
   const { margin, gap, titlePx, labelPx, notePx, noteLines } = SHEET;
   const labelH = labelPx * 1.6;
   const noteLineH = notePx * 1.35;
   const tileFullH = labelH + tileH + 6 + noteLines * noteLineH;
   const rows = Math.ceil(tiles.length / cols);
-  const titleH = titlePx * 1.3 + 14;
   const width = margin * 2 + cols * tileW + (cols - 1) * gap;
+  const mark = logo ? logoBox(logo, width) : null;
+  const titleH = Math.max(titlePx * 1.3, mark?.h ?? 0) + 14;
   // The route key under the grid, in one row if it fits the sheet, otherwise in fewer columns.
   const key = legend ? fitLegend(legend, width - 2 * margin) : null;
   const gridH = rows * tileFullH + (rows - 1) * gap;
@@ -148,8 +173,9 @@ export function allPhasesSvg({ title, tiles, tileW, tileH, cols, scale = 2, css 
   const text = (str, x, y, px, attrs = {}) => {
     svgEl('text', { x, y, 'font-size': px, 'font-family': FONT, fill: '#1d1d1d', 'dominant-baseline': 'hanging', ...attrs }, out).textContent = str;
   };
-  const titleLine = wrapLines(title, width - 2 * margin, `700 ${titlePx}px ${FONT}`, 1)[0];
+  const titleLine = wrapLines(title, width - 2 * margin - (mark ? mark.w + gap : 0), `700 ${titlePx}px ${FONT}`, 1)[0];
   text(titleLine, margin, margin, titlePx, { 'font-weight': 700, class: 'sheet-title' });
+  if (mark) logoImage(logo, { x: width - margin - mark.w, y: margin, width: mark.w, height: mark.h }, out);
 
   tiles.forEach(({ picture, label, note }, i) => {
     const x = margin + (i % cols) * (tileW + gap);
@@ -254,10 +280,10 @@ function loadJsPdf() {
 }
 
 // pages: one { title, meta, caption, note, png (Blob) } per phase. size: the pitch on the page, from pageFit().
-// legend: { png (Blob), w, h } in mm, or null. Returns the PDF as a Blob.
-// Each page: the play name on the left of the header line and its category and tags on the right, the pitch,
+// legend: { png (Blob), w, h } in mm, or null. logo: { href, w, h, format } or null. Returns the PDF as a Blob.
+// Each page: the team logo (if any) and the play name on the left of the header line and its category and tags on the right, the pitch,
 // "Phase n of N" under its left edge with the route key under its right edge, then the note.
-export async function makePdf(pages, orientation, size, legend = null) {
+export async function makePdf(pages, orientation, size, legend = null, logo = null) {
   const JsPDF = await loadJsPdf();
   const doc = new JsPDF({ orientation, unit: 'mm', format: 'a4', compress: true });
   const pageW = doc.internal.pageSize.getWidth();
@@ -265,13 +291,16 @@ export async function makePdf(pages, orientation, size, legend = null) {
   const left = (pageW - size.w) / 2;
   const right = left + size.w;
   const legendPng = legend && new Uint8Array(await legend.png.arrayBuffer());
+  const mark = logo && { h: Math.min(LOGO_PDF_H, LOGO_PDF_MAX_W * logo.h / logo.w), w: Math.min(LOGO_PDF_MAX_W, LOGO_PDF_H * logo.w / logo.h) };
+  const titleX = mark ? left + mark.w + 2.5 : left;
   for (const [i, page] of pages.entries()) {
     if (i) doc.addPage('a4', orientation);
     let y = MARGIN;
     const meta = page.meta
       ? writeText(doc, page.meta, { x: right, y: y + 1.6, align: 'right', maxW: size.w * 0.45, pt: 10, maxLines: 1, grey: true })
       : { w: 0 };
-    writeText(doc, page.title, { x: left, y, align: 'left', maxW: size.w - meta.w - 6, pt: 15, bold: true, maxLines: 1 });
+    if (mark) doc.addImage(logo.href, logo.format, left, y - 1 + (LOGO_PDF_H - mark.h) / 2, mark.w, mark.h, 'team-logo', 'FAST');
+    writeText(doc, page.title, { x: titleX, y, align: 'left', maxW: size.w - meta.w - 6 - (titleX - left), pt: 15, bold: true, maxLines: 1 });
     y += HEADER_MM;
     const png = new Uint8Array(await page.png.arrayBuffer());
     doc.addImage(png, 'PNG', left, y, size.w, size.h, `phase-${i + 1}`, 'FAST');

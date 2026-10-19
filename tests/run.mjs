@@ -11,6 +11,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TYPES = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css',
   '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
 };
 
 const server = http.createServer((req, res) => {
@@ -34,6 +35,7 @@ const steps = [
   ['Playback and Present suite', ['tests/browser/playback.mjs']],
   ['Stability suite', ['tests/browser/stability.mjs']],
   ['About suite', ['tests/browser/about.mjs']],
+  ['Team logo suite', ['tests/browser/logo.mjs']],
 ];
 
 // Async child processes, so this process keeps serving while they run.

@@ -10,6 +10,7 @@
 </head>
 <body>
   <header class="topbar">
+    <img class="team-logo" id="topbar-logo" alt="" hidden>
     <label class="title-edit" title="Rename the play">
       <span class="title-size" id="title-size" data-value="Untitled play">
         <input id="play-name" type="text" size="1" value="Untitled play" aria-label="Play name" spellcheck="false" maxlength="60">
@@ -46,6 +47,9 @@
         <div class="menu-actions">
           <button type="button" data-file="png" aria-haspopup="dialog">Save image (PNG)…</button>
           <button type="button" data-file="pdf">Save PDF (all phases)</button>
+        </div>
+        <div class="menu-actions">
+          <button type="button" data-file="logo" aria-haspopup="dialog">Team logo…</button>
         </div>
         <!-- On a phone the top bar wraps, so About lives here instead. -->
         <div class="menu-actions about-in-menu">
@@ -130,6 +134,7 @@
     <div class="legend" id="legend" aria-hidden="true"></div>
     <input class="inline-edit" id="inline-edit" type="text" autocomplete="off" spellcheck="false" hidden>
     <p class="present-count" id="present-count" aria-live="polite"></p>
+    <img class="present-logo" id="present-logo" alt="" hidden>
     <div class="route-bar" id="route-bar" role="toolbar" aria-label="Selected route" hidden>
       <button type="button" data-route-action="label">Label</button>
       <button type="button" data-route-action="main">Make main</button>
@@ -284,12 +289,36 @@
       <p>It's a browser-based tool for designing formations, mapping player movements, and animating plays phase by phase.</p>
       <p>It's free to use. You can design plays, export them as images or PDFs, and save them as files to load again later. No account needed, and your plays stay in your browser.</p>
       <p>Built with plain JavaScript and SVG, no framework.</p>
+      <p class="about-team" id="about-team" hidden></p>
       <div class="choices">
         <button type="button" id="about-example">Try an example</button>
         <a class="button" id="about-source" href="https://github.com/samuelroiz/rugby-play-designer" target="_blank" rel="noopener">Source on GitHub</a>
         <button value="" class="cancel">Close</button>
       </div>
       <p class="tip about-footer">Built by Samuel Roiz</p>
+    </form>
+  </dialog>
+
+  <dialog id="logo-dialog" aria-labelledby="logo-title">
+    <form method="dialog">
+      <h2 id="logo-title">Team logo</h2>
+      <div class="logo-preview">
+        <img id="logo-preview" alt="Logo preview" hidden>
+        <span id="logo-empty">No logo</span>
+      </div>
+      <div class="choices">
+        <button type="button" id="logo-upload">Upload image…</button>
+        <button type="button" id="logo-remove" class="danger">Remove logo</button>
+      </div>
+      <input id="logo-input" type="file" accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml" hidden>
+      <p class="tip">PNG, JPG or SVG, up to 2 MB.</p>
+      <label class="field">Team name
+        <input id="logo-name" type="text" maxlength="40" placeholder="e.g. Valley RFC" spellcheck="false" autocomplete="off">
+      </label>
+      <label class="check"><input id="logo-exports" type="checkbox"> Show logo on exports</label>
+      <p class="tip logo-status" id="logo-status" role="status" aria-live="polite"></p>
+      <p class="tip">Kept in this browser only. It is never saved with a play.</p>
+      <button value="" class="cancel">Close</button>
     </form>
   </dialog>
 

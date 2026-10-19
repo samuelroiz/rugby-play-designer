@@ -1009,6 +1009,8 @@ async function dragHold(page, from, to, during) {
       return {
         h: Number(root.getAttribute('viewBox').split(' ')[3]),
         pitchH: Number(pitch.getAttribute('height')),
+        // The team logo's strip above the pitch (the default logo is on), 0 without it.
+        top: Number(pitch.getAttribute('y')),
         keyY: key ? Number(key.getAttribute('transform').match(/translate\([-\d.]+ ([-\d.]+)\)/)[1]) : null,
         keyInPitch: !!pitch.querySelector('.legend-key'),
       };
@@ -1023,7 +1025,7 @@ async function dragHold(page, from, to, during) {
   fs.copyFileSync(r.file, path.join(OUT, 'png-key-below.png'));
   await page.$eval('[data-layer="legend"]', c => c.click());
   r = await png();
-  check('PNG with the Legend layer off: just the pitch, no key', r.keyY === null && r.h === r.pitchH, JSON.stringify(r));
+  check('PNG with the Legend layer off: just the pitch (and the logo strip above it), no key', r.keyY === null && r.h === r.top + r.pitchH, JSON.stringify(r));
   await page.$eval('[data-layer="legend"]', c => c.click());
   await click(page, '[data-orientation="vertical"]');
   r = await png();
