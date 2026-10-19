@@ -42,6 +42,7 @@ const steps = [
   ['Team logo suite', ['tests/browser/logo.mjs']],
   ['AI assistant suite', ['tests/browser/ai.mjs']],
   ['Badges, delete and paste fixes suite', ['tests/browser/fixes.mjs']],
+  ['Save animation suite', ['tests/browser/animation.mjs']],
 ];
 
 // Async child processes, so this process keeps serving while they run.

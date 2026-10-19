@@ -10,6 +10,58 @@ import { svgEl } from './pitch.js';
 // Longest step between two frames, so a tab that was hidden for a while doesn't jump through the play.
 const MAX_FRAME_MS = 100;
 
+// The drawn players, markers and badges of the shown phase, by id.
+function findElements(layers) {
+  const els = { players: new Map(), objects: new Map(), badges: new Map(), extraBall: null };
+  for (const g of layers.players.querySelectorAll(':scope > [data-id]')) els.players.set(g.dataset.id, g);
+  for (const g of [...layers.objects.children, ...layers.balls.children]) if (g.dataset.id) els.objects.set(g.dataset.id, g);
+  for (const g of layers.badges.querySelectorAll('.badge[data-id]')) els.badges.set(g.dataset.id, g);
+  return els;
+}
+
+const setTransform = (g, value) => { if (g.getAttribute('transform') !== value) g.setAttribute('transform', value); };
+const setOpacity = (el, o) => { const v = o >= 1 ? '' : String(Math.max(0, o)); if (el.style.opacity !== v) el.style.opacity = v; };
+
+// Puts the drawn phase where the animation has it at time t of schedule `sched`: players and markers moved,
+// the badges of routes that have started hidden, and the routes faded during the slide to the next phase.
+// up: the transform that keeps numbers upright. Only what has changed is touched.
+function paint(els, layers, sched, t, up) {
+  const f = frameAt(sched, t);
+  for (const [id, g] of els.players) {
+    const p = f.players[id];
+    if (p) setTransform(g, `translate(${p.x} ${p.y})${up}`);
+  }
+  for (const [id, g] of els.objects) {
+    const o = f.objects[id];
+    if (!o) continue;
+    setTransform(g, `translate(${o.x} ${o.y})`);
+    setOpacity(g, o.opacity);
+  }
+  // A route's order badge goes once the route starts moving.
+  for (const [id, g] of els.badges) {
+    const gone = sched.starts.has(id) && t > sched.starts.get(id);
+    if (g.classList.contains('moving') !== gone) g.classList.toggle('moving', gone);
+  }
+  if (f.extraBall && !els.extraBall) {
+    // A phase with a pass but no ball: one is drawn for the animation only.
+    els.extraBall = svgEl('g', { class: 'marker ball anim-ball', 'pointer-events': 'none' }, layers.balls);
+    svgEl('ellipse', { rx: 0.7, ry: 0.45, class: 'ball', transform: 'rotate(-25)' }, els.extraBall);
+  }
+  if (els.extraBall) {
+    els.extraBall.style.display = f.extraBall ? '' : 'none';
+    if (f.extraBall) {
+      setTransform(els.extraBall, `translate(${f.extraBall.x} ${f.extraBall.y})`);
+      setOpacity(els.extraBall, f.extraBall.opacity);
+    }
+  }
+  for (const l of [layers.routes, layers.ballRoutes, layers.badges]) setOpacity(l, f.routeOpacity);
+}
+
+// The same, on a phase just drawn by the app: how the animation export draws each frame.
+export function paintFrame(layers, sched, t, up) {
+  paint(findElements(layers), layers, sched, t, up);
+}
+
 // show(i): make phase i the shown phase and render. changed(): playing or paused, so refresh the controls.
 export function createPlayback({ state, ui, layers, turn, show, changed }) {
   const pb = {
@@ -151,48 +203,12 @@ export function createPlayback({ state, ui, layers, turn, show, changed }) {
     }
     els = null;
     if (!sched || !(pb.playing || frozen)) return;
-    els = { players: new Map(), objects: new Map(), badges: new Map(), extraBall: null };
-    for (const g of layers.players.querySelectorAll(':scope > [data-id]')) els.players.set(g.dataset.id, g);
-    for (const g of [...layers.objects.children, ...layers.balls.children]) if (g.dataset.id) els.objects.set(g.dataset.id, g);
-    for (const g of layers.badges.querySelectorAll('.badge[data-id]')) els.badges.set(g.dataset.id, g);
+    els = findElements(layers);
     draw();
   }
 
-  const setTransform = (g, value) => { if (g.getAttribute('transform') !== value) g.setAttribute('transform', value); };
-  const setOpacity = (el, o) => { const v = o >= 1 ? '' : String(Math.max(0, o)); if (el.style.opacity !== v) el.style.opacity = v; };
-
   function draw() {
-    if (!els) return;
-    const f = frameAt(sched, t);
-    const up = turn();
-    for (const [id, g] of els.players) {
-      const p = f.players[id];
-      if (p) setTransform(g, `translate(${p.x} ${p.y})${up}`);
-    }
-    for (const [id, g] of els.objects) {
-      const o = f.objects[id];
-      if (!o) continue;
-      setTransform(g, `translate(${o.x} ${o.y})`);
-      setOpacity(g, o.opacity);
-    }
-    // A route's order badge goes once the route starts moving.
-    for (const [id, g] of els.badges) {
-      const gone = sched.starts.has(id) && t > sched.starts.get(id);
-      if (g.classList.contains('moving') !== gone) g.classList.toggle('moving', gone);
-    }
-    if (f.extraBall && !els.extraBall) {
-      // A phase with a pass but no ball: one is drawn for the animation only.
-      els.extraBall = svgEl('g', { class: 'marker ball anim-ball', 'pointer-events': 'none' }, layers.balls);
-      svgEl('ellipse', { rx: 0.7, ry: 0.45, class: 'ball', transform: 'rotate(-25)' }, els.extraBall);
-    }
-    if (els.extraBall) {
-      els.extraBall.style.display = f.extraBall ? '' : 'none';
-      if (f.extraBall) {
-        setTransform(els.extraBall, `translate(${f.extraBall.x} ${f.extraBall.y})`);
-        setOpacity(els.extraBall, f.extraBall.opacity);
-      }
-    }
-    for (const l of [layers.routes, layers.ballRoutes, layers.badges]) setOpacity(l, f.routeOpacity);
+    if (els) paint(els, layers, sched, t, turn());
   }
 
   Object.assign(pb, {

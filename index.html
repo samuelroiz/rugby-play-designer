@@ -57,6 +57,7 @@
         <div class="menu-actions">
           <button type="button" data-file="png" aria-haspopup="dialog">Save image (PNG)…</button>
           <button type="button" data-file="pdf">Save PDF (all phases)</button>
+          <button type="button" data-file="animation" aria-haspopup="dialog">Save animation…</button>
         </div>
         <div class="menu-actions">
           <button type="button" data-file="logo" aria-haspopup="dialog">Team logo…</button>
@@ -303,6 +304,38 @@
       </div>
       <p class="tip">All phases puts every phase on one picture, in a grid, with its note.</p>
       <button value="" class="cancel">Cancel</button>
+    </form>
+  </dialog>
+
+  <dialog id="animation-dialog" aria-labelledby="animation-title">
+    <form method="dialog">
+      <h2 id="animation-title">Save animation</h2>
+      <fieldset>
+        <legend>Format</legend>
+        <label><input type="radio" name="animation-format" value="gif" checked> GIF (loops forever)</label>
+        <label><input type="radio" name="animation-format" value="video"> Video (MP4, or WebM if the browser can't make MP4)</label>
+        <p class="tip">A video plays once: it doesn't loop by itself.</p>
+      </fieldset>
+      <fieldset class="animation-row">
+        <legend>Speed</legend>
+        <label><input type="radio" name="animation-speed" value="0.5"> 0.5×</label>
+        <label><input type="radio" name="animation-speed" value="1" checked> 1×</label>
+        <label><input type="radio" name="animation-speed" value="2"> 2×</label>
+      </fieldset>
+      <fieldset class="animation-row">
+        <legend>Size</legend>
+        <label><input type="radio" name="animation-size" value="small"> Small (640 px)</label>
+        <label><input type="radio" name="animation-size" value="medium" checked> Medium (960 px)</label>
+        <label><input type="radio" name="animation-size" value="large"> Large (1280 px)</label>
+      </fieldset>
+      <div class="animation-busy" id="animation-busy" hidden>
+        <progress id="animation-progress" max="1" value="0"></progress>
+        <p class="tip" id="animation-status" aria-live="polite"></p>
+      </div>
+      <div class="choices">
+        <button type="button" id="animation-save">Save</button>
+        <button value="" class="cancel" id="animation-cancel">Cancel</button>
+      </div>
     </form>
   </dialog>
 

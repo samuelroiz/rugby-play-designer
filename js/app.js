@@ -20,7 +20,8 @@ import { pictureSvg, allPhasesSvg, legendSvg, pageCss, svgToPng, pageFit, makePd
 import { loadTemplates, loadExample, thumbnail, isEmptyPlay } from './templates.js';
 import { syncOptions, makeMainOption, optionGroup, optionLetters, OPTION_LABEL_MAX } from './options.js';
 import { nextId, nextOrder, round1, round2, curvePoint, playedRoutes, BALL_ROUTES } from './model.js';
-import { createPlayback } from './playback.js';
+import { createPlayback, paintFrame } from './playback.js';
+import { makeAnimation, videoType, videoExtension, ANIMATION_SIZES } from './animation.js';
 import { initPresent } from './present.js';
 import {
   readLogoSettings, saveLogoSettings, logoSrc, readLogoFile, sanitizeSvg, exportLogo, LOGO_KEY, TEAM_NAME_MAX,
@@ -1464,6 +1465,8 @@ async function fileAction(action) {
     $('image-dialog').showModal();
   } else if (action === 'pdf') {
     savePdf();
+  } else if (action === 'animation') {
+    openAnimationDialog();
   } else if (action === 'load') {
     $('load-input').click();
   } else if (action === 'paste') {
@@ -1619,16 +1622,18 @@ function withPlay(play, draw) {
 // Phase i of `play` as a standalone picture, in the current view, orientation and layers, except that the
 // previous-phase ghost is always left out, and so are selection highlights and handles (nothing is
 // selected while it is drawn). `legend: false` leaves the route key off even if its layer is on.
-// Redraws the shown phase afterwards.
-function phasePicture(play, i, { width, height, scale, css, idPrefix, legend = true, print = false, logo = null }) {
+// at: { sched, t } draws the moment t of the phase's animation (schedule `sched`) instead of its start.
+// caption goes above the pitch (see pictureSvg). Redraws the shown phase afterwards.
+function phasePicture(play, i, { width, height, scale, css, idPrefix, legend = true, print = false, logo = null, at = null, caption = null }) {
   const keep = { phase: ui.phase, selected: ui.selected, snap: ui.snap, snapTo: ui.snapTo, preview: ui.preview, layers: ui.layers };
   Object.assign(ui, { phase: i, selected: null, snap: null, snapTo: null, preview: null, layers: { ...ui.layers, ghost: false } });
   let picture;
   try {
     picture = withPlay(play, () => {
       drawScene();
+      if (at) paintFrame(layers, at.sched, at.t, turn());
       const legendOn = legend && ui.layers.legend ? { items: legendItems(), sample: routeSample } : null;
-      return pictureSvg(svg, { width, height, scale, css, legend: legendOn, idPrefix, print, logo });
+      return pictureSvg(svg, { width, height, scale, css, legend: legendOn, idPrefix, print, logo, caption });
     });
   } finally {
     Object.assign(ui, keep);
@@ -1713,6 +1718,80 @@ function savePdf() {
   });
 }
 
+// File → Save animation…: the whole play as Play runs it (every phase, option A), as a GIF that loops or a
+// video, each frame drawn like the PNG (route key, team logo, "Phase n" above the pitch, no ghost or
+// handles). The box shows the progress, and its Cancel (or Escape) stops it. Editing is locked meanwhile.
+let animationJob = null; // { cancelled } while an animation is being made
+function saveAnimation({ format, speed, size }) {
+  const dialog = $('animation-dialog');
+  const [, , vbW, vbH] = svg.getAttribute('viewBox').split(' ').map(Number);
+  const width = ANIMATION_SIZES[size] ?? ANIMATION_SIZES.medium;
+  const height = Math.round(width * vbH / vbW);
+  const job = { cancelled: false };
+  animationJob = job;
+  showAnimationProgress(0);
+  return exportFile(async play => {
+    try {
+      const css = pageCss();
+      const logo = await exportLogo(teamLogo);
+      const blob = await makeAnimation({
+        play, format, speed,
+        picture: ({ phase: i, sched, t }) => phasePicture(play, i, { width, height, scale: 1, css, logo, at: { sched, t }, caption: `Phase ${i + 1}` }),
+        progress: showAnimationProgress,
+        cancelled: () => job.cancelled,
+      });
+      if (!blob) {
+        showToast('Animation cancelled', 'ok');
+        return null;
+      }
+      const ext = format === 'gif' ? '.gif' : videoExtension(blob.type);
+      return new File([blob], safeFileName(play.name, ext), { type: blob.type });
+    } finally {
+      animationJob = null;
+      if (dialog.open) dialog.close();
+    }
+  });
+}
+
+function showAnimationProgress(done) {
+  const busyNow = done != null && animationJob != null;
+  $('animation-progress').value = done ?? 0;
+  $('animation-status').textContent = `Making the animation… ${Math.floor((done ?? 0) * 100)}%`;
+  $('animation-busy').hidden = !busyNow;
+  $('animation-save').hidden = busyNow;
+  for (const el of $('animation-dialog').querySelectorAll('fieldset')) el.disabled = busyNow;
+}
+
+function openAnimationDialog() {
+  showAnimationProgress(null);
+  $('animation-dialog').showModal();
+  $('animation-save').focus();
+}
+
+function initAnimationDialog() {
+  const dialog = $('animation-dialog');
+  const pick = name => dialog.querySelector(`[name="${name}"]:checked`)?.value;
+  $('animation-save').addEventListener('click', () => {
+    if (busy()) return;
+    saveAnimation({ format: pick('animation-format'), speed: Number(pick('animation-speed')), size: pick('animation-size') });
+  });
+  // Cancel, Escape: stop the animation being made (the box closes when it has stopped), or just close.
+  const cancel = e => {
+    if (!animationJob) return;
+    e.preventDefault();
+    animationJob.cancelled = true;
+  };
+  $('animation-cancel').addEventListener('click', cancel);
+  dialog.addEventListener('cancel', cancel);
+  // If the browser closes the box anyway (a second Escape), the animation stops too.
+  dialog.addEventListener('close', () => { if (animationJob) animationJob.cancelled = true; });
+  const video = dialog.querySelector('[name="animation-format"][value="video"]');
+  if (!videoType()) {
+    video.disabled = true;
+    video.closest('label').title = "This browser can't record video";
+  }
+}
+
 // Hands a made file to the user. Computers download it. Phones and tablets get the share sheet (Save
 // Image or Save to Files on iPhone); if sharing isn't possible there, the file opens in a dialog to save from.
 async function keepFile(file) {
@@ -1737,11 +1816,12 @@ async function keepFile(file) {
 function showFile(file) {
   const dialog = $('save-dialog');
   const isImage = file.type.startsWith('image/');
+  const isVideo = file.type.startsWith('video/');
   const url = URL.createObjectURL(file);
-  $('save-title').textContent = isImage ? 'Save image' : 'Save PDF';
+  $('save-title').textContent = isImage ? 'Save image' : isVideo ? 'Save video' : 'Save PDF';
   $('save-tip').textContent = isImage
     ? 'Press and hold the picture to save it, or open it in a new tab.'
-    : 'Open the PDF in a new tab, then use Share to save it to Files.';
+    : `Open the ${isVideo ? 'video' : 'PDF'} in a new tab, then use Share to save it${isVideo ? '' : ' to Files'}.`;
   const preview = $('save-preview');
   preview.hidden = !isImage;
   if (isImage) preview.src = url; else preview.removeAttribute('src');
@@ -2424,6 +2504,7 @@ async function init() {
   initPhaseBar();
   initKeys();
   initImageDialog();
+  initAnimationDialog();
   initOptionDialog();
   initNumberPicker();
   initTips();

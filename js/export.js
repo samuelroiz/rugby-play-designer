@@ -55,17 +55,24 @@ const logoImage = (logo, attrs, parent) => svgEl('image', { href: logo.href, pre
 // css: style rules to embed, needed when the SVG is used as an image rather than inside the page.
 // idPrefix keeps marker ids unique when several copies sit in one page. print darkens the pitch lines.
 // logo: { href, w, h } puts the team logo in the top right corner, in a white strip above the pitch so it
-// never covers it.
-export function pictureSvg(svg, { width, height, scale = 1, legend = null, css = '', idPrefix = 'x-', print = false, logo = null }) {
+// never covers it. caption (e.g. "Phase 2") goes on the left of that strip, which is made tall enough for it.
+export function pictureSvg(svg, { width, height, scale = 1, legend = null, css = '', idPrefix = 'x-', print = false, logo = null, caption = null }) {
   const key = legend ? fitLegend(legend, width - 16) : null;
   const mark = logo ? logoBox(logo, width) : null;
   const pad = Math.round(width * 0.012);
-  const top = mark ? mark.h + 2 * pad : 0;
+  const captionPx = Math.round(width * 0.028);
+  const top = Math.max(mark ? mark.h + 2 * pad : 0, caption ? Math.round(captionPx * 1.7) : 0);
   const fullH = top + (key ? height + key.h + 16 : height);
   const out = svgEl('svg', { xmlns: NS, width: width * scale, height: fullH * scale, viewBox: `0 0 ${width} ${fullH}`, class: print ? 'print' : null });
   if (css || print) svgEl('style', {}, out).textContent = css + (print ? PRINT_CSS : '');
-  if (key || mark) svgEl('rect', { width, height: fullH, fill: '#fff' }, out);
-  if (mark) logoImage(logo, { x: width - pad - mark.w, y: pad, width: mark.w, height: mark.h }, out);
+  if (key || mark || caption) svgEl('rect', { width, height: fullH, fill: '#fff' }, out);
+  if (mark) logoImage(logo, { x: width - pad - mark.w, y: (top - mark.h) / 2, width: mark.w, height: mark.h }, out);
+  if (caption) {
+    svgEl('text', {
+      x: 2 * pad, y: top / 2, 'font-size': captionPx, 'font-weight': 700, 'font-family': FONT, fill: '#1d1d1d',
+      'dominant-baseline': 'central', class: 'export-caption',
+    }, out).textContent = caption;
+  }
 
   const pitch = svg.cloneNode(true);
   for (const attr of ['id', 'class', 'style', 'role', 'aria-label']) pitch.removeAttribute(attr);
