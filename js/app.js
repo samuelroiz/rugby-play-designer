@@ -12,7 +12,7 @@ import { appendPhase, insertPhaseAfter, movePhase } from './phases.js';
 import { createHistory } from './history.js';
 import {
   blankPlay, readAutosave, parseAutosave, removeAutosave, autosaveText, backupAutosave,
-  downloadPlay, downloadBlob, readPlayFile, safeFileName, NAME_MAX,
+  downloadPlay, downloadBlob, readPlayFile, parsePlay, safeFileName, NAME_MAX,
 } from './storage.js';
 import { openLibrary, newRecord, backupData, backupFileName, restoreRecords, restoreSummary } from './library.js';
 import { initPlaysPanel } from './plays.js';
@@ -1418,6 +1418,8 @@ async function fileAction(action) {
     savePdf();
   } else if (action === 'load') {
     $('load-input').click();
+  } else if (action === 'paste') {
+    openPasteDialog();
   } else if (action === 'new') {
     createAndOpen(blankPlay({ view: state.view, orientation: state.orientation }));
   }
@@ -1437,6 +1439,94 @@ async function loadFromInput(input) {
   if (busy()) return;
   createAndOpen(play);
   showToast(`Opened "${play.name}" as a new play (the one before is in Plays).`, 'ok');
+}
+
+// File → Paste play…: a play's JSON pasted as text (e.g. written by an AI assistant from the AI play guide),
+// checked like Load file. A good play opens as a new play in the library; a bad one leaves the box open with
+// the error and the text, so it can be fixed.
+function openPasteDialog() {
+  $('paste-play-text').value = '';
+  $('paste-play-error').hidden = true;
+  $('paste-dialog').showModal();
+  $('paste-play-text').focus();
+}
+
+function initPasteDialog() {
+  const dialog = $('paste-dialog');
+  const text = $('paste-play-text');
+  const error = $('paste-play-error');
+  const fail = message => {
+    error.textContent = message;
+    error.hidden = false;
+    text.focus();
+  };
+  const importPlay = () => {
+    if (busy()) return;
+    let data;
+    try {
+      data = JSON.parse(text.value);
+    } catch {
+      fail(text.value.trim() ? "That isn't a play: it isn't valid JSON." : 'Paste a play first.');
+      return;
+    }
+    let play;
+    try {
+      play = parsePlay(data);
+    } catch (err) {
+      fail(err.message.replace(/^That file/, 'That text'));
+      return;
+    }
+    dialog.close();
+    createAndOpen(play);
+    showToast(`Imported ${play.name}`, 'ok');
+  };
+  $('paste-play-import').addEventListener('click', importPlay);
+  // Ctrl/Cmd+Enter in the box imports too.
+  text.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); importPlay(); }
+  });
+  text.addEventListener('input', () => { error.hidden = true; });
+}
+
+// The AI play guide (docs/AI_PLAY_GUIDE.md): linked from About and the File menu, and "Copy guide" puts its
+// text on the clipboard. The text is fetched when About or the File menu opens, so the copy can happen
+// straight away in the click (some browsers only allow the clipboard during the click itself).
+const GUIDE_URL = new URL('../docs/AI_PLAY_GUIDE.md', import.meta.url);
+let guideText = null;
+function fetchGuide() {
+  guideText ??= fetch(GUIDE_URL).then(res => {
+    if (!res.ok) throw new Error(res.statusText);
+    return res.text();
+  }).catch(err => {
+    guideText = null;
+    throw err;
+  });
+  return guideText;
+}
+
+async function copyGuide(button) {
+  try {
+    await navigator.clipboard.writeText(await fetchGuide());
+  } catch {
+    showToast("Couldn't copy the guide. Open it with AI play guide instead.");
+    return;
+  }
+  showToast('Copied the AI play guide', 'ok');
+  if (!button.dataset.label) button.dataset.label = button.textContent;
+  button.textContent = 'Copied';
+  clearTimeout(button.copiedTimer);
+  button.copiedTimer = setTimeout(() => { button.textContent = button.dataset.label; }, 2000);
+}
+
+function initGuideLinks() {
+  for (const b of document.querySelectorAll('[data-copy-guide]')) {
+    b.addEventListener('click', () => {
+      if (b.closest('#file-menu')) $('file-menu').open = false;
+      copyGuide(b);
+    });
+  }
+  $('menu-guide').addEventListener('click', () => { $('file-menu').open = false; });
+  $('file-menu').addEventListener('toggle', () => { if ($('file-menu').open) fetchGuide().catch(() => {}); });
 }
 
 // --- Export ---
@@ -1821,6 +1911,7 @@ function openAbout() {
   $('about-example').disabled = busy();
   dialog.returnValue = '';
   dialog.showModal();
+  fetchGuide().catch(() => {});
 }
 
 function initAboutDialog() {
@@ -2281,6 +2372,8 @@ async function init() {
   initRouteBar();
   const openTemplates = initTemplatesDialog();
   initAboutDialog();
+  initPasteDialog();
+  initGuideLinks();
   initLogoDialog();
   initPlayControls();
   initTabs();

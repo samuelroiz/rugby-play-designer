@@ -2,6 +2,14 @@
 
 This guide is everything an AI needs to write a play file (`.json`) for the Rugby Play Designer (<https://playbook.samuelroiz.com>) without seeing the code. A file written to these rules opens with **File → Load file…** and plays correctly with **Play**.
 
+## Putting a play into the app
+
+1. Open the app and choose **File → Paste play…**.
+2. Paste the play's JSON into the box (**Play JSON**).
+3. Press **Import**. The play opens as a new play, and the play that was open stays in **Plays**. If the text isn't a usable play, the box says why and keeps the text so it can be fixed.
+
+A `.json` file can be opened instead with **File → Load file…**.
+
 ## 1. The pitch
 
 Everything is in metres.

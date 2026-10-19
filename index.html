@@ -6,7 +6,12 @@
   <title>Rugby Play Designer</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="styles.css">
+  <link rel="help" href="docs/AI_PLAY_GUIDE.md">
   <script type="module" src="js/app.js"></script>
+  <!--
+    AI agents: see llms.txt and docs/AI_PLAY_GUIDE.md for how to write a play as JSON.
+    To put it into the app: File > Paste play…, paste it into #paste-play-text, press #paste-play-import.
+  -->
 </head>
 <body>
   <header class="topbar">
@@ -47,6 +52,7 @@
           <button type="button" data-file="new">New play</button>
           <button type="button" data-file="save">Save file</button>
           <button type="button" data-file="load">Load file…</button>
+          <button type="button" data-file="paste" aria-haspopup="dialog">Paste play…</button>
         </div>
         <div class="menu-actions">
           <button type="button" data-file="png" aria-haspopup="dialog">Save image (PNG)…</button>
@@ -54,6 +60,10 @@
         </div>
         <div class="menu-actions">
           <button type="button" data-file="logo" aria-haspopup="dialog">Team logo…</button>
+        </div>
+        <div class="menu-actions">
+          <a class="button" id="menu-guide" href="docs/AI_PLAY_GUIDE.md" target="_blank" rel="noopener">AI play guide</a>
+          <button type="button" id="menu-copy-guide" data-copy-guide>Copy guide</button>
         </div>
         <!-- On a phone the top bar wraps, so About lives here instead. -->
         <div class="menu-actions about-in-menu">
@@ -359,6 +369,7 @@
       <p>It's a browser-based tool for designing formations, mapping player movements, and animating plays phase by phase.</p>
       <p>It's free to use. You can design plays, export them as images or PDFs, and save them as files to load again later. No account needed, and your plays stay in your browser.</p>
       <p>Built with plain JavaScript and SVG, no framework.</p>
+      <p class="tip about-ai">Using an AI assistant? <a id="about-guide" href="docs/AI_PLAY_GUIDE.md" target="_blank" rel="noopener">AI play guide</a> <button type="button" class="link" id="about-copy-guide" data-copy-guide>Copy guide</button></p>
       <p class="about-team" id="about-team" hidden></p>
       <div class="choices">
         <button type="button" id="about-example">Try an example</button>
@@ -366,6 +377,19 @@
         <button value="" class="cancel">Close</button>
       </div>
       <p class="tip about-footer">Built by Samuel Roiz</p>
+    </form>
+  </dialog>
+
+  <dialog id="paste-dialog" aria-labelledby="paste-title">
+    <form method="dialog">
+      <h2 id="paste-title">Paste play</h2>
+      <label class="field" for="paste-play-text">Paste a play's JSON, e.g. one an AI assistant wrote from the AI play guide.</label>
+      <textarea id="paste-play-text" aria-label="Play JSON" rows="14" spellcheck="false" autocomplete="off" placeholder='{ "schemaVersion": 1, "players": [ … ], "phases": [ … ] }'></textarea>
+      <p class="paste-error" id="paste-play-error" role="alert" hidden></p>
+      <div class="choices">
+        <button type="button" id="paste-play-import">Import</button>
+        <button value="" class="cancel" id="paste-play-cancel">Cancel</button>
+      </div>
     </form>
   </dialog>
 

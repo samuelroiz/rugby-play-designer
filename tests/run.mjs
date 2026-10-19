@@ -12,6 +12,7 @@ const TYPES = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css',
   '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.md': 'text/markdown; charset=utf-8', '.txt': 'text/plain; charset=utf-8',
 };
 
 const server = http.createServer((req, res) => {
@@ -39,6 +40,7 @@ const steps = [
   ['Usability fixes suite', ['tests/browser/usability.mjs']],
   ['Play library suite', ['tests/browser/library.mjs']],
   ['Team logo suite', ['tests/browser/logo.mjs']],
+  ['AI assistant suite', ['tests/browser/ai.mjs']],
 ];
 
 // Async child processes, so this process keeps serving while they run.
