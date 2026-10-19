@@ -164,6 +164,25 @@ const showPhase = async (page, i) => { await page.$eval(`#phase-tabs [data-index
   check('on: the all-phases PNG has 4 (none in phase 1)', badgeCount(svgs) === 4, String(badgeCount(svgs)));
   svgs = await exported('pdf');
   check('on: the PDF has 4 (none on page 1)', badgeCount(svgs) === 4, String(badgeCount(svgs)));
+
+  // Options always show their badges, even when every route is on one step; the run beside them doesn't.
+  const opts = badgePlay();
+  opts.phases = [opts.phases[0]];
+  opts.phases[0].routes = [
+    route('o1', 'pass', 'a9', [[30, 30], [36, 38]], 1, { to: 'a10', option: 'A' }),
+    route('o2', 'pass', 'a9', [[30, 30], [34, 48]], 1, { to: 'a12', option: 'B' }),
+    route('o3', 'run', 'a10', [[36, 38], [44, 36]], 1),
+  ];
+  await pastePlay(page, opts);
+  const optBadges = await page.$$eval('#badges-layer .badge', bs => bs.map(b => b.textContent).sort());
+  check('one step with options: the options show 1A and 1B, the run no badge', eq(optBadges, ['1A', '1B']), optBadges.join());
+  await page.click('#layers summary');
+  await page.click('[data-layer="steps"]');
+  await page.keyboard.press('Escape');
+  check('…and Step numbers off hides the option badges too', eq(await badges(page), []));
+  await page.click('#layers summary');
+  await page.click('[data-layer="steps"]');
+  await page.keyboard.press('Escape');
   check('badges: no console errors', errors.length === 0, errors.join(' | '));
   await browser.close();
 }

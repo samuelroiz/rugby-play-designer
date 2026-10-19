@@ -206,7 +206,7 @@ async function setup(page, { touch = false } = {}) {
   await tap(page, 44.6, 5.6); // to 1
   rs = await routes(page);
   check('pass + pass from 12: A and B, sharing order 1', eq(tags(rs), ['1A', '1B']) && rs[0].to === 'a3' && rs[1].to === 'a1', JSON.stringify(rs));
-  check('both on step 1, the only step: no badges yet', eq(await badges(), []), (await badges()).join());
+  check('options always show their badges, even on the only step: 1A and 1B', eq((await badges()).sort(), ['1A', '1B']), (await badges()).join());
   check('B drawn fainter, A as normal', eq(await alt(), [rs[1].id]) && Number(await page.$eval(`#routes-layer [data-id="${rs[1].id}"]`, g => getComputedStyle(g).opacity)) < 0.8);
   // three options
   await click(page, '[data-route="kick"]');

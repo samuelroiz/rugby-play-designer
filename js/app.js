@@ -544,13 +544,15 @@ function badgeObstacles() {
   ];
 }
 
-// The routes in `routes` (one phase's) that show an order badge. None when Layers → Step numbers is off,
-// or when every numbered route shares one number (the order says nothing then). A drift or blitz only
-// shows one when its number differs from every attacking route's, since defenders usually move with the
-// attack. A route with no order never has one.
+// The routes in `routes` (one phase's) that show an order badge. None when Layers → Step numbers is off.
+// Options (A, B, C …) always show theirs, since the letter tells them apart. Otherwise none when every
+// numbered route shares one number (the order says nothing then), and a drift or blitz only shows one when
+// its number differs from every attacking route's, since defenders usually move with the attack. A route
+// with no order never has one.
 function badgedRoutes(routes) {
   const numbered = routes.filter(r => Number.isFinite(r.order));
-  if (!ui.layers.steps || new Set(numbered.map(r => r.order)).size <= 1) return new Set();
+  if (!ui.layers.steps) return new Set();
+  if (new Set(numbered.map(r => r.order)).size <= 1) return new Set(numbered.filter(r => r.option));
   const team = id => state.players.find(p => p.id === id)?.team;
   const defensive = r => r.type === 'drift' || r.type === 'blitz';
   const attackOrders = new Set(numbered.filter(r => (r.from ? team(r.from) === 'attack' : !defensive(r))).map(r => r.order));
