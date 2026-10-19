@@ -309,3 +309,7 @@ The whole play is a single state object, exposed as `window.playState` for debug
 - The team logo and team name are a setting of the browser (see *Team logo*), never part of a play.
 - Which phase is being shown (also in the address as `#phase=n`), the layer checkboxes, the play speed, Loop and chosen option, Present mode and its pen drawings, and the undo history are view settings and aren't part of the play. The library stores the shown phase alongside the play. `orientation` is saved with the play but is a view choice too: turning the pitch is not an undo step.
 - `schemaVersion` is still 1: `tags` and the newer fields are optional, and older plays load as they are.
+
+## License
+
+Copyright (c) 2026 Samuel Roiz. All rights reserved. The code is public for viewing only; see [LICENSE](LICENSE). The app itself is free to use at https://playbook.samuelroiz.com. jsPDF (`vendor/`) is MIT licensed.

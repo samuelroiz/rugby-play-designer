@@ -1,6 +1,7 @@
 {
   "name": "rugby-play-designer",
   "private": true,
+  "license": "UNLICENSED",
   "type": "module",
   "description": "Static site; these packages are only for the headless browser tests.",
   "scripts": {

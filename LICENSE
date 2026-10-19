@@ -1,0 +1,7 @@
+Copyright (c) 2026 Samuel Roiz. All rights reserved.
+
+This repository is made publicly visible for viewing and portfolio purposes only. No permission is granted to copy, modify, distribute, sublicense, host, or sell this software or any part of it, in source or compiled form, without prior written permission from the copyright holder.
+
+The hosted application at https://playbook.samuelroiz.com may be used free of charge for personal and team use.
+
+Third-party components keep their own licenses: vendor/jspdf.umd.min.js is MIT licensed (see vendor/jspdf.LICENSE).
