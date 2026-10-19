@@ -534,17 +534,17 @@ dialog .field input { font: inherit; font-size: .95rem; color: var(--ink); paddi
 .focus-player .dim { opacity: .18; }
 .me-ring { fill: none; stroke: #ffeb3b; stroke-width: .45; }
 
-/* Present mode's pen, thick enough for a TV: black with a white outline (the default), white with a dark
-   outline, or magenta with a white outline. */
+/* Present mode's pen, thick enough for a TV: black with a white outline (the default), cyan with a dark
+   outline, or magenta with a white outline. None is a route's or a team's colour. */
 .pen-outline, .pen-stroke { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .pen-outline { stroke: #fff; stroke-width: 1; }
 .pen-stroke { stroke: #000; stroke-width: .6; }
-.pen-mark.white .pen-outline { stroke: #1d1d1d; }
-.pen-mark.white .pen-stroke { stroke: #fff; }
+.pen-mark.cyan .pen-outline { stroke: #1d1d1d; }
+.pen-mark.cyan .pen-stroke { stroke: #00e5ff; }
 .pen-mark.magenta .pen-stroke { stroke: #e600e6; }
 .pen-swatch { display: block; width: 1rem; height: 1rem; border-radius: 50%; }
 .pen-swatch.black { background: #000; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #999; }
-.pen-swatch.white { background: #fff; box-shadow: 0 0 0 2px #1d1d1d; }
+.pen-swatch.cyan { background: #00e5ff; box-shadow: 0 0 0 2px #1d1d1d; }
 .pen-swatch.magenta { background: #e600e6; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #999; }
 .pen-colours button { padding: .4rem .5rem; }
 .pen-colours button[aria-pressed="true"], .pen-colours button[aria-pressed="true"]:hover:not(:disabled) { background: #ffd600; border-color: #ffd600; }

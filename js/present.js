@@ -11,7 +11,7 @@ import { round2 } from './model.js';
 const IDLE_MS = 2000;
 const PEN_STEP = 0.15; // metres the pointer must move before the stroke gets another point
 // Pen colours (each stroke gets its class; styles.css draws them). None is a route's or a team's colour.
-export const PEN_COLOURS = ['black', 'white', 'magenta'];
+export const PEN_COLOURS = ['black', 'cyan', 'magenta'];
 
 // render(): the app's redraw. phase(): the shown phase. penLayer: the group in pitch metres strokes go in.
 // playback: picking up the pen pauses it, and leaving stops it.
@@ -117,7 +117,7 @@ export function initPresent({ state, ui, svg, world, penLayer, render, phase, pl
   }
 
   // A stroke is a line over a contrasting outline, in the chosen colour: black on white (the default),
-  // white on dark, or magenta on white. They read on grass, on white lines and on players.
+  // cyan on dark, or magenta on white. They read on grass, on white lines and on players.
   svg.addEventListener('pointerdown', e => {
     if (!ui.presenting || !e.isPrimary || e.button !== 0) return;
     if (!api.pen) {

@@ -183,7 +183,7 @@ for (const [width, height] of [[1080, 720], [1500, 780]]) {
   await click(page, '[data-pen-colour="magenta"]');
   check('picking a colour picks up the pen', await page.evaluate(() => window.rugbyPresent.pen) && (await page.$eval('[data-pen-colour="magenta"]', b => b.getAttribute('aria-pressed'))) === 'true');
   await stroke([20, 20], [30, 25]);
-  await click(page, '[data-pen-colour="white"]');
+  await click(page, '[data-pen-colour="cyan"]');
   await stroke([20, 40], [30, 45]);
   await click(page, '[data-pen-colour="black"]');
   await stroke([20, 50], [30, 55]);
@@ -192,13 +192,13 @@ for (const [width, height] of [[1080, 720], [1500, 780]]) {
     const n = parseInt(hex.slice(1), 16);
     return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`;
   });
-  check('magenta, white and black strokes, each with a contrasting outline',
-    eq(m.map(x => x.cls), ['pen-mark magenta', 'pen-mark white', 'pen-mark black'])
-    && eq(m.map(x => x.line), ['rgb(230, 0, 230)', 'rgb(255, 255, 255)', 'rgb(0, 0, 0)'])
+  check('magenta, cyan and black strokes, each with a contrasting outline',
+    eq(m.map(x => x.cls), ['pen-mark magenta', 'pen-mark cyan', 'pen-mark black'])
+    && eq(m.map(x => x.line), ['rgb(230, 0, 230)', 'rgb(0, 229, 255)', 'rgb(0, 0, 0)'])
     && eq(m.map(x => x.edge), ['rgb(255, 255, 255)', 'rgb(29, 29, 29)', 'rgb(255, 255, 255)']), JSON.stringify(m));
-  check('magenta and black are no route or team colour', !routeAndTeam.includes('rgb(230, 0, 230)') && !routeAndTeam.includes('rgb(0, 0, 0)'));
+  check('no pen colour is a route or team colour', ['rgb(230, 0, 230)', 'rgb(0, 229, 255)', 'rgb(0, 0, 0)'].every(c => !routeAndTeam.includes(c)));
   await click(page, '[data-play="undo-stroke"]');
-  check('Undo stroke takes back the last stroke', eq((await marks()).map(x => x.cls), ['pen-mark magenta', 'pen-mark white']));
+  check('Undo stroke takes back the last stroke', eq((await marks()).map(x => x.cls), ['pen-mark magenta', 'pen-mark cyan']));
   await page.keyboard.press('z');
   check('Z (pen on) takes back another', eq((await marks()).map(x => x.cls), ['pen-mark magenta']));
   await page.keyboard.press('c');
