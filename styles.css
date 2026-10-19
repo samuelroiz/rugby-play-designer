@@ -375,6 +375,16 @@ dialog .cancel { margin: .75rem 0 0 auto; }
 #save-dialog .choices > * { flex: 1; justify-content: center; }
 #save-dialog [hidden] { display: none; }
 #confirm-message { margin: 0 0 .9rem; }
+
+/* About box */
+#about-dialog { max-width: min(30rem, calc(100vw - 2rem)); }
+#about-dialog p:not(.tip) { margin: 0 0 .6rem; line-height: 1.45; }
+#about-dialog .choices { flex-wrap: wrap; margin-top: .9rem; }
+#about-dialog .choices > * { flex: 1; justify-content: center; }
+#about-dialog .cancel { margin: 0; }
+.about-footer { margin-top: .75rem; }
+/* About sits at the right end of the top bar; on a phone, where the top bar wraps, it's in the File menu. */
+.about-in-menu { display: none; }
 #confirm-dialog .cancel { margin: 0; }
 
 /* Player number picker */
@@ -597,6 +607,8 @@ body.presenting {
   .topbar { flex-wrap: wrap; gap: .4rem; padding: .4rem .5rem; }
   .view-controls { flex-basis: 100%; gap: .4rem; }
   .view-controls .menu { margin-left: auto; }
+  #about-button { display: none; }
+  .about-in-menu { display: flex; }
   .segmented button, .menu summary { padding: .4rem .45rem; }
   .phasebar { flex-wrap: wrap; gap: .4rem; padding: .4rem .5rem; }
   .phase-nav { flex-basis: 100%; }

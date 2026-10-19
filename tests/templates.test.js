@@ -4,6 +4,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { parsePlay } from '../js/storage.js';
+import { nextPhase } from '../js/phases.js';
+import { positionsAfter } from '../js/model.js';
 
 const dir = new URL('../templates/', import.meta.url);
 const index = JSON.parse(fs.readFileSync(new URL('index.json', dir)));
@@ -51,3 +53,34 @@ for (const file of ['scrum.json', 'lineout.json']) {
     }
   });
 }
+
+// The About box's example (not in the picker): a finished play whose phases follow on with Add Phase rules.
+test('example.json: loads, stays out of the picker, each phase built from the one before', () => {
+  const raw = JSON.parse(fs.readFileSync(new URL('example.json', dir)));
+  const play = parsePlay(raw);
+  assert.deepEqual(play, raw, 'loads unchanged');
+  assert.equal(play.name, 'Example: Scrum 12 crash');
+  assert.ok(!index.some(t => t.file === 'example.json'));
+  assert.equal(play.phases.length, 3);
+  for (let i = 1; i < play.phases.length; i++) {
+    const built = nextPhase(play.phases[i - 1], play.players);
+    assert.deepEqual(play.phases[i].positions, built.positions, `phase ${i + 1} positions`);
+    assert.deepEqual(play.phases[i].objects, built.objects, `phase ${i + 1} markers`);
+  }
+  for (const ph of play.phases) assert.ok(ph.note.trim(), 'each phase has a note');
+  // Phase 1: 9 to 10. Phase 2: 10's options, A to 12 and B a kick with its label. Phase 3: 12 carries.
+  const [p1, p2, p3] = play.phases;
+  assert.deepEqual(p1.routes.filter(r => r.type === 'pass').map(r => [r.from, r.to]), [['a9', 'a10']]);
+  const options = p2.routes.filter(r => r.option).map(r => [r.option, r.type, r.from, r.to ?? null, r.optionLabel ?? null]);
+  assert.deepEqual(options, [['A', 'pass', 'a10', 'a12', null], ['B', 'kick', 'a10', null, 'if 12 rushes up']]);
+  assert.ok(p3.routes.some(r => r.type === 'run' && r.from === 'a12'));
+  for (const ph of [p2, p3]) assert.ok(ph.routes.filter(r => r.type === 'drift' && r.from.startsWith('d')).length >= 2, 'defenders drift');
+  // Passes are flat or backwards (attack goes towards +x), as drawn and where the players are when the ball goes.
+  for (const ph of play.phases) {
+    for (const r of ph.routes.filter(r => r.type === 'pass')) {
+      assert.ok(r.points[1][0] <= r.points[0][0], `${r.from} to ${r.to} drawn backwards`);
+      const at = positionsAfter(ph.routes, ph.positions, r.order);
+      assert.ok(at[r.to].x <= at[r.from].x, `${r.from} to ${r.to} thrown backwards`);
+    }
+  }
+});

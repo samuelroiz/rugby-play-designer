@@ -13,7 +13,7 @@ import {
   downloadPlay, downloadBlob, readPlayFile, safeFileName,
 } from './storage.js';
 import { pictureSvg, allPhasesSvg, legendSvg, pageCss, svgToPng, pageFit, makePdf, PX_PER_MM } from './export.js';
-import { loadTemplates, thumbnail, isEmptyPlay } from './templates.js';
+import { loadTemplates, loadExample, thumbnail, isEmptyPlay } from './templates.js';
 import { syncOptions, makeMainOption, optionGroup, optionLetters, OPTION_LABEL_MAX } from './options.js';
 import { nextId, nextOrder, round2, curvePoint, playedRoutes, BALL_ROUTES } from './model.js';
 import { createPlayback } from './playback.js';
@@ -1127,7 +1127,9 @@ function phaseAction(action, index) {
 async function fileAction(action) {
   $('file-menu').open = false;
   if (busy()) return;
-  if (action === 'save') {
+  if (action === 'about') {
+    openAbout();
+  } else if (action === 'save') {
     downloadPlay(state);
     showToast(`Saved ${safeFileName(state.name)}`, 'ok');
   } else if (action === 'png') {
@@ -1514,6 +1516,44 @@ function initTemplatesDialog() {
   });
 }
 
+// About: what the app is, with a finished example to try. It never opens by itself, and opening or closing
+// it changes nothing in the play, so there's no undo step or autosave. Escape, Close or a click outside
+// closes it. "Try an example" loads templates/example.json like a template (asking first unless the
+// current play is empty, one undo step) and plays it once from phase 1 at 1x.
+function openAbout() {
+  const dialog = $('about-dialog');
+  $('about-example').disabled = busy();
+  dialog.returnValue = '';
+  dialog.showModal();
+}
+
+function initAboutDialog() {
+  const dialog = $('about-dialog');
+  $('about-button').addEventListener('click', openAbout);
+  dialog.addEventListener('click', e => {
+    const r = dialog.getBoundingClientRect();
+    if (e.target === dialog && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) dialog.close();
+  });
+  $('about-example').addEventListener('click', async () => {
+    let play;
+    try {
+      play = await loadExample();
+    } catch (err) {
+      dialog.close();
+      showToast(err.message);
+      return;
+    }
+    dialog.close();
+    if (!isEmptyPlay(state) && !(await askConfirm(`Open the example "${play.name}"? It replaces the current play (you can undo).`, 'Open example'))) return;
+    if (busy()) return;
+    replacePlay({ ...play, orientation: state.orientation });
+    render();
+    playback.speed = 1;
+    playback.setLoop(false);
+    playback.play();
+  });
+}
+
 // "? Tips" at the top of the sidebar opens a small popup beside it (a popover, so clicking away or
 // Escape closes it). It floats over the page and never moves the toolbar.
 function initTips() {
@@ -1675,6 +1715,7 @@ function init() {
   initTips();
   initRouteBar();
   initTemplatesDialog();
+  initAboutDialog();
   initPlayControls();
   initTabs();
   const openSetPiece = initSetPieceDialog();

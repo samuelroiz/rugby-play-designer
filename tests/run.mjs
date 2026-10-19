@@ -33,6 +33,7 @@ const steps = [
   ['Click-to-draw suite', ['tests/browser/clickdraw.mjs']],
   ['Playback and Present suite', ['tests/browser/playback.mjs']],
   ['Stability suite', ['tests/browser/stability.mjs']],
+  ['About suite', ['tests/browser/about.mjs']],
 ];
 
 // Async child processes, so this process keeps serving while they run.

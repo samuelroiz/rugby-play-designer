@@ -47,6 +47,10 @@
           <button type="button" data-file="png" aria-haspopup="dialog">Save image (PNG)…</button>
           <button type="button" data-file="pdf">Save PDF (all phases)</button>
         </div>
+        <!-- On a phone the top bar wraps, so About lives here instead. -->
+        <div class="menu-actions about-in-menu">
+          <button type="button" data-file="about" aria-haspopup="dialog">About</button>
+        </div>
         <input id="load-input" type="file" accept=".json,application/json" hidden>
       </div>
     </details>
@@ -77,6 +81,7 @@
         </div>
       </details>
     </div>
+    <button type="button" id="about-button" aria-haspopup="dialog">About</button>
   </header>
 
   <nav class="toolbar" aria-label="Tools">
@@ -269,6 +274,22 @@
       <p class="tip" id="templates-status" aria-live="polite"></p>
       <div class="template-grid" id="template-grid"></div>
       <button value="" class="cancel">Cancel</button>
+    </form>
+  </dialog>
+
+  <dialog id="about-dialog" aria-labelledby="about-title">
+    <form method="dialog">
+      <h2 id="about-title">About Rugby Play Designer</h2>
+      <p>I built Rugby Play Designer because I wanted a simple, free way to create and visualize rugby plays without paying for a subscription.</p>
+      <p>It's a browser-based tool for designing formations, mapping player movements, and animating plays phase by phase.</p>
+      <p>It's free to use. You can design plays, export them as images or PDFs, and save them as files to load again later. No account needed, and your plays stay in your browser.</p>
+      <p>Built with plain JavaScript and SVG, no framework.</p>
+      <div class="choices">
+        <button type="button" id="about-example">Try an example</button>
+        <a class="button" id="about-source" href="https://github.com/samuelroiz/rugby-play-designer" target="_blank" rel="noopener">Source on GitHub</a>
+        <button value="" class="cancel">Close</button>
+      </div>
+      <p class="tip about-footer">Built by Samuel Roiz</p>
     </form>
   </dialog>
 

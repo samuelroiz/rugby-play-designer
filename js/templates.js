@@ -24,6 +24,17 @@ export function loadTemplates() {
   return loading;
 }
 
+// The About box's finished example play, templates/example.json. It isn't in index.json, so it isn't a
+// card in the picker. Fetched once per page load, like the templates.
+let example = null;
+export function loadExample() {
+  example ??= getJson(new URL('example.json', TEMPLATES_URL)).then(parsePlay).catch(err => {
+    example = null;
+    throw new Error(`The example couldn't be loaded. ${err.message}`);
+  });
+  return example;
+}
+
 async function getJson(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${url.pathname.split('/').pop()}: ${res.status} ${res.statusText}`.trim());
