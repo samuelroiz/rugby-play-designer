@@ -10,13 +10,15 @@ import { round2 } from './model.js';
 
 const IDLE_MS = 2000;
 const PEN_STEP = 0.15; // metres the pointer must move before the stroke gets another point
+// Pen colours (each stroke gets its class; styles.css draws them). None is a route's or a team's colour.
+export const PEN_COLOURS = ['black', 'white', 'magenta'];
 
 // render(): the app's redraw. phase(): the shown phase. penLayer: the group in pitch metres strokes go in.
 // playback: picking up the pen pauses it, and leaving stops it.
 export function initPresent({ state, ui, svg, world, penLayer, render, phase, playback }) {
   const body = document.body;
   const pick = document.getElementById('i-play');
-  const api = { idleMs: IDLE_MS, pen: false };
+  const api = { idleMs: IDLE_MS, pen: false, penColour: 'black' };
   let idleTimer = 0;
   let enteredFullscreen = false;
   let stroke = null;
@@ -46,6 +48,7 @@ export function initPresent({ state, ui, svg, world, penLayer, render, phase, pl
     ui.focusPlayer = null;
     setPen(false);
     clearPen();
+    setPenColour('black');
     clearTimeout(idleTimer);
     body.classList.remove('presenting', 'controls-idle');
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -94,13 +97,27 @@ export function initPresent({ state, ui, svg, world, penLayer, render, phase, pl
   }
   const togglePen = () => setPen(!api.pen);
 
+  // Picking a colour also picks up the pen.
+  function setPenColour(colour) {
+    if (!PEN_COLOURS.includes(colour)) return;
+    api.penColour = colour;
+    for (const b of document.querySelectorAll('[data-pen-colour]')) b.setAttribute('aria-pressed', b.dataset.penColour === colour);
+    if (ui.presenting && !api.pen) setPen(true);
+  }
+
   function clearPen() {
     penLayer.replaceChildren();
     stroke = null;
   }
 
-  // A stroke is a white outline under a black line: neither colour is a route's or a team's, and it reads
-  // on grass, on white lines and on players.
+  // Takes back the last stroke (Undo stroke, or Z while the pen is on).
+  function undoStroke() {
+    if (stroke) return;
+    penLayer.lastElementChild?.remove();
+  }
+
+  // A stroke is a line over a contrasting outline, in the chosen colour: black on white (the default),
+  // white on dark, or magenta on white. They read on grass, on white lines and on players.
   svg.addEventListener('pointerdown', e => {
     if (!ui.presenting || !e.isPrimary || e.button !== 0) return;
     if (!api.pen) {
@@ -109,7 +126,7 @@ export function initPresent({ state, ui, svg, world, penLayer, render, phase, pl
       return;
     }
     const p = toMetres(world, e);
-    const g = svgEl('g', { class: 'pen-mark' }, penLayer);
+    const g = svgEl('g', { class: `pen-mark ${api.penColour}` }, penLayer);
     const d = `M${round2(p.x)} ${round2(p.y)}l0 0`;
     stroke = { points: [p], paths: [svgEl('path', { class: 'pen-outline', d }, g), svgEl('path', { class: 'pen-stroke', d }, g)] };
     svg.setPointerCapture(e.pointerId);
@@ -137,5 +154,5 @@ export function initPresent({ state, ui, svg, world, penLayer, render, phase, pl
     document.getElementById('present-count').textContent = `Phase ${ui.phase + 1} of ${state.phases.length}`;
   }
 
-  return Object.assign(api, { enter, exit, togglePen, clearPen, update });
+  return Object.assign(api, { enter, exit, togglePen, clearPen, undoStroke, setPenColour, update });
 }

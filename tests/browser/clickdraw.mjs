@@ -57,12 +57,12 @@ async function setup(page, { touch = false } = {}) {
   await tap(page, 62, 18);
   await tap(page, 55, 22);
   rs = await routes(page);
-  check('chaining: three runs from 12, orders 1-3', rs.length === 3 && rs.every(r => r.from === 'a2' && r.type === 'run') && eq(rs.map(r => r.order), [1, 2, 3]));
+  check('chaining: three runs from 12, all step 1 (a run moves with the latest step)', rs.length === 3 && rs.every(r => r.from === 'a2' && r.type === 'run') && eq(rs.map(r => r.order), [1, 1, 1]));
 
   // Undo: one step per route, mode kept.
   await click(page, '[data-action="undo"]');
   rs = await routes(page);
-  check('undo removes just the last route', rs.length === 2 && eq(rs.map(r => r.order), [1, 2]));
+  check('undo removes just the last route', rs.length === 2 && eq(rs.map(r => r.order), [1, 1]));
   check('after undo the player is still selected and the tool on', (await sel(page)) === 'a2' && (await toolOn(page)) === 'run' && (await hint(page)) !== null);
   await click(page, '[data-action="undo"]');
   await click(page, '[data-action="undo"]');
@@ -223,7 +223,7 @@ async function setup(page, { touch = false } = {}) {
   // a run is never an option
   await click(page, '[data-route="run"]');
   await tap(page, 40, 2);
-  check('a run from the same player is not an option', (await fromP('a1')).find(r => r.type === 'run').option === null && eq(tags(await fromP('a1')), ['2A', '2B', '3']));
+  check('a run from the same player is not an option', (await fromP('a1')).find(r => r.type === 'run').option === null && eq(tags(await fromP('a1')), ['2A', '2B', '2']));
   await click(page, '[data-action="undo"]');
   await page.keyboard.press('Escape');
   const [A, B, C] = await fromP('a2');

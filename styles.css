@@ -28,7 +28,7 @@ body {
   display: flex;
   align-items: center;
   gap: .75rem;
-  padding: .5rem .75rem;
+  padding: .4rem .75rem;
   background: #fff;
   border-bottom: 1px solid var(--border);
 }
@@ -63,6 +63,8 @@ body {
 .orient-icon, .icon { width: 1.2rem; height: 1.2rem; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .icon { stroke-linecap: round; stroke-linejoin: round; }
 .view-controls { display: flex; align-items: center; gap: .75rem; }
+.flip-half { gap: 0; }
+.flip-half[hidden] { display: none; }
 
 /* Drop-down menus (Layers, File): a <details> that opens a panel under its button */
 .menu { position: relative; flex: none; }
@@ -94,6 +96,9 @@ body {
   white-space: nowrap;
 }
 .menu-panel label { display: flex; align-items: center; gap: .45rem; cursor: pointer; }
+/* Layers → Player size */
+.player-size { display: flex; flex-direction: column; gap: .3rem; margin: .2rem 0 0; padding: .45rem 0 0; border: 0; border-top: 1px solid var(--border); }
+.player-size legend { float: left; margin-bottom: .1rem; padding: 0; font-size: .8rem; color: var(--muted); }
 .file-panel { gap: .6rem; min-width: 14rem; }
 .file-panel label { flex-direction: column; align-items: stretch; gap: .2rem; font-size: .8rem; color: var(--muted); cursor: default; }
 .file-panel select, .file-panel input[type="text"] {
@@ -154,17 +159,25 @@ button.danger { color: #b71c1c; }
 
 .route-sample { width: 2.4rem; height: .9rem; flex: none; background: #3d8b40; border-radius: 3px; overflow: visible; }
 
-/* Left toolbar */
+/* Left toolbar: compact, so it fits a 780 px high window without scrolling */
 .toolbar {
   grid-area: tools;
   display: flex;
   flex-direction: column;
-  gap: .9rem;
-  padding: .75rem;
+  gap: .6rem;
+  padding: .6rem;
   overflow-y: auto;
   border-right: 1px solid var(--border);
 }
-.group { display: flex; flex-direction: column; gap: .35rem; }
+.group { display: flex; flex-direction: column; gap: .3rem; }
+.toolbar .group button { padding: .38rem .55rem; }
+/* Route types in two columns, each button its sample over its name */
+@media (min-width: 701px) {
+  #route-tools { display: grid; grid-template-columns: 1fr 1fr; }
+  #route-tools h2 { grid-column: 1 / -1; }
+  #route-tools button { flex-direction: column; align-items: center; justify-content: center; gap: .2rem; padding: .3rem .2rem; font-size: .8rem; }
+  #route-tools .route-sample { width: 2rem; }
+}
 .group h2 {
   margin: 0 0 .1rem;
   font-size: .7rem;
@@ -199,7 +212,7 @@ button.danger { color: #b71c1c; }
   position: relative;
   min-width: 0;
   min-height: 0;
-  padding: .5rem;
+  padding: .25rem;
   background: var(--surround);
   container-type: size;
   display: grid;
@@ -216,20 +229,20 @@ button.danger { color: #b71c1c; }
 }
 #pitch.drawing { cursor: crosshair; }
 
+/* The route key (Legend layer): at the right end of the status line, under the pitch, never over it */
 .legend {
-  position: absolute;
-  left: 1rem;
-  bottom: 1rem;
-  display: grid;
-  grid-template-columns: auto auto;
+  flex: none;
+  display: flex;
   align-items: center;
-  gap: .2rem .5rem;
-  padding: .4rem .55rem;
-  font-size: .75rem;
-  background: rgba(255, 255, 255, .9);
-  border-radius: 6px;
+  gap: .25rem;
+  margin-left: auto;
+  font-size: .72rem;
+  color: var(--muted);
   pointer-events: none;
 }
+.legend .route-sample { width: 1.6rem; height: .7rem; }
+.legend span { margin-right: .4rem; }
+.legend span:last-child { margin-right: 0; }
 .legend.hidden { display: none; }
 
 /* Status line under the pitch: the drawing hint, or a short message ("Saved …") which takes its place
@@ -238,7 +251,8 @@ button.danger { color: #b71c1c; }
   grid-area: status;
   display: flex;
   align-items: center;
-  height: 2.1rem;
+  gap: .75rem;
+  height: 1.9rem;
   min-width: 0;
   padding: 0 .75rem;
   background: #fff;
@@ -246,7 +260,11 @@ button.danger { color: #b71c1c; }
   font-size: .85rem;
   overflow: hidden;
 }
-.statusbar:has(.toast:not([hidden])) .draw-hint { display: none; }
+.statusbar:has(.toast:not([hidden])) .draw-hint, .statusbar:has(.end-of-play:not([hidden])) .draw-hint { display: none; }
+/* "End of play" with Replay, after the last phase has played */
+.end-of-play { display: flex; align-items: center; gap: .5rem; font-weight: 600; white-space: nowrap; }
+.end-of-play[hidden] { display: none; }
+.end-of-play button { padding: .15rem .55rem; font-weight: 600; }
 .toast {
   min-width: 0;
   padding: .15rem .6rem;
@@ -302,6 +320,9 @@ button.danger { color: #b71c1c; }
   box-shadow: 0 4px 14px rgba(0, 0, 0, .25);
 }
 .route-bar button { padding: .3rem .55rem; font-size: .85rem; }
+/* "Step 2, together with: pass 9 to 10" */
+.route-step { align-self: center; max-width: 22rem; padding: 0 .4rem; font-size: .8rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.route-step[hidden] { display: none; }
 .route-bar [hidden], .route-bar[hidden] { display: none; }
 
 /* Phase bar under the pitch */
@@ -310,8 +331,8 @@ button.danger { color: #b71c1c; }
   display: flex;
   flex-wrap: wrap; /* when the tabs, play controls and tools don't fit on one row, the tools and note go under */
   align-items: center;
-  gap: .5rem 1rem;
-  padding: .5rem .75rem;
+  gap: .4rem 1rem;
+  padding: .35rem .75rem;
   background: #fff;
   border-top: 1px solid var(--border);
 }
@@ -341,8 +362,10 @@ button.danger { color: #b71c1c; }
 }
 /* Play controls in the phase bar: Play/Pause, speed and Loop (and, in Present mode, more) */
 .play-controls { display: flex; flex: none; align-items: center; gap: .4rem; }
-.play-button { min-width: 5.4rem; justify-content: center; gap: .4rem; font-weight: 600; }
-.play-icon { display: inline-block; width: 1em; text-align: center; font-size: .85em; }
+/* Icon first, then the label, with the same gap for Play and Pause (in Present mode too). The icon box is
+   wide enough for either icon, so it never runs into the text and the label doesn't shift. */
+.phasebar .play-button { min-width: 6rem; justify-content: center; gap: .45rem; font-weight: 600; white-space: nowrap; }
+.play-icon { display: inline-block; flex: none; min-width: 1.1em; text-align: center; font-size: .9em; line-height: 1; }
 .speed button { min-width: 2.6rem; justify-content: center; font-variant-numeric: tabular-nums; }
 .present-only, .present-count, .present-caption, .present-logo { display: none; }
 .i-play { display: none; align-items: center; gap: .35rem; font-size: .85rem; }
@@ -352,10 +375,10 @@ button.danger { color: #b71c1c; }
 body.playing #file-menu { pointer-events: none; opacity: .45; }
 body.playing #pitch .player, body.playing #pitch .marker, body.playing #pitch .badge, body.playing #pitch .route-hit { cursor: default; }
 
-/* Narrower screens: the note gets a row of its own. */
+/* Narrower screens: shorter button labels and a narrower note, so the phase bar takes two rows, not three. */
 @media (max-width: 1100px) {
-  .phase-tools { flex-wrap: wrap; }
-  #phase-note { flex-basis: 100%; }
+  .phasebar .long { display: none; }
+  #phase-note { flex-basis: 10rem; min-width: 10rem; }
 }
 
 /* Set piece dialog */
@@ -380,15 +403,19 @@ dialog .cancel { margin: .75rem 0 0 auto; }
 #save-dialog [hidden] { display: none; }
 #confirm-message { margin: 0 0 .9rem; }
 
-/* About box */
-#about-dialog { max-width: min(30rem, calc(100vw - 2rem)); }
-#about-dialog p:not(.tip) { margin: 0 0 .6rem; line-height: 1.45; }
-#about-dialog .choices { flex-wrap: wrap; margin-top: .9rem; }
-#about-dialog .choices > * { flex: 1; justify-content: center; }
-#about-dialog .cancel { margin: 0; }
-.about-footer { margin-top: .75rem; }
-#about-dialog .about-team { font-weight: 600; }
-#about-dialog .about-team[hidden] { display: none; }
+/* About box, and the Welcome box (styled the same) shown on a first visit */
+#about-dialog, #welcome-dialog { max-width: min(30rem, calc(100vw - 2rem)); }
+:is(#about-dialog, #welcome-dialog) p:not(.tip) { margin: 0 0 .6rem; line-height: 1.45; }
+:is(#about-dialog, #welcome-dialog) .choices { flex-wrap: wrap; margin-top: .9rem; }
+:is(#about-dialog, #welcome-dialog) .choices > * { flex: 1; justify-content: center; }
+:is(#about-dialog, #welcome-dialog) .cancel { margin: 0; }
+.about-footer, .welcome-footer { margin-top: .75rem; }
+:is(#about-dialog, #welcome-dialog) .about-team { font-weight: 600; }
+:is(#about-dialog, #welcome-dialog) .about-team[hidden] { display: none; }
+.welcome-logo { display: block; height: 48px; width: auto; max-width: 144px; object-fit: contain; margin-bottom: .6rem; }
+.welcome-logo[hidden] { display: none; }
+button.link { padding: 0; border: 0; background: none; font: inherit; color: var(--accent); text-decoration: underline; cursor: pointer; }
+button.link:hover:not(:disabled) { background: none; }
 
 /* Team logo box */
 #logo-dialog { width: min(24rem, calc(100vw - 2rem)); }
@@ -491,6 +518,9 @@ dialog .field input { font: inherit; font-size: .95rem; color: var(--ink); paddi
 /* The option whose box is open: a strong yellow halo, at full strength, with every other route faded */
 .route-focus { fill: none; stroke: #ffeb3b; stroke-linecap: round; opacity: .9; }
 .option-focusing .route:not(.option-focus), .option-focusing .route-line:not(.option-focus) { opacity: .25; }
+/* The route whose badge the mouse is over (or whose number is being typed): a white halo, the rest faded */
+.route-hover { fill: none; stroke: #fff; stroke-linecap: round; opacity: .7; }
+.route-hovering .route:not(.hover-focus), .route-hovering .route-line:not(.hover-focus), .route-hovering .badge:not(.hover-focus) { opacity: .25; }
 .option-focusing .option-focus { opacity: 1; }
 .route.loose .route-hit { cursor: move; }
 .route-preview { opacity: .6; }
@@ -504,10 +534,26 @@ dialog .field input { font: inherit; font-size: .95rem; color: var(--ink); paddi
 .focus-player .dim { opacity: .18; }
 .me-ring { fill: none; stroke: #ffeb3b; stroke-width: .45; }
 
-/* Present mode's pen: black with a white outline, a colour no route or team uses, thick enough for a TV */
+/* Present mode's pen, thick enough for a TV: black with a white outline (the default), white with a dark
+   outline, or magenta with a white outline. */
 .pen-outline, .pen-stroke { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .pen-outline { stroke: #fff; stroke-width: 1; }
 .pen-stroke { stroke: #000; stroke-width: .6; }
+.pen-mark.white .pen-outline { stroke: #1d1d1d; }
+.pen-mark.white .pen-stroke { stroke: #fff; }
+.pen-mark.magenta .pen-stroke { stroke: #e600e6; }
+.pen-swatch { display: block; width: 1rem; height: 1rem; border-radius: 50%; }
+.pen-swatch.black { background: #000; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #999; }
+.pen-swatch.white { background: #fff; box-shadow: 0 0 0 2px #1d1d1d; }
+.pen-swatch.magenta { background: #e600e6; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #999; }
+.pen-colours button { padding: .4rem .5rem; }
+.pen-colours button[aria-pressed="true"], .pen-colours button[aria-pressed="true"]:hover:not(:disabled) { background: #ffd600; border-color: #ffd600; }
+
+/* Half views: an arrow at the edge pointing to a player off the shown half */
+.edge-head { stroke: #fff; stroke-width: .15; }
+.edge-arrow.attack .edge-head { fill: #d32f2f; }
+.edge-arrow.defense .edge-head { fill: #1565c0; }
+.edge-arrow text { fill: #fff; font-family: system-ui, sans-serif; font-weight: 700; stroke: rgba(0, 0, 0, .55); stroke-width: .2; paint-order: stroke; }
 
 /* While playing, a route's order badge goes once that route starts moving */
 .badge.moving { display: none; }
@@ -633,7 +679,8 @@ body.presenting {
     grid-template-areas: "top" "pitch" "status" "phases" "tools";
   }
   .group h2, .toolbar .help, .long { display: none; }
-  .statusbar { height: 2.7rem; padding: 0 .5rem; font-size: .78rem; }
+  .statusbar { flex-wrap: wrap; column-gap: .5rem; height: auto; min-height: 2.7rem; padding: .25rem .5rem; font-size: .78rem; }
+  .statusbar .legend { flex-basis: 100%; flex-wrap: wrap; margin-left: 0; font-size: .7rem; }
   .draw-hint { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; line-height: 1.25; }
   .draw-hint[hidden] { display: none; }
   .title-edit { flex: 1 1 auto; }
@@ -648,7 +695,5 @@ body.presenting {
   .phase-tabs { flex: 1; max-width: none; }
   .phase-tools { flex-basis: 100%; flex-wrap: wrap; }
   #phase-note { flex-basis: 100%; min-width: 0; resize: none; }
-  .legend { left: .75rem; bottom: .75rem; grid-template-columns: repeat(3, auto auto); font-size: .7rem; }
-  .legend .route-sample { width: 1.8rem; }
   .template-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

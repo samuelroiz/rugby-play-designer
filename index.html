@@ -66,6 +66,7 @@
         <button type="button" data-view="full"><span>Full<span class="long"> pitch</span></span></button>
         <button type="button" data-view="half"><span>Half<span class="long"> pitch</span></span></button>
       </div>
+      <button type="button" id="flip-half" class="flip-half" hidden title="Show the other half of the pitch" aria-label="Show the other half">⇄<span class="long">&nbsp;Other half</span></button>
       <div class="segmented" role="group" aria-label="Orientation">
         <button type="button" data-orientation="horizontal" aria-label="Horizontal" title="Horizontal: try lines left and right">
           <svg class="orient-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="1"/><line x1="12" y1="6" x2="12" y2="18"/></svg>
@@ -82,6 +83,12 @@
           <label><input type="checkbox" data-layer="legend"> Legend</label>
           <label><input type="checkbox" data-layer="ghost"> Previous phase</label>
           <label><input type="checkbox" data-layer="direction"> Direction</label>
+          <fieldset class="player-size">
+            <legend>Player size</legend>
+            <label><input type="radio" name="player-size" value="small"> Small</label>
+            <label><input type="radio" name="player-size" value="medium"> Medium</label>
+            <label><input type="radio" name="player-size" value="large"> Large</label>
+          </fieldset>
         </div>
       </details>
     </div>
@@ -128,14 +135,15 @@
         <g id="ball-layer"></g>
         <g id="badges-layer"></g>
         <g id="handles-layer"></g>
+        <g id="edge-layer" pointer-events="none"></g>
         <g id="pen-layer" pointer-events="none"></g>
       </g>
     </svg>
-    <div class="legend" id="legend" aria-hidden="true"></div>
     <input class="inline-edit" id="inline-edit" type="text" autocomplete="off" spellcheck="false" hidden>
     <p class="present-count" id="present-count" aria-live="polite"></p>
     <img class="present-logo" id="present-logo" alt="" hidden>
     <div class="route-bar" id="route-bar" role="toolbar" aria-label="Selected route" hidden>
+      <span class="route-step" id="route-step"></span>
       <button type="button" data-route-action="label">Label</button>
       <button type="button" data-route-action="main">Make main</button>
       <button type="button" data-route-action="order">Order</button>
@@ -143,10 +151,13 @@
     </div>
   </main>
 
-  <!-- Drawing hints and "Saved …" messages: a line of its own under the pitch, never over the field. -->
+  <!-- Drawing hints, "Saved …" messages and "End of play": a line of its own under the pitch, never over the
+       field, with the route key (Legend layer) at its right end. -->
   <div class="statusbar" id="statusbar">
     <p class="draw-hint" id="draw-hint" aria-live="polite" hidden></p>
     <div class="toast" id="toast" role="alert" hidden></div>
+    <div class="end-of-play" id="end-of-play" role="status" hidden><span>End of play</span><button type="button" id="replay-button">Replay</button></div>
+    <div class="legend" id="legend" aria-hidden="true"></div>
   </div>
 
   <p class="present-caption" id="present-caption" hidden></p>
@@ -163,7 +174,7 @@
     <div class="play-controls" id="play-controls" role="group" aria-label="Playback">
       <button type="button" data-play="first" class="present-only step" aria-label="Go to phase 1" data-tip="Go to phase 1">⏮</button>
       <button type="button" data-play="back" class="present-only step" aria-label="Previous phase" data-tip="Previous phase (←)">‹</button>
-      <button type="button" data-play="toggle" id="play-button" class="play-button" aria-label="Play" aria-keyshortcuts="Space" data-tip="Play from this phase to the last (Space)"><span class="play-icon" aria-hidden="true">▶</span><span class="play-text">Play</span></button>
+      <button type="button" data-play="toggle" id="play-button" class="play-button" aria-label="Play" aria-keyshortcuts="Space" data-tip="Play from this phase to the last (Space)"><span class="play-icon" aria-hidden="true">▶&#xFE0E;</span><span class="play-text">Play</span></button>
       <button type="button" data-play="forward" class="present-only step" aria-label="Next phase" data-tip="Next phase (→)">›</button>
       <div class="segmented present-only option-buttons" id="option-buttons" role="group" aria-label="Play an option" hidden></div>
       <div class="segmented speed" role="group" aria-label="Speed">
@@ -176,6 +187,12 @@
         <select id="i-play" aria-label="I play: fade the rest of that player's team"></select>
       </label>
       <button type="button" data-play="pen" class="present-only" aria-pressed="false" aria-keyshortcuts="P">Pen</button>
+      <div class="segmented present-only pen-colours" role="group" aria-label="Pen colour">
+        <button type="button" data-pen-colour="black" aria-pressed="true" aria-label="Black pen"><span class="pen-swatch black"></span></button>
+        <button type="button" data-pen-colour="white" aria-pressed="false" aria-label="White pen"><span class="pen-swatch white"></span></button>
+        <button type="button" data-pen-colour="magenta" aria-pressed="false" aria-label="Magenta pen"><span class="pen-swatch magenta"></span></button>
+      </div>
+      <button type="button" data-play="undo-stroke" class="present-only" aria-keyshortcuts="Z">Undo stroke</button>
       <button type="button" data-play="clear" class="present-only" aria-keyshortcuts="C" aria-label="Clear the pen drawings">Clear</button>
       <button type="button" data-play="exit" class="present-only" aria-keyshortcuts="Escape">Exit</button>
     </div>
@@ -201,7 +218,7 @@
           <button value="scrum-defense"><span class="swatch defense"></span>Defense</button>
         </div>
       </fieldset>
-      <p class="tip">Places players 1–9 of both teams and the ball. Select the scrum or one of its players, then drag the S to move the whole scrum.</p>
+      <p class="tip">Then click where the mark goes: places players 1–9 of both teams and the ball there. Select the scrum or one of its players, then drag the S to move the whole scrum.</p>
       <fieldset>
         <legend>Lineout: who throws in?</legend>
         <div class="choices">
@@ -209,7 +226,7 @@
           <button value="lineout-defense"><span class="swatch defense"></span>Defense</button>
         </div>
       </fieldset>
-      <p class="tip">Lines up 1 and 3–8 of both teams from 5 m in from touch at the lineout marker (one is added if there isn't one), the hooker throwing, the other hooker in the 5 m channel and both 9s behind.</p>
+      <p class="tip">Then click where the mark goes: lines up 1 and 3–8 of both teams from 5 m in from the nearer touchline there, the hooker throwing, the other hooker in the 5 m channel and both 9s behind.</p>
       <button value="" class="cancel">Cancel</button>
     </form>
   </dialog>
@@ -279,6 +296,21 @@
       <p class="tip" id="templates-status" aria-live="polite"></p>
       <div class="template-grid" id="template-grid"></div>
       <button value="" class="cancel">Cancel</button>
+    </form>
+  </dialog>
+
+  <dialog id="welcome-dialog" aria-labelledby="welcome-title">
+    <form method="dialog">
+      <img class="welcome-logo" id="welcome-logo" alt="" hidden>
+      <h2 id="welcome-title">Welcome to Rugby Play Designer</h2>
+      <p>Design rugby plays, animate them phase by phase, and export them to share with your team. Free, no account needed.</p>
+      <p class="about-team" id="welcome-team" hidden></p>
+      <div class="choices">
+        <button type="button" id="welcome-example">Try an example</button>
+        <button type="button" id="welcome-template">Start from a template</button>
+        <button value="" class="cancel" id="welcome-blank">Start blank</button>
+      </div>
+      <p class="tip welcome-footer"><button type="button" class="link" id="welcome-about">About this project</button></p>
     </form>
   </dialog>
 

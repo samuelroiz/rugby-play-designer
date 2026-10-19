@@ -51,9 +51,14 @@ function place(state, phase, team, n, x, y) {
   return id;
 }
 
-// Uses a ball within BALL_AT_SCRUM of `near` (or the one given), or adds one, and puts it at (x, y).
-function placeBall(phase, ball, near, x, y) {
-  ball ??= ballNear(phase.objects, near);
+// The phase's ball nearest `at`, wherever it is, or null if it has none.
+const nearestBall = (objects, at) => objects.filter(o => o.type === 'ball')
+  .sort((a, b) => Math.hypot(a.x - at.x, a.y - at.y) - Math.hypot(b.x - at.x, b.y - at.y))[0] ?? null;
+
+// Moves the phase's ball nearest `near` to (x, y), so a set piece never adds a second ball; adds one only
+// if the phase has none.
+function placeBall(phase, near, x, y) {
+  let ball = nearestBall(phase.objects, near);
   if (!ball) {
     ball = { id: nextId('o', phase.objects), type: 'ball' };
     phase.objects.push(ball);
@@ -61,13 +66,14 @@ function placeBall(phase, ball, near, x, y) {
   Object.assign(ball, { x: round(x), y: round(y) });
 }
 
-// Puts players 1-8 of both teams in formation on a new scrum, and both 9s on the put-in side: the put-in
-// team's 9 next to the ball, the other 9 by their own pack. The 9s are part of the scrum's pack, so they
-// move with it. An earlier scrum preset in the phase is replaced, so no player belongs to two. The ball is
-// an ordinary ball object on the put-in side; a ball already at the old or new mark is reused.
+// Puts players 1-8 of both teams in formation on a new scrum at the legal mark nearest `at` (where the user
+// clicked), and both 9s on the put-in side: the put-in team's 9 next to the ball, the other 9 by their own
+// pack. The 9s are part of the scrum's pack, so they move with it. An earlier scrum preset in the phase is
+// replaced, so no player belongs to two. The ball is an ordinary ball object on the put-in side: the phase's
+// ball nearest the mark is moved there (one is added only if there's none).
 export function placeScrum(state, phase, at, putIn) {
   const previous = phase.objects.find(o => o.type === 'scrum' && o.pack);
-  const mark = snapScrum(previous?.x ?? at.x, previous?.y ?? at.y);
+  const mark = snapScrum(at.x, at.y);
   phase.objects = phase.objects.filter(o => o !== previous);
 
   const side = putInSide(putIn);
@@ -84,7 +90,7 @@ export function placeScrum(state, phase, at, putIn) {
   const scrum = { id: nextId('o', phase.objects), type: 'scrum', ...mark, putIn, pack };
   phase.objects.push(scrum);
 
-  placeBall(phase, (previous && ballNear(phase.objects, previous)) || null, mark, mark.x, mark.y + side * 4.7);
+  placeBall(phase, mark, mark.x, mark.y + side * 4.7);
   return scrum;
 }
 
@@ -103,18 +109,20 @@ const LINEOUT = [1, 4, 3, 6, 5, 8, 7];
 const LINE_GAP = 1.2;
 const LINEOUT_STEP = 2.5;
 
-// Lines up both teams' forwards at the phase's lineout marker (one is added at the view centre if there
-// isn't one). The marker is snapped to the 5 m line on its side, and its x is the line of touch: attack
-// stands on the -x side, defense on the +x side. The throwing team's hooker is on the touchline with the
-// ball, the other hooker in the 5 m channel, and both 9s behind the lineout. A lineout restarts play, so
-// the phase's ball nearest the marker moves to the hooker (one is added if there's none). The players placed
-// are the marker's `pack`, so dragging the marker moves them (see moveLineout). Returns the marker.
+// Lines up both teams' forwards at `at` (where the user clicked), using the phase's lineout marker (one is
+// added if there isn't one). The marker is snapped to the 5 m line of the touchline nearer `at`, and its x
+// is the line of touch: attack stands on the -x side, defense on the +x side. The throwing team's hooker is on
+// the touchline with the ball, the other hooker in the 5 m channel, and both 9s behind the lineout. A lineout
+// restarts play, so the phase's ball nearest the marker moves to the hooker (one is added if there's none).
+// The players placed are the marker's `pack`, so dragging the marker moves them (see moveLineout).
+// Returns the marker.
 export function placeLineout(state, phase, at, throwIn) {
   let marker = phase.objects.find(o => o.type === 'lineout');
   if (!marker) {
-    marker = { id: nextId('o', phase.objects), type: 'lineout', x: at.x, y: 5 };
+    marker = { id: nextId('o', phase.objects), type: 'lineout' };
     phase.objects.push(marker);
   }
+  Object.assign(marker, { x: at.x, y: at.y });
   const s = marker.y <= 35 ? 1 : -1; // into the field from the nearer touchline
   const touch = s > 0 ? 0 : 70;
   const x = round(Math.min(97, Math.max(3, marker.x)));
@@ -132,8 +140,7 @@ export function placeLineout(state, phase, at, throwIn) {
   leaveOtherGroups(phase, 'lineout', pack);
   Object.assign(marker, { throwIn, pack });
   const throwDir = throwIn === 'defense' ? -1 : 1;
-  const nearest = phase.objects.filter(o => o.type === 'ball').sort((a, b) => Math.hypot(a.x - x, a.y - y5) - Math.hypot(b.x - x, b.y - y5))[0];
-  placeBall(phase, nearest ?? null, marker, x + throwDir * 0.6, touch + s * 2.2);
+  placeBall(phase, marker, x + throwDir * 0.6, touch + s * 2.2);
   return marker;
 }
 

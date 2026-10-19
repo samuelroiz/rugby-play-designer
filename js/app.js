@@ -3,7 +3,9 @@
 // and schedules the autosave, so every change to the play is undoable and saved without extra wiring.
 // Redraws that only show hover feedback pass { record: false } and record nothing.
 
-import { drawPitch, setView, viewCentre, startSpot, svgEl, uprightTurn, PLAYER_R } from './pitch.js';
+import {
+  drawPitch, setView, viewCentre, viewRange, isHalf, startSpot, directionBox, svgEl, uprightTurn, PLAYER_R, BOUNDS,
+} from './pitch.js';
 import { initEditor, routeGeometry, isAttached, drawingFrom } from './editor.js';
 import { placeScrum, moveScrum, placeLineout, moveLineout } from './setpiece.js';
 import { appendPhase, insertPhaseAfter, movePhase } from './phases.js';
@@ -15,7 +17,7 @@ import {
 import { pictureSvg, allPhasesSvg, legendSvg, pageCss, svgToPng, pageFit, makePdf, PX_PER_MM } from './export.js';
 import { loadTemplates, loadExample, thumbnail, isEmptyPlay } from './templates.js';
 import { syncOptions, makeMainOption, optionGroup, optionLetters, OPTION_LABEL_MAX } from './options.js';
-import { nextId, nextOrder, round2, curvePoint, playedRoutes, BALL_ROUTES } from './model.js';
+import { nextId, nextOrder, round1, round2, curvePoint, playedRoutes, BALL_ROUTES } from './model.js';
 import { createPlayback } from './playback.js';
 import { initPresent } from './present.js';
 import {
@@ -25,8 +27,10 @@ import {
 const MAX_PER_TEAM = 15;
 const BADGE_R = 0.9;
 const BALL_R = 0.75; // the ball's drawn half-length, for keeping badges off it
-// A pass attached to a receiver stops this far from their centre, so its arrowhead touches their disc.
-const PASS_END_GAP = PLAYER_R + 0.2;
+// Layers → Player size: how much player discs, their numbers and the route badges are scaled. A setting of
+// this browser (kept in localStorage), not of the play; pictures and PDFs use the size on screen.
+const PLAYER_SIZES = { small: 0.8, medium: 1, large: 1.2 };
+const PLAYER_SIZE_KEY = 'rugby-play-designer.player-size';
 // PDF pages: the pitch picture is drawn at this many times its size in CSS px on the page (about 190 dpi).
 const PDF_SCALE = 2;
 // All-phases PNG: width of each pitch tile in CSS px, and tiles per row (fewer if there are fewer phases).
@@ -43,7 +47,7 @@ const ROUTE_TYPES = {
   run:   { label: 'Run',   color: '#ffe14d', width: 0.3 },
   pass:  { label: 'Pass',  color: '#ffffff', width: 0.25, dash: '1 0.7' },
   kick:  { label: 'Kick',  color: '#ffa033', width: 0.5,  dash: '0.01 0.95', cap: 'round' },
-  decoy: { label: 'Decoy', color: '#b8b8b8', width: 0.2,  dash: '0.4 0.8' },
+  decoy: { label: 'Decoy', color: '#d4d4d4', width: 0.35, dash: '0.45 0.55' },
   drift: { label: 'Drift', color: '#cfa6ff', width: 0.3 },
   blitz: { label: 'Blitz', color: '#ff8fd0', width: 0.6 },
 };
@@ -79,7 +83,31 @@ const ui = {
   presenting: false, // Present mode
   focusPlayer: null, // Present mode's "I play": the rest of that player's team fades
   exporting: false, // a PNG or PDF is being made: editing waits until it's done
+  // Waiting for "click where it goes": { kind: 'player', team, n } after a number is picked, or
+  // { kind: 'scrum' | 'lineout', team } after a set piece is chosen. The next press on the pitch places it.
+  placing: null,
+  hoverRoute: null, // the route whose badge the mouse is over: it's highlighted and the others fade
+  orderEdit: null, // the route whose order number is being typed: highlighted the same way
+  playerSize: readPlayerSize(),
 };
+
+function readPlayerSize() {
+  try {
+    const saved = localStorage.getItem(PLAYER_SIZE_KEY);
+    return saved in PLAYER_SIZES ? saved : 'medium';
+  } catch {
+    return 'medium';
+  }
+}
+function savePlayerSize(size) {
+  try { localStorage.setItem(PLAYER_SIZE_KEY, size); } catch { /* storage blocked: it lasts until the page closes */ }
+}
+// Drawn sizes, in metres, at the chosen player size.
+const sizeScale = () => PLAYER_SIZES[ui.playerSize] ?? 1;
+const playerR = () => PLAYER_R * sizeScale();
+const badgeR = () => BADGE_R * sizeScale();
+// A pass attached to a receiver stops this far from their centre, so its arrowhead touches their disc.
+const passEndGap = () => playerR() + 0.2;
 
 const $ = id => document.getElementById(id);
 const svg = $('pitch');
@@ -95,6 +123,7 @@ const layers = {
   balls: $('ball-layer'),
   badges: $('badges-layer'),
   handles: $('handles-layer'),
+  edges: $('edge-layer'),
   pen: $('pen-layer'),
 };
 const inputs = { name: $('play-name'), category: $('play-category'), tags: $('play-tags'), note: $('phase-note') };
@@ -217,6 +246,38 @@ function render(commitKey = null, { record = true } = {}) {
   }
   updateHistoryButtons();
   playback.afterRender();
+  updateEndOfPlay();
+  if (drawnNote) { showToast(drawnNote, 'ok'); drawnNote = null; }
+}
+
+// After the last phase has played (Loop off): "End of play" and Replay in the status line, until the play is
+// edited, another phase is shown, or Play is pressed (each drops the end frame).
+function updateEndOfPlay() {
+  $('end-of-play').hidden = !playback.ended || ui.presenting;
+}
+
+// A run, decoy, drift or blitz moves with the latest step: say so when it shares that step with other routes.
+let drawnNote = null;
+function drew(route) {
+  if (BALL_ROUTES.has(route.type) || !Number.isFinite(route.order)) return;
+  if (!phase().routes.some(r => r !== route && r.order === route.order)) return;
+  drawnNote = `Runs with step ${route.order}. Change the number to run before or after.`;
+}
+
+// "pass 9 to 10", "run 12", "kick" (from open grass).
+function routeName(r) {
+  const label = id => state.players.find(p => p.id === id)?.label;
+  const from = r.from && label(r.from);
+  const to = r.to && label(r.to);
+  return [ROUTE_TYPES[r.type]?.label.toLowerCase() ?? 'route', from, to && `to ${to}`].filter(Boolean).join(' ');
+}
+
+// The route bar's "Step 2, together with: pass 9 to 10": the routes that start at the same step. A player's
+// other options are alternatives, not together, so they're left out.
+function stepText(route) {
+  if (!Number.isFinite(route.order)) return '';
+  const together = phase().routes.filter(r => r !== route && r.order === route.order && !(route.option && r.option && r.from === route.from));
+  return `Step ${route.order}${together.length ? `, together with: ${together.map(routeName).join(', ')}` : ''}`;
 }
 
 // During a drag: one redraw per animation frame, however many pointer moves there are.
@@ -245,6 +306,38 @@ function drawScene() {
   renderObjects();
   renderRoutes();
   renderPlayers();
+  renderEdgeArrows();
+}
+
+// Half views: a player off the shown half gets a small arrow at the edge (halfway), in their team's colour
+// with their number, pointing the way to them.
+function renderEdgeArrows() {
+  const layer = layers.edges;
+  layer.replaceChildren();
+  if (!isHalf(state.view)) return;
+  const { minX, maxX } = viewRange(state.view);
+  for (const p of state.players) {
+    const pos = phase().positions[p.id];
+    if (!pos || (pos.x >= minX && pos.x <= maxX)) continue;
+    const left = pos.x < minX; // the player is past the -x edge
+    const x = left ? minX + 1.3 : maxX - 1.3;
+    const y = Math.min(68.5, Math.max(1.5, pos.y));
+    const g = svgEl('g', { class: `edge-arrow ${p.team}`, 'data-edge': p.id, transform: `translate(${x} ${y})` }, layer);
+    svgEl('path', { d: 'M1 0L-0.8 -0.9L-0.8 0.9z', transform: left ? 'rotate(180)' : null, class: 'edge-head' }, g);
+    svgEl('text', {
+      transform: `translate(${left ? 1.9 : -1.9} 0)${turn()}`,
+      'text-anchor': 'middle',
+      'dominant-baseline': 'central',
+      'font-size': 0.95,
+    }, g).textContent = p.label;
+  }
+}
+
+// Switching to Half shows the half where most of the shown phase's players are (the half attack plays into
+// on a tie).
+function busierHalf() {
+  const xs = Object.values(phase().positions).map(p => p.x);
+  return xs.filter(x => x < 50).length > xs.filter(x => x > 50).length ? 'half-own' : 'half';
 }
 
 // Selection can point at something that's gone after undo, delete or a phase change.
@@ -275,7 +368,8 @@ function badgePosition(r, geometry, taken) {
   const len = Math.hypot(tx, ty) || 1;
   [tx, ty] = [tx / len, ty / len];
   const side = r.curve > 0 ? -1 : 1;
-  const base = r.from ? PLAYER_R + BADGE_R + 0.5 : BADGE_R + 0.5;
+  const R = badgeR();
+  const base = r.from ? playerR() + R + 0.5 : R + 0.5;
   let first = null;
   for (const extra of [0, 1, 2]) {
     for (const s of [side, -side]) {
@@ -283,7 +377,7 @@ function badgePosition(r, geometry, taken) {
         const out = base + extra;
         const p = { x: sx + tx * along - ty * s * out, y: sy + ty * along + tx * s * out };
         first ??= p;
-        if (taken.every(o => Math.hypot(o.x - p.x, o.y - p.y) >= o.r + BADGE_R + 0.1)) return p;
+        if (taken.every(o => Math.hypot(o.x - p.x, o.y - p.y) >= o.r + R + 0.1)) return p;
       }
     }
   }
@@ -307,7 +401,8 @@ function optionBadgePosition(r, siblings, taken) {
   const lengths = [0];
   for (let i = 1; i < own.length; i++) lengths.push(lengths[i - 1] + Math.hypot(own[i].x - own[i - 1].x, own[i].y - own[i - 1].y));
   const total = lengths.at(-1);
-  const clearOfStart = PLAYER_R + BADGE_R + 0.4;
+  const R = badgeR();
+  const clearOfStart = playerR() + R + 0.4;
   const candidates = [];
   for (const along of [3.4, 4.4, 5.6, 7, 8.8, 11]) {
     const at = Math.min(along, Math.max(total * 0.7, Math.min(clearOfStart, total * 0.85)));
@@ -319,13 +414,13 @@ function optionBadgePosition(r, siblings, taken) {
     // The side away from the other options first.
     const probe = s => otherDist({ x: q.x + normal.x * s, y: q.y + normal.y * s });
     const sides = probe(1) >= probe(-1) ? [1, -1] : [-1, 1];
-    for (const offset of [BADGE_R + 0.3, 0]) {
+    for (const offset of [R + 0.3, 0]) {
       for (const s of offset ? sides : [1]) {
         const p = { x: q.x + normal.x * s * offset, y: q.y + normal.y * s * offset };
         const margin = otherDist(p) - offset;
-        const clear = taken.every(o => Math.hypot(o.x - p.x, o.y - p.y) >= o.r + BADGE_R + 0.1);
+        const clear = taken.every(o => Math.hypot(o.x - p.x, o.y - p.y) >= o.r + R + 0.1);
         candidates.push({ p, margin, clear });
-        if (clear && margin >= BADGE_R + 0.5) return p;
+        if (clear && margin >= R + 0.5) return p;
       }
     }
   }
@@ -337,13 +432,13 @@ function optionBadgePosition(r, siblings, taken) {
 function badgeObstacles() {
   const ph = phase();
   return [
-    ...state.players.filter(p => ph.positions[p.id]).map(p => ({ ...ph.positions[p.id], r: PLAYER_R })),
+    ...state.players.filter(p => ph.positions[p.id]).map(p => ({ ...ph.positions[p.id], r: playerR() })),
     ...ph.objects.filter(o => o.type === 'ball').map(o => ({ x: o.x, y: o.y, r: BALL_R })),
   ];
 }
 
 // The drawn shape of a route: a pass to a receiver stops at the edge of their disc.
-const drawnGeometry = r => routeGeometry(r, { endGap: r.to ? PASS_END_GAP : 0 });
+const drawnGeometry = r => routeGeometry(r, { endGap: r.to ? passEndGap() : 0 });
 
 function renderRoutes() {
   const layer = layers.routes;
@@ -354,6 +449,10 @@ function renderRoutes() {
   const lineHit = Math.max(1.6, LINE_HIT_PX / ppm);
   layers.ballRoutes.replaceChildren();
   svg.classList.toggle('option-focusing', !!ui.optionFocus);
+  // A badge under the mouse (or whose number is being typed) highlights its route and fades the others.
+  // Not while playing or presenting, where nothing is edited.
+  const hovered = ui.optionFocus || locked() ? null : ui.orderEdit ?? ui.hoverRoute;
+  svg.classList.toggle('route-hovering', !!hovered && phase().routes.some(r => r.id === hovered));
   const taken = badgeObstacles();
   const routes = phase().routes;
   // Of each player's options, the one that plays draws as the main plan: A, or the one chosen in Present mode.
@@ -366,14 +465,15 @@ function renderRoutes() {
     const b = r.option
       ? optionBadgePosition(r, optionGroup(routes, r.from).filter(o => o !== r), taken)
       : badgePosition(r, routeGeometry(r), taken);
-    taken.push({ ...b, r: BADGE_R });
+    taken.push({ ...b, r: badgeR() });
     badgeAt.set(r.id, b);
   }
   for (const r of routes) {
     const selected = isSelected('route', r.id);
     const focus = ui.optionFocus === r.id;
     const dim = faded(r.from) ? ' dim' : '';
-    const extra = `${r.option && !played.has(r) ? ' option-alt' : ''}${focus ? ' option-focus' : ''}${dim}`;
+    const hover = hovered === r.id;
+    const extra = `${r.option && !played.has(r) ? ' option-alt' : ''}${focus ? ' option-focus' : ''}${hover ? ' hover-focus' : ''}${dim}`;
     const cls = `route${selected ? ' selected' : ''}${isAttached(r) ? '' : ' loose'}${extra}`;
     const g = svgEl('g', { class: cls, 'data-kind': 'route', 'data-id': r.id }, layer);
     const geometry = routeGeometry(r);
@@ -384,17 +484,19 @@ function renderRoutes() {
     const lines = BALL_ROUTES.has(r.type) ? svgEl('g', { class: `route-line${extra}`, 'data-id': r.id }, layers.ballRoutes) : g;
     const width = ROUTE_TYPES[r.type]?.width ?? 0.3;
     if (focus) svgEl('path', { d, class: 'route-focus', 'stroke-width': width + 1.3 }, lines);
+    else if (hover) svgEl('path', { d, class: 'route-hover', 'stroke-width': width + 1.3 }, lines);
     else if (selected) svgEl('path', { d, class: 'route-highlight', 'stroke-width': width + 0.9 }, lines);
     routePaths(lines, 'path', { d }, r.type);
 
     // Badges go in their own layer above the players, so a nearby player can't cover them.
     if (badgeAt.has(r.id)) {
       const b = badgeAt.get(r.id);
-      const badge = svgEl('g', { class: `badge${dim}`, 'data-kind': 'badge', 'data-id': r.id, transform: `translate(${b.x} ${b.y})${turn()}` }, layers.badges);
-      svgEl('circle', { r: BADGE_R, stroke: ROUTE_TYPES[r.type]?.color ?? '#fff' }, badge);
+      const badge = svgEl('g', { class: `badge${hover ? ' hover-focus' : ''}${dim}`, 'data-kind': 'badge', 'data-id': r.id, transform: `translate(${b.x} ${b.y})${turn()}` }, layers.badges);
+      svgEl('circle', { r: badgeR(), stroke: ROUTE_TYPES[r.type]?.color ?? '#fff' }, badge);
       // "2", or "2A" / "2B" for options.
       const text = `${r.order}${r.option ?? ''}`;
-      svgEl('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': [1.1, 0.85, 0.7][Math.min(text.length, 3) - 1] }, badge).textContent = text;
+      const size = [1.1, 0.85, 0.7][Math.min(text.length, 3) - 1] * sizeScale();
+      svgEl('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': round2(size) }, badge).textContent = text;
     }
     optionLabel(layers.badges, r, dim);
 
@@ -414,7 +516,7 @@ function optionLabel(parent, r, extraClass = '') {
   let [tx, ty] = [ex - control.x, ey - control.y];
   const len = Math.hypot(tx, ty) || 1;
   [tx, ty] = [tx / len, ty / len];
-  const gap = r.to ? PLAYER_R + 0.7 : 1;
+  const gap = r.to ? playerR() + 0.7 : 1;
   // Direction on screen: vertical turns the pitch a quarter turn anticlockwise, (x, y) -> (y, -x).
   const [sx, sy] = state.orientation === 'vertical' ? [ty, -tx] : [tx, ty];
   const across = Math.abs(sx) >= Math.abs(sy);
@@ -469,10 +571,11 @@ function renderPlayers() {
     const me = ui.focusPlayer === p.id;
     const cls = `player ${p.team}${isSelected('player', p.id) ? ' selected' : ''}${faded(p.id) ? ' dim' : ''}`;
     const g = svgEl('g', { class: cls, 'data-kind': 'player', 'data-id': p.id, transform: `translate(${pos.x} ${pos.y})${turn()}` }, layer);
-    svgEl('circle', { r: PLAYER_R * 1.6, class: 'hit' }, g); // bigger touch target
-    if (ui.snap === p.id || ui.snapTo === p.id) svgEl('circle', { r: PLAYER_R + 0.55, class: 'snap-ring' }, g);
-    if (me) svgEl('circle', { r: PLAYER_R + 0.75, class: 'me-ring' }, g);
-    svgEl('circle', { r: PLAYER_R, class: 'body' }, g);
+    const R = playerR();
+    svgEl('circle', { r: Math.max(R, PLAYER_R) * 1.6, class: 'hit' }, g); // bigger touch target
+    if (ui.snap === p.id || ui.snapTo === p.id) svgEl('circle', { r: R + 0.55, class: 'snap-ring' }, g);
+    if (me) svgEl('circle', { r: R + 0.75, class: 'me-ring' }, g);
+    svgEl('circle', { r: R, class: 'body' }, g);
     playerText(g, p.label);
   }
 }
@@ -481,7 +584,7 @@ function playerText(g, label) {
   svgEl('text', {
     'text-anchor': 'middle',
     'dominant-baseline': 'central',
-    'font-size': label.length > 2 ? 0.85 : 1.2,
+    'font-size': round2((label.length > 2 ? 0.85 : 1.2) * sizeScale()),
   }, g).textContent = label;
 }
 
@@ -504,7 +607,7 @@ function renderGhost() {
     const pos = prev.positions[p.id];
     if (!pos) continue;
     const g = svgEl('g', { class: `ghost ${p.team}`, 'data-ghost': p.id, transform: `translate(${pos.x} ${pos.y})${turn()}` }, layer);
-    svgEl('circle', { r: PLAYER_R }, g);
+    svgEl('circle', { r: playerR() }, g);
     playerText(g, p.label);
   }
 }
@@ -600,27 +703,40 @@ function updateToolbar() {
   fileMenu.inert = busy();
   if (busy()) fileMenu.open = false;
   for (const el of [inputs.name, inputs.category, inputs.tags]) el.disabled = busy();
-  for (const b of document.querySelectorAll('[data-view]')) b.setAttribute('aria-pressed', b.dataset.view === state.view);
+  for (const b of document.querySelectorAll('[data-view]')) b.setAttribute('aria-pressed', b.dataset.view === 'half' ? isHalf(state.view) : state.view === b.dataset.view);
   for (const b of document.querySelectorAll('[data-orientation]')) b.setAttribute('aria-pressed', b.dataset.orientation === state.orientation);
   for (const b of document.querySelectorAll('[data-route]')) b.setAttribute('aria-pressed', b.dataset.route === ui.tool);
   for (const c of document.querySelectorAll('[data-layer]')) c.checked = ui.layers[c.dataset.layer];
-  svg.classList.toggle('drawing', !!ui.tool);
+  svg.classList.toggle('drawing', !!ui.tool || !!ui.placing);
+  for (const r of document.querySelectorAll('[name="player-size"]')) r.checked = r.value === ui.playerSize;
+  const flip = $('flip-half');
+  flip.hidden = !isHalf(state.view);
+  flip.disabled = busy();
   updateDrawHint();
 }
 
-// Shown whenever a route tool is on: how to draw with nothing selected, and "Click where 12's run ends"
+// Shown while a player or set piece waits to be placed ("Click where 12 stands", "Click where the mark
+// goes"), and whenever a route tool is on: how to draw with nothing selected, and "Click where 12's run ends"
 // while click-to-draw from a player is on.
 function updateDrawHint() {
   const hint = $('draw-hint');
   const wasHidden = hint.hidden;
-  hint.hidden = !ui.tool;
-  if (!ui.tool) return;
+  hint.hidden = !ui.tool && !ui.placing;
+  if (hint.hidden) return;
   const touch = touchScreen.matches;
   const verb = touch ? 'Tap' : 'Click';
   const type = ROUTE_TYPES[ui.tool]?.label.toLowerCase() ?? 'route';
   const from = drawingFrom(ui, phase());
   let text;
-  if (!from) {
+  if (ui.placing?.kind === 'player') {
+    const { team, n } = ui.placing;
+    // "12", or "defender 12" when the other team has a 12.
+    const shared = state.players.some(p => p.team !== team && p.label === String(n));
+    const who = shared ? `${team === 'attack' ? 'attacker' : 'defender'} ${n}` : n;
+    text = `${verb} where ${who} stands.${touch ? '' : ' Esc puts them at the usual spot.'}`;
+  } else if (ui.placing) {
+    text = `${verb} where the mark goes.${touch ? '' : ' Esc cancels.'}`;
+  } else if (!from) {
     text = `Drag from a player to draw a ${type}, or ${verb.toLowerCase()} a player first.`;
   } else {
     const player = state.players.find(p => p.id === from);
@@ -682,7 +798,8 @@ function updatePlayControls() {
   document.body.classList.toggle('playing', playback.playing);
   const play = $('play-button');
   play.setAttribute('aria-label', playback.playing ? 'Pause' : 'Play');
-  play.querySelector('.play-icon').textContent = playback.playing ? '❚❚' : '▶';
+  // U+FE0E asks for the plain text glyph, not an emoji, so both icons match the label's colour and size.
+  play.querySelector('.play-icon').textContent = playback.playing ? '⏸\uFE0E' : '▶\uFE0E';
   play.querySelector('.play-text').textContent = playback.playing ? 'Pause' : 'Play';
   for (const b of document.querySelectorAll('[data-speed]')) b.setAttribute('aria-pressed', Number(b.dataset.speed) === playback.speed);
   document.querySelector('[data-play="loop"]').setAttribute('aria-pressed', playback.loop);
@@ -759,14 +876,39 @@ function freeNumbers(team) {
   return Array.from({ length: MAX_PER_TEAM }, (_, i) => i + 1).filter(n => !state.players.some(p => p.id === prefix + n));
 }
 
-function addPlayer(team, n) {
+// Adds player n of `team` at `at` (where the user clicked), or at their usual spot.
+function addPlayer(team, n, at = null) {
   const prefix = team === 'attack' ? 'a' : 'd';
   const id = prefix + n;
   if (!freeNumbers(team).includes(n)) return;
+  const spot = at ? { x: round1(at.x), y: round1(at.y) } : defaultSpot(team, n);
   state.players.push({ id, team, label: String(n) });
   // A player is one person across the whole play: they're in every phase, at the same spot.
-  for (const each of state.phases) each.positions[id] = startSpot(team, n, state.view);
+  for (const each of state.phases) each.positions[id] = { ...spot };
   ui.selected = { kind: 'player', id };
+}
+
+// A new player's usual spot: each team lined up across the shown view (startSpot), or, if another player
+// or the direction arrow is there, the nearest clear spot around it in the view.
+function defaultSpot(team, n) {
+  const start = startSpot(team, n, state.view);
+  const R = playerR();
+  const { minX, maxX } = viewRange(state.view);
+  const arrow = ui.layers.direction ? directionBox(state.view, state.orientation) : null;
+  const others = Object.values(phase().positions);
+  const clear = p => p.x >= Math.max(minX, BOUNDS.minX) + R && p.x <= Math.min(maxX, BOUNDS.maxX) - R
+    && p.y >= R && p.y <= 70 - R
+    && others.every(o => Math.hypot(o.x - p.x, o.y - p.y) >= 2 * R + 0.3)
+    && !(arrow && p.x + R + 0.2 > arrow.minX && p.x - R - 0.2 < arrow.maxX && p.y + R + 0.2 > arrow.minY && p.y - R - 0.2 < arrow.maxY);
+  if (clear(start)) return start;
+  for (let ring = 1; ring <= 8; ring++) {
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * 2 * Math.PI;
+      const p = { x: round1(start.x + Math.cos(a) * ring * 2.6), y: round1(start.y + Math.sin(a) * ring * 2.6) };
+      if (clear(p)) return p;
+    }
+  }
+  return start;
 }
 
 function addObject(type) {
@@ -778,16 +920,50 @@ function addObject(type) {
   ui.selected = { kind: 'object', id };
 }
 
-function addLineout(throwIn) {
-  const marker = placeLineout(state, phase(), viewCentre(state.view), throwIn);
+function addLineout(throwIn, at) {
+  const marker = placeLineout(state, phase(), at, throwIn);
   ui.selected = { kind: 'object', id: marker.id };
   ui.tool = null;
 }
 
-function addScrum(putIn) {
-  const scrum = placeScrum(state, phase(), viewCentre(state.view), putIn);
+function addScrum(putIn, at) {
+  const scrum = placeScrum(state, phase(), at, putIn);
   ui.selected = { kind: 'object', id: scrum.id };
   ui.tool = null;
+}
+
+// "Click where it goes": a player waiting to be placed (after their number is picked) or a set piece (after
+// Scrum or Lineout is chosen). The next press on the pitch places it there, as one undo step.
+function startPlacing(what) {
+  ui.placing = what;
+  ui.tool = null;
+  // The picker or Set piece box just closed, and its button may keep the focus: move it off, so keys
+  // (Escape) reach the page.
+  if (document.activeElement?.closest('dialog')) document.activeElement.blur();
+  render(null, { record: false });
+}
+
+function place(at) {
+  const what = ui.placing;
+  ui.placing = null;
+  if (what?.kind === 'player') addPlayer(what.team, what.n, at);
+  else if (what?.kind === 'scrum') addScrum(what.team, at);
+  else if (what?.kind === 'lineout') addLineout(what.team, at);
+  render();
+}
+
+// Anything else done while waiting (Escape, another button, a key) settles it first: a player goes to their
+// usual spot, so a picked number is never lost; a set piece is cancelled.
+function settlePlacing() {
+  const what = ui.placing;
+  if (!what) return;
+  ui.placing = null;
+  if (what.kind === 'player') {
+    addPlayer(what.team, what.n);
+    render();
+  } else {
+    render(null, { record: false });
+  }
 }
 
 function moveObject(o, x, y) {
@@ -825,7 +1001,7 @@ function deleteSelected() {
 // A small text box over the pitch, just above (or below, near the top) a point on screen. Enter or clicking
 // away saves, Escape cancels. Opening another first saves the one already open.
 let finishInline = null;
-function inlineEdit({ at, gap, value, maxLength, numeric = false, label, onSave }) {
+function inlineEdit({ at, gap, value, maxLength, numeric = false, label, onSave, onClose = null }) {
   finishInline?.(true);
   const input = $('inline-edit');
   const wrap = input.parentElement.getBoundingClientRect();
@@ -849,6 +1025,7 @@ function inlineEdit({ at, gap, value, maxLength, numeric = false, label, onSave 
     input.removeEventListener('blur', onBlur);
     input.hidden = true;
     if (save) onSave(input.value);
+    onClose?.();
   };
   const onKey = e => {
     if (e.key === 'Enter') { e.preventDefault(); finish(true); }
@@ -872,7 +1049,7 @@ function editLabel(id) {
   if (!player || !pos) return;
   inlineEdit({
     at: screenPoint(pos.x, pos.y),
-    gap: PLAYER_R * pxPerMetre() + 6,
+    gap: playerR() * pxPerMetre() + 6,
     value: player.label,
     maxLength: 3,
     label: 'Player label (number or position, e.g. 10 or FH)',
@@ -898,7 +1075,17 @@ function editOrder(id) {
   }
   const badge = layers.badges.querySelector(`.badge[data-id="${id}"]`)?.getBoundingClientRect();
   if (!badge) return;
+  // While the number is typed, its route is highlighted and the others fade (how a tap on a badge shows
+  // its route on a touch screen).
+  finishInline?.(true); // an edit already open is saved first (and drops its own highlight)
+  ui.orderEdit = id;
+  render(null, { record: false });
   inlineEdit({
+    onClose: () => {
+      if (ui.orderEdit !== id) return;
+      ui.orderEdit = null;
+      render(null, { record: false });
+    },
     at: { x: badge.x + badge.width / 2, y: badge.y + badge.height / 2 },
     gap: badge.height / 2 + 6,
     value: String(route.order ?? ''),
@@ -961,9 +1148,7 @@ function initNumberPicker() {
     const b = e.target.closest('[data-n]');
     if (!b || b.disabled) return;
     dialog.close();
-    addPlayer(dialog.dataset.team, Number(b.dataset.n));
-    ui.tool = null;
-    render();
+    startPlacing({ kind: 'player', team: dialog.dataset.team, n: Number(b.dataset.n) });
   });
   // A click outside the box closes it.
   dialog.addEventListener('click', e => {
@@ -1048,6 +1233,9 @@ function updateRouteBar() {
   bar.hidden = !route;
   if (!route) return;
   bar.dataset.id = route.id;
+  const step = $('route-step');
+  step.textContent = stepText(route);
+  step.hidden = !step.textContent;
   bar.querySelector('[data-route-action="label"]').hidden = !route.option;
   bar.querySelector('[data-route-action="main"]').hidden = !route.option || route.option === 'A';
 
@@ -1424,8 +1612,18 @@ function initTopbar() {
   $('load-input').addEventListener('change', e => loadFromInput(e.target));
 
   for (const b of document.querySelectorAll('[data-view]')) {
-    b.addEventListener('click', () => { state.view = b.dataset.view; render(); });
+    b.addEventListener('click', () => {
+      if (b.dataset.view === 'full') state.view = 'full';
+      else if (!isHalf(state.view)) state.view = busierHalf();
+      render();
+    });
   }
+  // The other half: halfway to x=110, or the in-goal at x=-10 to halfway. Kept in the play's view.
+  $('flip-half').addEventListener('click', () => {
+    if (!isHalf(state.view) || busy()) return;
+    state.view = state.view === 'half' ? 'half-own' : 'half';
+    render();
+  });
   for (const b of document.querySelectorAll('[data-orientation]')) {
     b.addEventListener('click', () => { ui.orientationChosen = true; setOrientation(b.dataset.orientation); });
   }
@@ -1436,6 +1634,11 @@ function initTopbar() {
   $('layers').addEventListener('change', e => {
     const key = e.target.dataset.layer;
     if (key) { ui.layers[key] = e.target.checked; render(null, { record: false }); }
+    if (e.target.name === 'player-size' && e.target.value in PLAYER_SIZES) {
+      ui.playerSize = e.target.value;
+      savePlayerSize(ui.playerSize);
+      render(null, { record: false });
+    }
   });
   // Close the drop-down menus when tapping anywhere else.
   const menus = [...document.querySelectorAll('details.menu')];
@@ -1465,8 +1668,7 @@ function initSetPieceDialog() {
   const dialog = $('set-piece-dialog');
   dialog.addEventListener('close', () => {
     const [kind, team] = dialog.returnValue.split('-');
-    if (kind === 'scrum') { addScrum(team); render(); }
-    else if (kind === 'lineout') { addLineout(team); render(); }
+    if (kind === 'scrum' || kind === 'lineout') startPlacing({ kind, team });
   });
   return () => { dialog.returnValue = ''; dialog.showModal(); };
 }
@@ -1493,7 +1695,8 @@ function initTemplatesDialog() {
   const status = $('templates-status');
   let templates = [];
 
-  $('templates-button').addEventListener('click', async () => {
+  $('templates-button').addEventListener('click', openTemplates);
+  async function openTemplates() {
     grid.replaceChildren();
     status.hidden = false;
     status.textContent = 'Loading templates…';
@@ -1515,7 +1718,7 @@ function initTemplatesDialog() {
       card.append(thumbnail(t.play, state.orientation), name);
       return card;
     }));
-  });
+  }
 
   grid.addEventListener('click', async e => {
     const card = e.target.closest('[data-template]');
@@ -1526,6 +1729,7 @@ function initTemplatesDialog() {
     replacePlay({ ...t.play, orientation: state.orientation });
     render();
   });
+  return openTemplates;
 }
 
 // About: what the app is, with a finished example to try. It never opens by itself, and opening or closing
@@ -1546,24 +1750,60 @@ function initAboutDialog() {
     const r = dialog.getBoundingClientRect();
     if (e.target === dialog && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) dialog.close();
   });
-  $('about-example').addEventListener('click', async () => {
-    let play;
-    try {
-      play = await loadExample();
-    } catch (err) {
-      dialog.close();
-      showToast(err.message);
-      return;
-    }
+  $('about-example').addEventListener('click', () => tryExample(dialog));
+}
+
+// "Try an example", from About or Welcome: closes that box first.
+async function tryExample(dialog) {
+  let play;
+  try {
+    play = await loadExample();
+  } catch (err) {
     dialog.close();
-    if (!isEmptyPlay(state) && !(await askConfirm(`Open the example "${play.name}"? It replaces the current play (you can undo).`, 'Open example'))) return;
-    if (busy()) return;
-    replacePlay({ ...play, orientation: state.orientation });
-    render();
-    playback.speed = 1;
-    playback.setLoop(false);
-    playback.play();
+    showToast(err.message);
+    return;
+  }
+  dialog.close();
+  if (!isEmptyPlay(state) && !(await askConfirm(`Open the example "${play.name}"? It replaces the current play (you can undo).`, 'Open example'))) return;
+  if (busy()) return;
+  replacePlay({ ...play, orientation: state.orientation });
+  render();
+  playback.speed = 1;
+  playback.setLoop(false);
+  playback.play();
+}
+
+// Welcome: opens by itself once, on a first visit to this browser (nothing stored under its key yet), but not
+// on a link to a phase (#phase=), in Present mode, or when storage can't be read. Closing it any way stores
+// that it was seen; if that can't be stored it quietly opens again next time. Like About, it changes nothing
+// in the play. Its buttons do what About's "Try an example" does, open the Templates picker, or just close.
+const WELCOME_KEY = 'rugby-play-designer.welcome-seen';
+
+// linked: the page was opened with #phase= in its address (read before the first render writes one).
+function initWelcomeDialog(openTemplates, linked) {
+  const dialog = $('welcome-dialog');
+  dialog.addEventListener('close', () => {
+    try { localStorage.setItem(WELCOME_KEY, '1'); } catch { /* storage blocked: nothing to do */ }
   });
+  dialog.addEventListener('click', e => {
+    const r = dialog.getBoundingClientRect();
+    if (e.target === dialog && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) dialog.close();
+  });
+  $('welcome-example').addEventListener('click', () => tryExample(dialog));
+  $('welcome-template').addEventListener('click', () => { dialog.close(); openTemplates(); });
+  $('welcome-about').addEventListener('click', () => { dialog.close(); openAbout(); });
+
+  function maybeOpen() {
+    let firstVisit = false;
+    try { firstVisit = localStorage.getItem(WELCOME_KEY) === null; } catch { /* storage blocked: don't open */ }
+    if (!firstVisit || linked || ui.presenting || dialog.open) return;
+    $('welcome-example').disabled = busy();
+    dialog.returnValue = '';
+    dialog.showModal();
+  }
+  // For tests: the same check the page load runs, e.g. while presenting.
+  window.rugbyWelcome = { maybeOpen };
+  maybeOpen();
 }
 
 // Team logo: shown left of the play name, in a corner in Present mode, on exports (if "Show logo on exports"
@@ -1571,14 +1811,15 @@ function initAboutDialog() {
 function updateLogo() {
   const src = logoSrc(teamLogo);
   const name = teamLogo.name.trim();
-  for (const img of [$('topbar-logo'), $('present-logo')]) {
+  for (const img of [$('topbar-logo'), $('present-logo'), $('welcome-logo')]) {
     if (!src) { img.hidden = true; img.removeAttribute('src'); continue; }
     img.alt = name ? `${name} logo` : 'Team logo';
     if (img.getAttribute('src') !== src) { img.hidden = false; img.src = src; }
   }
-  const about = $('about-team');
-  about.textContent = name ? `Made for ${name}` : '';
-  about.hidden = !name;
+  for (const line of [$('about-team'), $('welcome-team')]) {
+    line.textContent = name ? `Made for ${name}` : '';
+    line.hidden = !name;
+  }
 }
 
 function openLogoDialog() {
@@ -1661,7 +1902,7 @@ function initLogoDialog() {
     if (e.target === dialog && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) dialog.close();
   });
   // A logo that can't be shown (the default file missing, say) is hidden rather than drawn broken.
-  for (const img of [$('topbar-logo'), $('present-logo'), $('logo-preview')]) {
+  for (const img of [$('topbar-logo'), $('present-logo'), $('welcome-logo'), $('logo-preview')]) {
     img.addEventListener('error', () => { img.hidden = true; });
   }
   // Another tab changed it.
@@ -1691,6 +1932,12 @@ function initKeys() {
   document.addEventListener('keydown', e => {
     const mod = e.metaKey || e.ctrlKey;
     const typing = e.target.closest('input, textarea, select, dialog');
+    // A player or set piece waiting to be placed: Escape settles it (see settlePlacing) and does nothing
+    // else; any other key (undo too) settles it first.
+    if (ui.placing && !typing && !['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) {
+      settlePlacing();
+      if (e.key === 'Escape') return;
+    }
     // Undo/redo. In a text box the browser's own text undo handles it.
     if (mod && !typing && (e.key === 'z' || e.key === 'Z' || e.key === 'y')) {
       e.preventDefault();
@@ -1726,6 +1973,8 @@ function initKeys() {
       present.togglePen();
     } else if (ui.presenting && (e.key === 'c' || e.key === 'C')) {
       present.clearPen();
+    } else if (ui.presenting && present.pen && (e.key === 'z' || e.key === 'Z')) {
+      present.undoStroke();
     }
   });
 }
@@ -1744,6 +1993,8 @@ function initPlayControls() {
     const action = b.dataset.play;
     if (b.dataset.speed) { playback.speed = Number(b.dataset.speed); updatePlayControls(); }
     else if (b.dataset.option) playback.playOption(b.dataset.option);
+    else if (b.dataset.penColour) present.setPenColour(b.dataset.penColour);
+    else if (action === 'undo-stroke') present.undoStroke();
     else if (action === 'toggle') playback.toggle();
     else if (action === 'first') playback.jump(0);
     else if (action === 'back') step(-1);
@@ -1756,6 +2007,7 @@ function initPlayControls() {
     b.blur();
   });
   $('present-button').addEventListener('click', () => present.enter());
+  $('replay-button').addEventListener('click', () => { if (playback.ended) playback.play(); });
   addEventListener('hashchange', () => {
     const i = hashPhase();
     if (i != null && i !== ui.phase) playback.jump(i);
@@ -1807,6 +2059,8 @@ function initTabs() {
 }
 
 function init() {
+  // Read now: the first render puts #phase=1 in the address.
+  const linked = /^#phase=/.test(location.hash);
   // Bring back the last play from this browser, if there is one. If it can't be opened (or drawn), it's kept
   // under a backup key and a blank play starts instead.
   const raw = readAutosave();
@@ -1835,7 +2089,7 @@ function init() {
   initNumberPicker();
   initTips();
   initRouteBar();
-  initTemplatesDialog();
+  const openTemplates = initTemplatesDialog();
   initAboutDialog();
   initLogoDialog();
   initPlayControls();
@@ -1862,8 +2116,13 @@ function init() {
   // No editing while playing, presenting or exporting. A press on the pitch drops a paused frame.
   initEditor(svg, world, {
     state, ui, phase, render, renderSoon, hint: renderHint, editLabel, editOrder, moveObject, locked,
-    pressed: () => playback.dropFrame(),
+    pressed: () => playback.dropFrame(), place, drew,
   });
+  // A press anywhere off the pitch (a button, a menu) while a player or set piece waits to be placed settles
+  // it first, so the button then acts on the play as it will be.
+  document.addEventListener('pointerdown', e => {
+    if (ui.placing && !svg.contains(e.target)) settlePlacing();
+  }, true);
 
   if (!broken) {
     try {
@@ -1881,6 +2140,7 @@ function init() {
     render();
     showToast("Your last play couldn't be opened. A backup was kept.");
   }
+  initWelcomeDialog(openTemplates, linked);
 }
 
 init();

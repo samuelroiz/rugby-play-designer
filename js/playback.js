@@ -210,6 +210,7 @@ export function createPlayback({ state, ui, layers, turn, show, changed }) {
   return Object.defineProperties(pb, {
     time: { get: () => t }, // ms into the shown phase's animation
     paused: { get: () => !!frozen }, // a paused frame is on screen
+    ended: { get: () => frozen?.end === 'play' }, // stopped after the last phase (Loop off)
     shownPhase: { get: () => sched?.phase ?? null }, // the phase the animation is on
   });
 }

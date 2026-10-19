@@ -1,7 +1,7 @@
 // Headless Chrome checks: the four fixes plus regressions of earlier features. Desktop 1440x900 + phone 390 touch.
 import fs from 'node:fs';
 import path from 'node:path';
-import { open, drag, tap, click, state, shown, check, failed, toScreen, outDir, addPlayer, answerConfirm, nextFrame } from './lib.mjs';
+import { open, drag, tap, click, state, shown, check, failed, toScreen, outDir, addPlayer, placeSetPiece, answerConfirm, nextFrame } from './lib.mjs';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 const OUT = outDir('suite');
@@ -356,8 +356,7 @@ async function dragHold(page, from, to, during) {
 
   // Regression: scrum preset, autosave reload, save/load file.
   await page.$eval('#phase-tabs [data-index="4"]', b => b.click());
-  await click(page, '[data-action="set-piece"]');
-  await page.click('#set-piece-dialog button[value="scrum-attack"]');
+  await placeSetPiece(page, 'scrum-attack');
   await sleep(300);
   s = await state(page);
   check('scrum preset adds 1-9 of both teams', s.players.length === 18 && s.players.filter(p => p.team === 'attack').length === 9 && s.phases[4].objects.some(o => o.type === 'scrum' && o.pack.length === 18), JSON.stringify(s.players.map(p => p.id)));
@@ -589,12 +588,14 @@ async function dragHold(page, from, to, during) {
   check('on a computer the picker opens beside its button', dlgBox.x >= btnBox.right && Math.abs(dlgBox.y - btnBox.y) < 40, JSON.stringify([btnBox, dlgBox]));
   await page.screenshot({ path: path.join(OUT, 'number-picker.png') });
   await click(page, '#number-grid [data-n="10"]');
+  await page.keyboard.press('Escape'); // placed at the usual spot (clicking a spot is checked in usability.mjs)
   s = await state(page);
   check('clicking 10 adds attacker 10', eq(s.players, [{ id: 'a10', team: 'attack', label: '10' }]) && !(await page.$eval('#number-dialog', d => d.open)));
   await click(page, '[data-action="add-attack"]');
   picker = await page.evaluate(() => ({ used: document.querySelector('#number-grid [data-n="10"]').disabled, next: document.querySelector('#number-grid .next').dataset.n }));
   check('10 now shows as used; 1 is still the highlighted next', picker.used && picker.next === '1');
   await page.keyboard.press('Enter');
+  await page.keyboard.press('Escape');
   check('Enter adds the highlighted number (as before)', (await state(page)).players.some(p => p.id === 'a1'));
   await click(page, '[data-action="add-attack"]');
   await page.keyboard.press('Escape');
@@ -602,6 +603,7 @@ async function dragHold(page, from, to, during) {
   await click(page, '[data-action="add-defense"]');
   check('Add defender: "Add defender", blue highlight', (await page.$eval('#number-title', t => t.textContent)) === 'Add defender' && (await page.$eval('#number-grid', g => g.classList.contains('defense'))));
   await page.keyboard.press('Enter');
+  await page.keyboard.press('Escape');
   check('defender 1 added', (await state(page)).players.some(p => p.id === 'd1'));
   await click(page, '[data-action="undo"]');
   check('adding a player is one undo step', !(await state(page)).players.some(p => p.id === 'd1'));
@@ -710,8 +712,7 @@ async function dragHold(page, from, to, during) {
   await click(page, '[data-file="new"]');
   await answerConfirm(page);
   await addPlayer(page, 'attack', { n: 9 });
-  await click(page, '[data-action="set-piece"]');
-  await page.click('#set-piece-dialog button[value="scrum-attack"]');
+  await placeSetPiece(page, 'scrum-attack');
   await sleep(200);
   s = await state(page);
   let ph = s.phases[0];
@@ -720,8 +721,7 @@ async function dragHold(page, from, to, during) {
   check('scrum: 1-9 of both teams, the existing 9 reused', s.players.length === 18 && s.players.filter(p => p.id === 'a9').length === 1 && scrum.pack.includes('a9') && scrum.pack.includes('d9'), s.players.map(p => p.id).join());
   check('attack put-in: attack 9 next to the ball on the put-in side', Math.hypot(ph.positions.a9.x - ball.x, ph.positions.a9.y - ball.y) < 3 && ph.positions.a9.y < ball.y && ball.y < scrum.y, JSON.stringify([ph.positions.a9, ball, scrum]));
   check('the other 9 on the same side, by their pack', ph.positions.d9.y === ph.positions.a9.y && ph.positions.d9.x > scrum.x);
-  await click(page, '[data-action="set-piece"]');
-  await page.click('#set-piece-dialog button[value="scrum-defense"]');
+  await placeSetPiece(page, 'scrum-defense');
   await sleep(200);
   s = await state(page);
   ph = s.phases[0];
@@ -733,8 +733,7 @@ async function dragHold(page, from, to, during) {
   const setPiece = await page.$$eval('#set-piece-dialog button[value]', bs => bs.map(b => b.value));
   check('Set piece offers Scrum and Lineout', ['scrum-attack', 'scrum-defense', 'lineout-attack', 'lineout-defense'].every(v => setPiece.includes(v)), setPiece.join());
   const before = await state(page);
-  await click(page, '[data-action="set-piece"]');
-  await page.click('#set-piece-dialog button[value="lineout-attack"]');
+  await placeSetPiece(page, 'lineout-attack');
   await sleep(200);
   s = await state(page);
   ph = s.phases[0];
@@ -756,8 +755,7 @@ async function dragHold(page, from, to, during) {
   // At a marker dragged to the far touchline, with the defense throwing.
   await click(page, '[data-object="lineout"]');
   await page.evaluate(() => { const o = window.playState.phases[0].objects.find(q => q.type === 'lineout'); Object.assign(o, { x: 30, y: 58 }); });
-  await click(page, '[data-action="set-piece"]');
-  await page.click('#set-piece-dialog button[value="lineout-defense"]');
+  await placeSetPiece(page, 'lineout-defense');
   await sleep(200);
   s = await state(page);
   ph = s.phases[0];
@@ -902,8 +900,7 @@ async function dragHold(page, from, to, during) {
     return page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[data-kind]')?.dataset.kind === 'object', p);
   };
   const lineoutPreset = async team => {
-    await click(page, '[data-action="set-piece"]');
-    await page.click(`#set-piece-dialog button[value="lineout-${team}"]`);
+    await placeSetPiece(page, `lineout-${team}`);
     await sleep(200);
   };
   await addPlayer(page, 'attack', { n: 12 });
@@ -960,8 +957,7 @@ async function dragHold(page, from, to, during) {
   s = await state(page);
   check('a lineout player can still be dragged on their own', Math.hypot(s.phases[0].positions.a4.x - (a4.x - 6), s.phases[0].positions.a4.y - (a4.y + 4)) < 0.3 && s.phases[0].positions.a1.x === 95.8);
   // A scrum takes its players out of the lineout's group.
-  await click(page, '[data-action="set-piece"]');
-  await page.click('#set-piece-dialog button[value="scrum-attack"]');
+  await placeSetPiece(page, 'scrum-attack');
   await sleep(200);
   s = await state(page);
   check('a scrum takes 1-9 out of the lineout group (no player in two)', s.phases[0].objects.find(o => o.type === 'lineout').pack.length === 0 && s.phases[0].objects.find(o => o.type === 'scrum').pack.length === 18);

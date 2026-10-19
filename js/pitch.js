@@ -9,10 +9,14 @@ export const BOUNDS = { minX: -10, maxX: 110, minY: 0, maxY: 70 };
 export const PLAYER_R = 1.2; // radius of a player disc
 
 // Length of pitch each view shows. The full width (y 0..70) is always shown, and nothing outside it.
-const VIEWS = {
+// 'half' is the half attack plays into (halfway to the dead ball line at x=110), 'half-own' the other one.
+export const VIEWS = {
   full: { minX: -10, maxX: 110 },
   half: { minX: 50, maxX: 110 },
+  'half-own': { minX: -10, maxX: 50 },
 };
+export const isHalf = view => view === 'half' || view === 'half-own';
+export const viewRange = view => VIEWS[view] ?? VIEWS.full;
 
 // Distance labels painted beside the lines, as on a real pitch: [x, text, distance in from each touchline].
 // The 10 m labels sit further along their lines than the 50, so the three don't read as one cluster.
@@ -46,7 +50,7 @@ export function setView(svg, world, view, orientation) {
 }
 
 export function viewCentre(view) {
-  return view === 'half' ? { x: 77.5, y: 35 } : { x: 50, y: 35 };
+  return view === 'half' ? { x: 77.5, y: 35 } : view === 'half-own' ? { x: 22.5, y: 35 } : { x: 50, y: 35 };
 }
 
 // Where a new player number n starts: each team lined up across the pitch either side of the view centre.
@@ -82,8 +86,8 @@ export function drawPitch(layer, { view, orientation, distances, grid, direction
   // so they are drawn twice as thick to look the same as the other lines.
   svgEl('rect', { x: -10, y: 0, width: 120, height: 70, class: 'line edge' }, layer);
 
-  // Try lines, 22s, halfway (also an edge in the half view)
-  for (const x of [0, 22, 50, 78, 100]) line(x, 0, x, 70, x === 50 && view === 'half' ? 'line edge' : 'line');
+  // Try lines, 22s, halfway (also an edge in the half views)
+  for (const x of [0, 22, 50, 78, 100]) line(x, 0, x, 70, x === 50 && isHalf(view) ? 'line edge' : 'line');
   // Dashed 10 m and 5 m lines
   for (const x of [40, 60, 5, 95]) line(x, 0, x, 70, 'line dash');
   // Short dashed lines 5 m and 15 m in from each touchline
@@ -103,13 +107,23 @@ export function drawPitch(layer, { view, orientation, distances, grid, direction
 // "Attack" and an arrow in the attack's colour near the bottom edge of the view, pointing the way attack
 // plays (towards x=110): right when horizontal, up when vertical. The arrow is drawn in pitch metres along
 // +x, so it turns with the pitch; the word stays upright, to its left on screen.
+const DIRECTION_LEN = 6;
+const directionAt = (view, orientation) => (orientation === 'vertical' ? [viewRange(view).minX + 2.5, 37] : [viewCentre(view).x + 1, 67.6]);
+
+// The ground the direction arrow and its "Attack" word cover, in pitch metres, so new players can keep off it.
+export function directionBox(view, orientation) {
+  const [x, y] = directionAt(view, orientation);
+  return orientation === 'vertical'
+    ? { minX: x - 0.4, maxX: x + DIRECTION_LEN, minY: y - 1.2 - 6.6, maxY: y + 1.1 }
+    : { minX: x - 0.8 - 6.6, maxX: x + DIRECTION_LEN, minY: y - 1.1, maxY: y + 1.1 };
+}
+
 function drawDirection(layer, view, orientation) {
-  const { minX } = VIEWS[view] ?? VIEWS.full;
   const vertical = orientation === 'vertical';
-  const len = 6;
+  const len = DIRECTION_LEN;
   // Horizontal: between the 5 m line and the near touchline, centred on the view. Vertical: in the in-goal
   // (or just inside halfway in the half view), at the bottom of the screen, left of centre.
-  const [x, y] = vertical ? [minX + 2.5, 37] : [viewCentre(view).x + 1, 67.6];
+  const [x, y] = directionAt(view, orientation);
   const g = svgEl('g', { class: 'direction', 'aria-hidden': 'true' }, layer);
   const shaft = { x1: x, y1: y, x2: x + len - 0.9, y2: y };
   svgEl('line', { ...shaft, class: 'direction-casing' }, g);

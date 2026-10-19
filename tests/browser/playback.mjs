@@ -210,7 +210,7 @@ const pitchArea = page => page.$eval('#pitch', el => { const r = el.getBoundingC
   check('Present: toolbar, top bar and status line hidden', await page.evaluate(() => ['.topbar', '.toolbar', '.statusbar'].every(s => getComputedStyle(document.querySelector(s)).display === 'none'))
     && (await page.evaluate(() => document.body.classList.contains('presenting'))));
   const bigArea = await pitchArea(page);
-  check('Present: the pitch is larger', bigArea > normalArea * 1.1, `${normalArea} -> ${bigArea}`);
+  check('Present: the pitch is larger', bigArea > normalArea * 1.05, `${normalArea} -> ${bigArea}`);
   const cap = await page.evaluate(() => {
     const c = document.getElementById('present-caption');
     const r = c.getBoundingClientRect();

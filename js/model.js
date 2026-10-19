@@ -27,6 +27,10 @@ export function nextId(prefix, items) {
 // Order number for a new route: one more than the highest so far.
 export const nextOrder = routes => routes.reduce((max, r) => Math.max(max, r.order || 0), 0) + 1;
 
+// Order number for a newly drawn route of `type`: a pass or kick is the next step; a run, decoy, drift or
+// blitz moves together with the latest step (the highest number so far, or 1 when there's none).
+export const newRouteOrder = (type, routes) => (BALL_ROUTES.has(type) ? nextOrder(routes) : Math.max(1, nextOrder(routes) - 1));
+
 // Whether a route is an alternative to the main plan (option B, C …), which the next phase ignores.
 export const isOtherOption = r => !!r.option && r.option !== 'A';
 

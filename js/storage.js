@@ -200,7 +200,7 @@ export function parsePlay(data) {
     name: typeof data.name === 'string' ? data.name.slice(0, NAME_MAX) : 'Untitled play',
     category: CATEGORIES.includes(data.category) ? data.category : 'attack',
     tags: tags.filter(t => typeof t === 'string').map(t => t.trim()).filter(Boolean),
-    view: data.view === 'half' ? 'half' : 'full',
+    view: ['half', 'half-own'].includes(data.view) ? data.view : 'full',
     orientation: data.orientation === 'vertical' ? 'vertical' : 'horizontal',
     players,
     phases: fillMissingPositions(players, phases),

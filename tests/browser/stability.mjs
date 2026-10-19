@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { open, drag, tap, click, state, shown, check, failed, toScreen, outDir, addPlayer, answerConfirm, nextFrame, URL_ } from './lib.mjs';
+import { open, drag, tap, click, state, shown, check, failed, toScreen, outDir, addPlayer, placeSetPiece, answerConfirm, nextFrame, URL_ } from './lib.mjs';
 import { TIMING } from '../../js/animate.js';
 import { animPlay } from '../anim-play.mjs';
 
@@ -399,8 +399,7 @@ async function throughEverything(page, dir, seen, label) {
 
   // --- Deleting a player takes them out of scrum and lineout packs ---
   await page.keyboard.press('Escape');
-  await click(page, '[data-action="set-piece"]');
-  await page.click('#set-piece-dialog button[value="scrum-attack"]');
+  await placeSetPiece(page, 'scrum-attack');
   await sleep(100);
   await page.$eval('#players-layer [data-id="a1"] .body', el => {
     const r = el.getBoundingClientRect();

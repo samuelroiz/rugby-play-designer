@@ -10,7 +10,11 @@ export const URL_ = process.env.BASE_URL ?? 'http://localhost:8000/';
 // Fresh folder for downloads and screenshots, outside the repo.
 export const outDir = name => fs.mkdtempSync(path.join(os.tmpdir(), `rugby-${name}-`));
 
-export async function open({ mobile = false, downloads = null } = {}) {
+// A fresh browser on the app with storage cleared. The Welcome box (first visit) is marked as seen, so it
+// doesn't open over the other suites; `welcome: true` leaves it a true first visit, and `hash` opens with
+// that address hash (e.g. '#phase=2').
+export const WELCOME_KEY = 'rugby-play-designer.welcome-seen';
+export async function open({ mobile = false, downloads = null, welcome = false, hash = '' } = {}) {
   const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage();
   const errors = [];
@@ -35,8 +39,10 @@ export async function open({ mobile = false, downloads = null } = {}) {
     await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads, eventsEnabled: true });
   }
   await page.goto(URL_);
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
+  await page.evaluate((welcome, key) => { localStorage.clear(); if (!welcome) localStorage.setItem(key, '1'); }, welcome, WELCOME_KEY);
+  // A fresh load of the address (a reload would keep the #phase=1 the first load wrote).
+  await page.goto('about:blank');
+  await page.goto(URL_ + hash);
   await page.waitForSelector('#phase-tabs button');
   return { browser, page, errors };
 }
@@ -75,15 +81,37 @@ export const click = (page, sel) => page.$eval(sel, b => b.click());
 // Resolves after the page's next animation frame (drags redraw once a frame).
 export const nextFrame = page => page.evaluate(() => new Promise(r => requestAnimationFrame(() => r())));
 
-// Add attack / Add defender: opens the number picker, then Enter adds the highlighted (next free) number,
-// or `n` picks that number. On a phone (`touch`) the buttons are tapped.
-export async function addPlayer(page, team, { n = null, touch = false } = {}) {
+// Add attack / Add defender: opens the number picker, then Enter picks the highlighted (next free) number,
+// or `n` picks that number. On a phone (`touch`) the buttons are tapped. The player then waits to be placed:
+// `at` ([x, y] in pitch metres) clicks (or taps) there; otherwise Escape puts them at their usual spot.
+export async function addPlayer(page, team, { n = null, touch = false, at = null } = {}) {
   const button = `[data-action="add-${team === 'attack' ? 'attack' : 'defense'}"]`;
   if (touch) await page.tap(button); else await click(page, button);
   await page.waitForSelector('#number-dialog[open]');
   if (n == null && !touch) await page.keyboard.press('Enter');
   else if (touch) await page.tap(n == null ? '#number-grid .next' : `#number-grid [data-n="${n}"]`);
   else await click(page, `#number-grid [data-n="${n}"]`);
+  if (at) await tap(page, at[0], at[1], { touch });
+  else await page.keyboard.press('Escape');
+}
+
+// Set piece: picks `value` (e.g. 'scrum-attack', 'lineout-defense') in the Set piece box, then clicks where the
+// mark goes: `at` ([x, y] in pitch metres), or where the box used to put it (the phase's scrum or lineout
+// marker if it has one, otherwise the middle of the view, on the 5 m line for a lineout).
+export async function placeSetPiece(page, value, at = null) {
+  await click(page, '[data-action="set-piece"]');
+  await page.waitForSelector('#set-piece-dialog[open]');
+  await page.click(`#set-piece-dialog button[value="${value}"]`);
+  await new Promise(r => setTimeout(r, 50)); // the box's close event, which starts placing
+  at ??= await page.evaluate(kind => {
+    const s = window.playState;
+    const ph = s.phases[Number(document.querySelector('#phase-tabs [aria-current="step"]').dataset.index)];
+    const o = ph.objects.find(q => q.type === kind && (kind === 'lineout' || q.pack));
+    if (o) return [o.x, o.y];
+    const x = { full: 50, half: 77.5, 'half-own': 22.5 }[s.view] ?? 50;
+    return kind === 'lineout' ? [x, 5] : [x, 35];
+  }, value.split('-')[0]);
+  await tap(page, at[0], at[1]);
 }
 
 // Answers the app's own confirm box (OK or Cancel) once it is open. Returns its message.

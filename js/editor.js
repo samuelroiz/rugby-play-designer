@@ -3,7 +3,7 @@
 
 import { BOUNDS, toMetres } from './pitch.js';
 import { syncOptions } from './options.js';
-import { nextId, nextOrder, round1 as round, round3, curveControl, curvePoint } from './model.js';
+import { nextId, newRouteOrder, round1 as round, round3, curveControl, curvePoint } from './model.js';
 
 const DOUBLE_TAP_MS = 400;
 const MIN_ROUTE_LENGTH = 1; // metres; shorter drags are treated as a mis-tap
@@ -78,7 +78,11 @@ export function drawingFrom(ui, phase) {
 // render() redraws and records the change; renderSoon() redraws on the next animation frame (several pointer
 // moves in one frame make one redraw); hint() redraws for hover feedback only, recording nothing.
 // pressed(): a press on the pitch is about to edit, so a paused animation frame gives way to the real positions.
-export function initEditor(svg, space, { state, ui, phase, render, renderSoon, hint, editLabel, editOrder, moveObject, locked, pressed }) {
+// place(p): while ui.placing is set (a player or set piece waiting for "click where it goes"), a press puts it at p.
+// drew(route): a new route has just been drawn. ui.hoverRoute is the route whose badge the mouse is over.
+export function initEditor(svg, space, {
+  state, ui, phase, render, renderSoon, hint, editLabel, editOrder, moveObject, locked, pressed, place, drew,
+}) {
   let drag = null;
   let lastTap = { id: null, time: 0 };
   const findRoute = id => phase().routes.find(r => r.id === id);
@@ -118,7 +122,7 @@ export function initEditor(svg, space, { state, ui, phase, render, renderSoon, h
       from,
       points: [[round(start.x), round(start.y)], [round(start.x), round(start.y)]],
       curve: 0,
-      order: nextOrder(phase().routes),
+      order: newRouteOrder(ui.tool, phase().routes),
       option: null,
     };
     if (ui.tool === 'pass') route.to = null;
@@ -152,6 +156,7 @@ export function initEditor(svg, space, { state, ui, phase, render, renderSoon, h
     route.points[1] = [round(end.x), round(end.y)];
     if (ui.tool === 'pass') route.to = to;
     syncOptions(phase().routes, [from]);
+    drew(route);
   }
 
   svg.addEventListener('pointerdown', e => {
@@ -159,6 +164,11 @@ export function initEditor(svg, space, { state, ui, phase, render, renderSoon, h
     document.activeElement?.blur(); // so Delete/Escape reach the editor, not a text field
     pressed();
     const p = toMetres(space, e);
+    if (ui.placing) {
+      e.preventDefault();
+      place({ x: clampX(p.x), y: clampY(p.y) });
+      return;
+    }
     const hit = e.target.closest('[data-kind]');
     const kind = hit?.dataset.kind;
     const id = hit?.dataset.id;
@@ -215,6 +225,9 @@ export function initEditor(svg, space, { state, ui, phase, render, renderSoon, h
   svg.addEventListener('pointermove', e => {
     if (locked()) return;
     if (!drag) {
+      // A mouse or pen over a route's badge highlights that route (the others fade).
+      const over = e.pointerType === 'touch' ? null : e.target.closest?.('[data-kind="badge"]')?.dataset.id ?? null;
+      if (over !== ui.hoverRoute) { ui.hoverRoute = over; hint(); }
       if (drawingFrom(ui, phase())) {
         // Click-to-draw: the preview line follows a hovering mouse or pen.
         aim(toMetres(space, e));
@@ -306,6 +319,7 @@ export function initEditor(svg, space, { state, ui, phase, render, renderSoon, h
         ui.selected = done.keepPlayer ? { kind: 'player', id: done.keepPlayer } : { kind: 'route', id: r.id };
         // A second pass or kick from the same player makes them options.
         syncOptions(phase().routes, [r.from]);
+        drew(r);
       }
     }
 
@@ -363,6 +377,7 @@ export function initEditor(svg, space, { state, ui, phase, render, renderSoon, h
     hint();
   }
   svg.addEventListener('pointerleave', () => {
+    if (ui.hoverRoute) { ui.hoverRoute = null; hint(); }
     if (drag) return;
     if (ui.preview) {
       ui.preview = null;
