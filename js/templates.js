@@ -2,7 +2,7 @@
 // They're fetched from the site (so they work on GitHub Pages and any local server) and checked like a
 // loaded file. Thumbnails are drawn from each template's own data with the normal pitch drawing.
 
-import { drawPitch, setView, svgEl, PLAYER_R } from './pitch.js';
+import { drawPitch, setBox, fitBox, svgEl } from './pitch.js';
 import { parsePlay } from './storage.js';
 
 const TEMPLATES_URL = new URL('../templates/', import.meta.url);
@@ -41,14 +41,18 @@ async function getJson(url) {
   return res.json();
 }
 
-// Small picture of a play's first phase: the pitch, players as plain discs and the markers, in the
-// given orientation. Too small for numbers, so they're left off.
+// Small picture of a play's first phase: the players as plain discs and the markers, zoomed to fit them
+// (see fitBox; the full pitch for a play with no players), in the given orientation. The discs are drawn larger
+// than on the pitch (in proportion to the part shown) so they read at this size; numbers are left off.
 export function thumbnail(play, orientation) {
   const svg = svgEl('svg', { class: 'thumb', 'aria-hidden': 'true', preserveAspectRatio: 'xMidYMid meet' });
   const world = svgEl('g', {}, svg);
-  setView(svg, world, play.view, orientation);
-  drawPitch(svgEl('g', {}, world), { view: play.view, orientation, distances: false, grid: false });
   const ph = play.phases[0];
+  const players = play.players.map(p => ph.positions[p.id]).filter(Boolean);
+  const box = fitBox(players.length ? [...players, ...ph.objects] : []);
+  setBox(svg, world, box, orientation);
+  drawPitch(svgEl('g', {}, world), { view: 'full', orientation, distances: false, grid: false });
+  const r = Math.max(1.6, (box.maxX - box.minX) / 40);
   for (const o of ph.objects) {
     const g = svgEl('g', { class: `marker ${o.type}`, transform: `translate(${o.x} ${o.y})` }, world);
     if (o.type === 'ball') svgEl('ellipse', { rx: 0.9, ry: 0.6, class: 'ball', transform: 'rotate(-25)' }, g);
@@ -58,7 +62,7 @@ export function thumbnail(play, orientation) {
   }
   for (const p of play.players) {
     const pos = ph.positions[p.id];
-    if (pos) svgEl('circle', { cx: pos.x, cy: pos.y, r: PLAYER_R, class: `thumb-player ${p.team}`, 'data-id': p.id }, world);
+    if (pos) svgEl('circle', { cx: pos.x, cy: pos.y, r, 'stroke-width': r / 6, class: `thumb-player ${p.team}`, 'data-id': p.id }, world);
   }
   return svg;
 }

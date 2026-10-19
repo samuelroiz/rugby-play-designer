@@ -488,7 +488,7 @@ dialog .field input { font: inherit; font-size: .95rem; color: var(--ink); paddi
 .template-card { flex-direction: column; align-items: stretch; gap: .4rem; padding: .4rem; white-space: normal; text-align: center; }
 .template-card span { font-weight: 600; }
 .thumb { display: block; width: 100%; height: auto; aspect-ratio: var(--ar, 1.714); border-radius: 3px; }
-.thumb-player { stroke: #fff; stroke-width: .25; }
+.thumb-player { stroke: #fff; }
 .thumb-player.attack { fill: #d32f2f; }
 .thumb-player.defense { fill: #1565c0; }
 

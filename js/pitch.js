@@ -40,13 +40,40 @@ export const uprightTurn = orientation => (orientation === 'vertical' ? ' rotate
 // --ar is the view's width/height; the CSS sizes the SVG to it so no extra field shows at any screen shape.
 export function setView(svg, world, view, orientation) {
   const { minX, maxX } = VIEWS[view] ?? VIEWS.full;
-  const length = maxX - minX;
-  const width = BOUNDS.maxY - BOUNDS.minY;
-  const box = orientation === 'vertical' ? [0, -maxX, width, length] : [minX, 0, length, width];
-  svg.setAttribute('viewBox', box.join(' '));
+  setBox(svg, world, { minX, maxX, minY: BOUNDS.minY, maxY: BOUNDS.maxY }, orientation);
+}
+
+// Shows exactly the part of the pitch in `box` (pitch metres: { minX, maxX, minY, maxY }), turned like
+// setView, with --ar set to its shape on screen.
+export function setBox(svg, world, { minX, maxX, minY, maxY }, orientation) {
+  const box = orientation === 'vertical' ? [minY, -maxX, maxY - minY, maxX - minX] : [minX, minY, maxX - minX, maxY - minY];
+  svg.setAttribute('viewBox', box.map(round1).join(' '));
   svg.style.setProperty('--ar', box[2] / box[3]);
   if (orientation === 'vertical') world.setAttribute('transform', 'rotate(-90)');
   else world.removeAttribute('transform');
+}
+
+// Thumbnails: the part of the pitch to show for things at `points` (pitch metres): their bounding box with
+// `margin` metres round it, grown to the full pitch's shape (120 x 70) and to at least a quarter of the pitch
+// (60 x 35), then moved (not shrunk) to stay on the pitch. No points: the full pitch.
+export function fitBox(points, margin = 8) {
+  const W = BOUNDS.maxX - BOUNDS.minX;
+  const H = BOUNDS.maxY - BOUNDS.minY;
+  if (!points.length) return { ...BOUNDS };
+  const xs = points.map(p => p.x);
+  const ys = points.map(p => p.y);
+  const [x0, x1] = [Math.min(...xs) - margin, Math.max(...xs) + margin];
+  const [y0, y1] = [Math.min(...ys) - margin, Math.max(...ys) + margin];
+  // Height first, from whichever needs more: the points, their width at the pitch's shape, or a quarter.
+  const h = Math.min(H, Math.max(y1 - y0, (x1 - x0) * H / W, H / 2));
+  const w = h * W / H;
+  const place = (lo, hi, size, min, max) => {
+    const start = (lo + hi) / 2 - size / 2;
+    return Math.min(Math.max(start, min), max - size);
+  };
+  const minX = place(x0, x1, w, BOUNDS.minX, BOUNDS.maxX);
+  const minY = place(y0, y1, h, BOUNDS.minY, BOUNDS.maxY);
+  return { minX, maxX: minX + w, minY, maxY: minY + h };
 }
 
 export function viewCentre(view) {

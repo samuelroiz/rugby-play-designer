@@ -261,6 +261,54 @@ const seed = (page, id, name, extra = {}) => page.evaluate((id, name, extra) => 
 }
 
 {
+  console.log('\n== Thumbnails fit the players ==');
+  const { browser, page, errors } = await open();
+  // The thumbnail's view (pitch metres) and its player discs.
+  const thumbInfo = (page, sel) => page.$eval(sel, svg => {
+    const [x, y, w, h] = svg.getAttribute('viewBox').split(' ').map(Number);
+    const discs = [...svg.querySelectorAll('.thumb-player')].map(c => ({ x: +c.getAttribute('cx'), y: +c.getAttribute('cy'), r: +c.getAttribute('r') }));
+    return { box: [x, y, w, h], ar: w / h, discs, vertical: svg.querySelector('g')?.getAttribute('transform') === 'rotate(-90)' };
+  });
+  const inside = (t, margin) => t.discs.every(d => d.x - margin >= t.box[0] - 1e-6 && d.x + margin <= t.box[0] + t.box[2] + 1e-6
+    && d.y - margin >= t.box[1] - 1e-6 && d.y + margin <= t.box[1] + t.box[3] + 1e-6);
+  await page.evaluate(() => window.rugbyLibrary.save({
+    id: 'two', phase: 0, created: Date.now(), updated: Date.now() + 1000, deletedAt: null,
+    play: {
+      schemaVersion: 1, name: 'Two players', category: 'attack', tags: [], view: 'full', orientation: 'horizontal',
+      players: [{ id: 'a1', team: 'attack', label: '1' }, { id: 'a2', team: 'attack', label: '2' }],
+      phases: [{ note: '', positions: { a1: { x: 40, y: 30 }, a2: { x: 50, y: 35 } }, objects: [], routes: [] }],
+    },
+  }));
+  await showPanel(page);
+  let t = await thumbInfo(page, '.play-row[data-id="two"] svg.thumb');
+  check('2 players: zoomed to them with 8 m round them, at the smallest size (a quarter of the pitch), pitch shaped',
+    eq(t.box, [15, 15, 60, 35]) && inside(t, 8) && Math.abs(t.ar - 120 / 70) < 1e-9, JSON.stringify(t));
+  check('…their discs drawn larger than on the pitch (1.2 m)', t.discs.length === 2 && t.discs.every(d => d.r >= 1.5), JSON.stringify(t.discs));
+  const blankId = await openId(page);
+  t = await thumbInfo(page, `.play-row[data-id="${blankId}"] svg.thumb`);
+  check('a play with no players: the full pitch', eq(t.box, [-10, 0, 120, 70]), JSON.stringify(t.box));
+  await page.keyboard.press('Escape');
+
+  await click(page, '#templates-button');
+  await page.waitForSelector('#templates-dialog[open] .template-card');
+  t = await thumbInfo(page, '.template-card[data-template="2"] svg'); // Attack vs defense, 30 players
+  // (The 8 m margin can be cut by the pitch's edge, where the view is moved rather than shrunk.)
+  check('a full template: every player in view, pitch shaped, within the pitch',
+    t.discs.length === 30 && inside(t, 0) && Math.abs(t.ar - 120 / 70) < 1e-9 && t.box[2] >= 60 && t.box[2] <= 120
+    && t.box[0] >= -10 && t.box[0] + t.box[2] <= 110 && t.box[1] >= 0 && t.box[1] + t.box[3] <= 70, JSON.stringify(t.box));
+  check('…discs larger than on the pitch', t.discs.every(d => d.r >= 1.5));
+  t = await thumbInfo(page, '.template-card[data-template="0"] svg'); // Blank
+  check('the Blank template: the full pitch', eq(t.box, [-10, 0, 120, 70]), JSON.stringify(t.box));
+  await page.keyboard.press('Escape');
+  await click(page, '[data-orientation="vertical"]');
+  await showPanel(page);
+  t = await thumbInfo(page, '.play-row[data-id="two"] svg.thumb');
+  check('vertical: the same part of the pitch, turned', t.vertical && eq(t.box, [15, -75, 35, 60]), JSON.stringify(t));
+  check('no console errors', errors.length === 0, errors.join(' | '));
+  await browser.close();
+}
+
+{
   console.log('\n== Storage blocked ==');
   const dl = outDir('library-blocked');
   const { browser, page, errors } = await open({ downloads: dl });
