@@ -427,8 +427,39 @@ button.link:hover:not(:disabled) { background: none; }
 #logo-dialog .check { display: flex; align-items: center; gap: .4rem; margin: .1rem 0 .4rem; }
 .logo-status:empty { display: none; }
 .logo-status.error { color: #b3261e; }
-/* About sits at the right end of the top bar; on a phone, where the top bar wraps, it's in the File menu. */
-.about-in-menu { display: none; }
+/* About sits at the right end of the top bar, and Plays by Templates; on a phone, where the top bar wraps,
+   they're in the File menu. */
+.about-in-menu, .plays-in-menu { display: none; }
+
+/* Plays panel: the library, most recently edited first */
+#plays-dialog { width: min(48rem, calc(100vw - 2rem)); max-width: none; }
+.plays-head { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem 1rem; }
+.plays-head h2 { margin: 0; margin-right: auto; }
+.plays-backup { display: flex; gap: .4rem; flex-wrap: wrap; }
+.plays-filters { display: flex; gap: .5rem; margin: .6rem 0; }
+.plays-filters input, .plays-filters select { font: inherit; padding: .4rem .5rem; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--ink); }
+.plays-filters input { flex: 1; min-width: 0; }
+.plays-status { margin: 0 0 .5rem; padding: .3rem .6rem; border-radius: 6px; font-size: .85rem; }
+.plays-status.ok { background: #effaf0; color: #1b5e20; }
+.plays-status.error { background: #fff3f3; color: #8a1c1c; }
+.plays-status[hidden] { display: none; }
+.plays-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .4rem; max-height: min(55dvh, 30rem); overflow-y: auto; }
+.play-row { display: flex; align-items: center; gap: .75rem; padding: .4rem .5rem; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
+.play-row:hover { background: #f6f9f6; }
+.play-row[aria-current="true"] { border-color: var(--accent); box-shadow: inset 4px 0 0 var(--accent); }
+.play-row.deleted { cursor: default; }
+.play-row .thumb { flex: none; width: 6.5rem; }
+.play-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .15rem; }
+.play-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.play-meta { font-size: .78rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.play-rename { font: inherit; font-weight: 600; padding: .2rem .35rem; border: 2px solid var(--accent); border-radius: 6px; }
+.open-badge { align-self: flex-start; padding: 0 .4rem; border-radius: 4px; background: var(--accent); color: #fff; font-size: .7rem; font-weight: 600; }
+.play-actions { flex: none; display: flex; gap: .3rem; }
+.play-actions button { padding: .3rem .5rem; font-size: .85rem; }
+.plays-deleted { margin-top: .75rem; }
+.plays-deleted summary { cursor: pointer; font-weight: 600; color: var(--muted); }
+.plays-deleted[hidden], #plays-empty[hidden] { display: none; }
+#plays-dialog .cancel { margin-top: .75rem; }
 #confirm-dialog .cancel { margin: 0; }
 
 /* Player number picker */
@@ -687,8 +718,11 @@ body.presenting {
   .topbar { flex-wrap: wrap; gap: .4rem; padding: .4rem .5rem; }
   .view-controls { flex-basis: 100%; gap: .4rem; }
   .view-controls .menu { margin-left: auto; }
-  #about-button { display: none; }
-  .about-in-menu { display: flex; }
+  #about-button, #plays-button { display: none; }
+  .about-in-menu, .plays-in-menu { display: flex; }
+  .play-row { flex-wrap: wrap; }
+  .play-row .thumb { width: 5rem; }
+  .play-actions { flex-basis: 100%; flex-wrap: wrap; }
   .segmented button, .menu summary { padding: .4rem .45rem; }
   .phasebar { flex-wrap: wrap; gap: .4rem; padding: .4rem .5rem; }
   .phase-nav { flex-basis: 100%; }

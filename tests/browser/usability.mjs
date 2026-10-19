@@ -2,7 +2,7 @@
 // colours, set pieces and players placed by a click, the half views, badge hover, route order defaults,
 // "End of play", and the sidebar fitting. Desktop first (1080 and 1500 px wide), then a 390px phone.
 import fs from 'node:fs';
-import { open, addPlayer, placeSetPiece, tap, drag, click, state, shown, check, failed, outDir } from './lib.mjs';
+import { open, addPlayer, placeSetPiece, tap, drag, click, state, shown, check, failed, outDir, stored } from './lib.mjs';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -116,7 +116,7 @@ for (const [width, height] of [[1080, 720], [1500, 780]]) {
   check('Medium is the default: discs 1.2 m, numbers 1.2, badges 0.9', eq(medium, { body: 1.2, text: 1.2, badge: 0.9 }) && (await page.$eval('[name="player-size"][value="medium"]', r => r.checked)), JSON.stringify(medium));
   const before = { play: await state(page), undo: await page.$eval('[data-action="undo"]', b => b.disabled) };
   await sleep(600);
-  const autosaveBefore = await page.evaluate(() => localStorage.getItem('rugby-play-designer.autosave'));
+  const autosaveBefore = await stored(page);
   await page.click('#layers summary');
   await page.click('[name="player-size"][value="large"]');
   const large = await sizes();
@@ -124,7 +124,7 @@ for (const [width, height] of [[1080, 720], [1500, 780]]) {
   await sleep(600);
   check('…a setting of this browser: not in the play, the undo history or the autosave',
     eq(await state(page), before.play) && (await page.$eval('[data-action="undo"]', b => b.disabled)) === before.undo
-    && (await page.evaluate(() => localStorage.getItem('rugby-play-designer.autosave'))) === autosaveBefore
+    && (await stored(page)) === autosaveBefore
     && (await page.evaluate(() => localStorage.getItem('rugby-play-designer.player-size'))) === 'large');
   await page.click('[name="player-size"][value="small"]');
   const small = await sizes();

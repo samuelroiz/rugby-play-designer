@@ -5,14 +5,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { open, click, state, check, failed, outDir, addPlayer } from './lib.mjs';
+import { open, click, state, check, failed, outDir, addPlayer, stored as storedPlay } from './lib.mjs';
 
 const OUT = outDir('logo');
 const FILES = outDir('logo-files');
 console.log(`Downloads: ${OUT}`);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const KEY = 'rugby-play-designer.team-logo';
-const AUTOSAVE = 'rugby-play-designer.autosave';
 const DEFAULT_NAME = 'San Fernando Valley Rugby Club';
 
 // Every SVG serialized (each export picture, and the cleaned SVG of an upload) is kept to look at.
@@ -241,16 +240,16 @@ console.log('\n== Not part of the play ==');
 await addPlayer(page, 'attack');
 await sleep(700); // past the autosave delay
 const undoBefore = await page.$eval('[data-action="undo"]', b => b.disabled);
-const autosaveBefore = await page.evaluate(k => localStorage.getItem(k), AUTOSAVE);
+const autosaveBefore = await storedPlay(page);
 await upload(page, await makeImage(page, 'other.png', { w: 300, h: 300, color: '#00ffff' }));
 await closeLogo(page);
 await sleep(700);
-check('changing the logo: no undo step, no autosave', (await page.$eval('[data-action="undo"]', b => b.disabled)) === undoBefore && (await page.evaluate(k => localStorage.getItem(k), AUTOSAVE)) === autosaveBefore);
+check('changing the logo: no undo step, no autosave', (await page.$eval('[data-action="undo"]', b => b.disabled)) === undoBefore && (await storedPlay(page)) === autosaveBefore);
 await upload(page, bigPng);
 await closeLogo(page);
 const leaks = text => /data:image|logo|Valley Blues/i.test(text ?? '');
 check('the play has no logo or team name in it', !leaks(JSON.stringify(await state(page))));
-check('…nor does the autosave', !!autosaveBefore && !leaks(await page.evaluate(k => localStorage.getItem(k), AUTOSAVE)));
+check('…nor does the autosave', !!autosaveBefore && !leaks(await storedPlay(page)));
 clean();
 await click(page, '[data-file="save"]');
 const saved = await waitFile('.json');

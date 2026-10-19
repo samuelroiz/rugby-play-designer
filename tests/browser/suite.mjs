@@ -1,7 +1,7 @@
 // Headless Chrome checks: the four fixes plus regressions of earlier features. Desktop 1440x900 + phone 390 touch.
 import fs from 'node:fs';
 import path from 'node:path';
-import { open, drag, tap, click, state, shown, check, failed, toScreen, outDir, addPlayer, placeSetPiece, answerConfirm, nextFrame } from './lib.mjs';
+import { open, drag, tap, click, state, shown, check, failed, toScreen, outDir, addPlayer, placeSetPiece, answerConfirm, nextFrame, openId, plays, loadFile } from './lib.mjs';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 const OUT = outDir('suite');
@@ -376,9 +376,7 @@ async function dragHold(page, from, to, during) {
   bad.phases[0].routes.find(r => r.to === 'a2').to = 'a99';
   const badPath = path.join(OUT, 'bad.json');
   fs.writeFileSync(badPath, JSON.stringify(bad));
-  const input = await page.$('#load-input');
-  await input.uploadFile(badPath);
-  await answerConfirm(page);
+  await loadFile(page, badPath);
   s = await state(page);
   check('loading a pass to an unknown player leaves its end loose', s.phases[0].routes.filter(r => r.type === 'pass').every(r => r.to === null || s.players.some(p => p.id === r.to)) && s.phases[0].routes.some(r => r.type === 'pass' && r.to === null));
   check('Escape clears selection', await (async () => { await page.keyboard.press('Escape'); return page.evaluate(() => document.querySelector('[data-action="delete"]').disabled); })());
@@ -417,17 +415,17 @@ async function dragHold(page, from, to, during) {
   await page.click('#templates-dialog .cancel');
   check('picker: Cancel closes it and changes nothing', !(await page.$eval('#templates-dialog', d => d.open)) && eq(await state(page), empty) && !(await confirmOpen()));
 
-  let prevEmpty = true;
   for (const [i, t] of index.entries()) {
     await openPicker();
+    const before = await openId(page);
     await page.$eval(`.template-card[data-template="${i}"]`, b => b.click());
+    await sleep(50);
     const asked = await confirmOpen();
-    if (asked) await answerConfirm(page);
     const s = await state(page);
     const pos = s.phases[0].positions;
     const count = team => s.players.filter(p => p.team === team).length;
     const ids = s.players.map(p => p.id);
-    check(`${t.name}: asks first (in the app) only if the play had something in it`, asked === !prevEmpty);
+    check(`${t.name}: never asks: it opens as a new play`, !asked && (await openId(page)) !== before);
     check(`${t.name}: ${TEAMS[t.name][0]} attack, ${TEAMS[t.name][1]} defense`, count('attack') === TEAMS[t.name][0] && count('defense') === TEAMS[t.name][1]);
     check(`${t.name}: no duplicate ids, ids a/d + number 1-15, label = number`, new Set(ids).size === ids.length && s.players.every(p => p.id === (p.team === 'attack' ? 'a' : 'd') + p.label && Number(p.label) >= 1 && Number(p.label) <= 15), ids.join());
     const off = ids.filter(id => !pos[id] || pos[id].x < 0 || pos[id].x > 100 || pos[id].y < 0 || pos[id].y > 70);
@@ -441,7 +439,6 @@ async function dragHold(page, from, to, during) {
     if (t.name === 'Scrum') check('Scrum: the preset scrum on the middle spot with both packs and 9s', s.phases[0].objects.some(o => o.type === 'scrum' && o.y === 35 && o.pack.length === 18));
     if (t.name === 'Backline attack') check('Backline attack: a ruck with 9 at it', s.phases[0].objects.some(o => o.type === 'ruck' && Math.hypot(o.x - pos.a9.x, o.y - pos.a9.y) < 4));
     if (t.name !== 'Blank') await page.screenshot({ path: path.join(OUT, `template-${t.file.replace('.json', '')}.png`) });
-    prevEmpty = t.name === 'Blank';
   }
 
   // Routes and phases work on a template: 10 runs, Add Phase moves him.
@@ -456,20 +453,15 @@ async function dragHold(page, from, to, during) {
   await click(page, '[data-action="undo"]');
   check('back to the Kick-off template', eq(await state(page), kickOff));
 
-  // Confirm declined: nothing changes. Accepted: one undo step back.
+  // A template never replaces the open play: it opens as a new one, with a fresh undo history.
+  const kickOffId = await openId(page);
   await openPicker();
   await page.$eval('.template-card[data-template="3"]', b => b.click());
-  const msg = await answerConfirm(page, false);
-  check('declining the confirm keeps the play', msg.includes('"Scrum" template') && eq(await state(page), kickOff), msg);
-  await openPicker();
-  await page.$eval('.template-card[data-template="3"]', b => b.click());
-  await answerConfirm(page);
+  await sleep(50);
   const scrum = await state(page);
-  check('accepting loads Scrum', scrum.name === 'Scrum');
-  await click(page, '[data-action="undo"]');
-  check('choosing a template is one undo step', eq(await state(page), kickOff));
-  await click(page, '[data-action="redo"]');
-  check('redo brings the template back', eq(await state(page), scrum));
+  check('choosing Scrum opens it as a new play', scrum.name === 'Scrum' && (await openId(page)) !== kickOffId && !(await confirmOpen()));
+  check('…with a fresh undo history', await page.$eval('[data-action="undo"]', b => b.disabled));
+  check('…and the Kick-off play is still in Plays, unchanged', eq((await plays(page)).find(p => p.id === kickOffId)?.play, kickOff));
 
   // Thumbnails and the loaded play follow the current orientation.
   await click(page, '[data-orientation="vertical"]');
@@ -477,16 +469,14 @@ async function dragHold(page, from, to, during) {
   const ar = await page.$eval('.template-card svg', svg => { const r = svg.getBoundingClientRect(); return r.width / r.height; });
   check('vertical: thumbnails are vertical', ar < 1, String(ar));
   await page.$eval('.template-card[data-template="4"]', b => b.click());
-  await answerConfirm(page);
+  await sleep(50);
   check('vertical: the template loads vertical', (await state(page)).orientation === 'vertical');
   await click(page, '[data-orientation="horizontal"]');
 
   // --- All-phases PNG ---
   // Leaves `n` phases (from a blank play), with notes, then saves all phases and reads back the sheet.
   async function sheet(n, { orientation = 'horizontal', longNote = false } = {}) {
-    await page.evaluate(() => localStorage.clear());
     await click(page, '[data-file="new"]');
-    await answerConfirm(page);
     await click(page, `[data-orientation="${orientation}"]`);
     await page.$eval('#play-name', i => { i.value = 'Sheet: test'; i.dispatchEvent(new Event('input')); });
     await addPlayer(page, 'attack');
@@ -659,9 +649,15 @@ async function dragHold(page, from, to, during) {
   check('and it undoes', (await state(page)).phases.length === 2);
   await page.$eval('#phase-tabs [data-index="0"]', b => b.click());
   const kept = await state(page);
+  const keptId = await openId(page);
   await click(page, '[data-file="new"]');
-  msg = await answerConfirm(page, false);
-  check('New play asks in the app; Cancel keeps the play', msg.startsWith('Start a new blank play') && eq(await state(page), kept));
+  check('New play doesn\'t ask: it opens a new blank play, and the one before stays in Plays',
+    !(await page.$eval('#confirm-dialog', d => d.open)) && (await state(page)).players.length === 0 && (await openId(page)) !== keptId && eq((await plays(page)).find(p => p.id === keptId)?.play, kept));
+  // Back to it, from the Plays panel.
+  await click(page, '#plays-button');
+  await page.waitForSelector(`#plays-dialog[open] .play-row[data-id="${keptId}"]`);
+  await page.click(`.play-row[data-id="${keptId}"] .play-info`);
+  check('…and opens again from Plays', (await openId(page)) === keptId && eq(await state(page), kept));
 
   // --- 2. Balls above players, badges clear of them ---
   check('balls are drawn in a layer above the players', await page.evaluate(() => {
@@ -677,7 +673,7 @@ async function dragHold(page, from, to, during) {
   await click(page, '#templates-button');
   await page.waitForSelector('.template-card');
   await page.$eval('.template-card[data-template="5"]', b => b.click());
-  await answerConfirm(page);
+  await sleep(50);
   const ko = (await state(page)).phases[0].positions;
   await tool(page, 'run');
   await drag(page, [ko.a10.x, ko.a10.y], [ko.a10.x + 6, ko.a10.y - 4]);
@@ -710,7 +706,6 @@ async function dragHold(page, from, to, during) {
 
   // --- 3. Scrum with 9s, 4. Lineout preset ---
   await click(page, '[data-file="new"]');
-  await answerConfirm(page);
   await addPlayer(page, 'attack', { n: 9 });
   await placeSetPiece(page, 'scrum-attack');
   await sleep(200);
@@ -965,7 +960,6 @@ async function dragHold(page, from, to, during) {
 
   // Far touchline, defense throwing: the 65 m line is kept.
   await click(page, '[data-file="new"]');
-  await answerConfirm(page);
   await click(page, '[data-object="lineout"]');
   await page.evaluate(() => { const o = window.playState.phases[0].objects.find(q => q.type === 'lineout'); Object.assign(o, { x: 40, y: 60 }); });
   await lineoutPreset('defense');
@@ -978,7 +972,6 @@ async function dragHold(page, from, to, during) {
   await page.screenshot({ path: path.join(OUT, 'lineout-group.png') });
   // A plain lineout marker (not from the preset) still moves on its own.
   await click(page, '[data-file="new"]');
-  await answerConfirm(page);
   await addPlayer(page, 'attack');
   await click(page, '[data-object="lineout"]');
   const plain = (await state(page)).phases[0].objects.find(o => o.type === 'lineout');
@@ -1253,7 +1246,7 @@ async function dragHold(page, from, to, during) {
   await click(page, '#templates-button');
   await page.waitForSelector('.template-card');
   await page.$eval('.template-card[data-template="4"]', b => b.click());
-  await answerConfirm(page);
+  await sleep(50);
   await page.keyboard.press('Escape');
   await tool(page, 'pass');
   await drag(page, [39.5, 1.2], [38.8, 13.7]); // hooker down the line to 6, over 1, 4 and 3

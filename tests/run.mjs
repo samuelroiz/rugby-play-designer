@@ -37,6 +37,7 @@ const steps = [
   ['About suite', ['tests/browser/about.mjs']],
   ['Welcome suite', ['tests/browser/welcome.mjs']],
   ['Usability fixes suite', ['tests/browser/usability.mjs']],
+  ['Play library suite', ['tests/browser/library.mjs']],
   ['Team logo suite', ['tests/browser/logo.mjs']],
 ];
 

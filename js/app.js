@@ -11,9 +11,11 @@ import { placeScrum, moveScrum, placeLineout, moveLineout } from './setpiece.js'
 import { appendPhase, insertPhaseAfter, movePhase } from './phases.js';
 import { createHistory } from './history.js';
 import {
-  blankPlay, readAutosave, parseAutosave, saveAutosave, autosaveText, backupAutosave, AUTOSAVE_KEY,
-  downloadPlay, downloadBlob, readPlayFile, safeFileName,
+  blankPlay, readAutosave, parseAutosave, removeAutosave, autosaveText, backupAutosave,
+  downloadPlay, downloadBlob, readPlayFile, safeFileName, NAME_MAX,
 } from './storage.js';
+import { openLibrary, newRecord, backupData, backupFileName, restoreRecords, restoreSummary } from './library.js';
+import { initPlaysPanel } from './plays.js';
 import { pictureSvg, allPhasesSvg, legendSvg, pageCss, svgToPng, pageFit, makePdf, PX_PER_MM } from './export.js';
 import { loadTemplates, loadExample, thumbnail, isEmptyPlay } from './templates.js';
 import { syncOptions, makeMainOption, optionGroup, optionLetters, OPTION_LABEL_MAX } from './options.js';
@@ -169,24 +171,102 @@ window.rugbyPresent = present;
 // its files, the autosave or the undo history.
 let teamLogo = readLogoSettings();
 
-// The autosave is written only when its text has changed. While another tab's change is waiting for an
-// answer (see initTabs), nothing is written, so theirs isn't overwritten before the user chooses.
+// The play library (see library.js): every play in this browser. The open play is always one of its
+// entries (currentId), and the autosave writes to that entry. Each tab remembers which play it has open (so a
+// reload brings it back), and the last play opened in any tab is what a new tab opens.
+let library = null;
+let currentId = null;
+let playsPanel = null;
+const OPEN_KEY = 'rugby-play-designer.open-play'; // sessionStorage: this tab's play
+const LAST_KEY = 'rugby-play-designer.last-play'; // localStorage: the last play opened in any tab
+
+// The open play's entry is written only when its text has changed. While another tab's change to the same
+// play is waiting for an answer (see initTabs), nothing is written, so theirs isn't overwritten before the
+// user chooses. A failed write keeps the play on screen and in memory, and says how to keep it safe.
 let autosaveTimer = null;
 let lastSaved = null;
 let theirs = null;
-const AUTOSAVE_FAILED = "Couldn't autosave. Save to a file to keep your work.";
+const STORAGE_FULL = "Couldn't save: this browser's storage is full. Your play is still here: use Plays → Back up all plays to keep it.";
+const STORAGE_BLOCKED = "Plays can't be saved in this browser (storage is blocked). Use Plays → Back up all plays to keep your work.";
+function storageFailed(err) {
+  const message = err?.name === 'QuotaExceededError' || /quota|full/i.test(err?.message ?? '') ? STORAGE_FULL : STORAGE_BLOCKED;
+  if ($('toast').hidden || $('toast').textContent !== message) showToast(message);
+}
 function scheduleAutosave() {
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(flushAutosave, AUTOSAVE_MS);
 }
+// The play without its orientation (turning the pitch is a view choice, not an edit).
+const playKey = play => JSON.stringify({ ...play, orientation: null });
 function flushAutosave() {
   clearTimeout(autosaveTimer);
   autosaveTimer = null;
-  if (theirs != null) return;
+  if (theirs != null || !library || !currentId) return;
   const text = autosaveText(state, ui.phase);
   if (text === lastSaved) return;
-  if (saveAutosave(state, ui.phase, text)) lastSaved = text;
-  else if ($('toast').hidden || $('toast').textContent !== AUTOSAVE_FAILED) showToast(AUTOSAVE_FAILED);
+  lastSaved = text;
+  const old = library.get(currentId);
+  const now = Date.now();
+  // "Last edited" moves only when the play itself changes, not the phase shown or the orientation.
+  const edited = !old || playKey(old.play) !== playKey(state);
+  // Editing a play that another tab moved to Recently deleted brings it back.
+  library.save({
+    id: currentId, created: old?.created ?? now, deletedAt: null,
+    play: structuredClone(state), phase: ui.phase, updated: edited ? now : old.updated,
+  }).catch(err => {
+    if (lastSaved === text) lastSaved = null; // try again with the next change
+    storageFailed(err);
+  });
+  playsPanel?.refresh();
+}
+
+function rememberOpen(id) {
+  try { sessionStorage.setItem(OPEN_KEY, id); } catch { /* blocked */ }
+  try { localStorage.setItem(LAST_KEY, id); } catch { /* blocked */ }
+}
+function rememberedOpen() {
+  // The storage objects themselves throw when storage is blocked, so they're reached inside the try.
+  const read = (storage, key) => { try { return storage().getItem(key); } catch { return null; } };
+  return [read(() => sessionStorage, OPEN_KEY), read(() => localStorage, LAST_KEY)];
+}
+
+// Shows a library entry as the open play, with a fresh undo history. `keepOrientation` keeps the pitch the
+// way it's turned now (switching plays); at startup the entry's own orientation is used.
+function showRecord(rec, { keepOrientation = true } = {}) {
+  finishInline?.(false);
+  // Only when something is playing: stopping redraws, and at startup nothing is set up to draw yet.
+  if (playback.playing || playback.paused) playback.stop();
+  if (ui.presenting) present.exit();
+  ui.placing = null;
+  currentId = rec.id;
+  rememberOpen(rec.id);
+  replacePlay(keepOrientation ? { ...rec.play, orientation: state.orientation } : rec.play, rec.phase);
+  history.reset();
+  lastSaved = autosaveText(state, ui.phase);
+}
+
+// Opens another play from the library (the open one is saved first).
+function switchTo(id) {
+  const rec = library.get(id);
+  if (!rec || id === currentId) return;
+  flushAutosave();
+  showRecord(rec);
+  render();
+}
+
+// New play, a template, the example and Load file: each becomes a new library entry and opens, so nothing is
+// ever replaced. The open play is saved first and stays in the library; if it's empty (nothing on it at all),
+// it's dropped rather than left behind as an empty "Untitled play".
+function createAndOpen(play) {
+  flushAutosave();
+  const empty = currentId && isEmptyPlay(state) && state.name === 'Untitled play';
+  if (empty) library.remove(currentId).catch(() => {});
+  const rec = newRecord({ ...play, orientation: state.orientation });
+  library.save(rec).catch(storageFailed);
+  showRecord(rec);
+  render();
+  playsPanel?.refresh();
+  return rec;
 }
 
 // A short message in the status line under the pitch: an error (the default), or `ok` for "Saved …".
@@ -697,6 +777,7 @@ function updateToolbar() {
   document.querySelector('[data-action="add-defense"]').disabled ||= count('defense') >= MAX_PER_TEAM;
   document.querySelector('[data-action="delete"]').disabled ||= !ui.selected;
   $('templates-button').disabled = busy();
+  $('plays-button').disabled = busy();
   $('present-button').disabled = ui.exporting;
   // The play's details can't be reached by mouse or keyboard either: the File menu is inert and closed.
   const fileMenu = $('file-menu');
@@ -1324,6 +1405,8 @@ async function fileAction(action) {
   if (busy()) return;
   if (action === 'about') {
     openAbout();
+  } else if (action === 'plays') {
+    openPlays();
   } else if (action === 'save') {
     downloadPlay(state);
     showToast(`Saved ${safeFileName(state.name)}`, 'ok');
@@ -1336,9 +1419,7 @@ async function fileAction(action) {
   } else if (action === 'load') {
     $('load-input').click();
   } else if (action === 'new') {
-    if (!(await askConfirm('Start a new blank play? The current one is replaced (you can undo).', 'New play'))) return;
-    replacePlay(blankPlay({ view: state.view, orientation: state.orientation }));
-    render();
+    createAndOpen(blankPlay({ view: state.view, orientation: state.orientation }));
   }
 }
 
@@ -1353,9 +1434,9 @@ async function loadFromInput(input) {
     showToast(err.message);
     return;
   }
-  if (!(await askConfirm(`Load "${play.name}"? It replaces the current play (you can undo).`, 'Load'))) return;
-  replacePlay(play);
-  render();
+  if (busy()) return;
+  createAndOpen(play);
+  showToast(`Opened "${play.name}" as a new play (the one before is in Plays).`, 'ok');
 }
 
 // --- Export ---
@@ -1725,9 +1806,8 @@ function initTemplatesDialog() {
     if (!card) return;
     const t = templates[Number(card.dataset.template)];
     dialog.close();
-    if (!isEmptyPlay(state) && !(await askConfirm(`Start a new play from the "${t.name}" template? The current one is replaced (you can undo).`, 'Use template'))) return;
-    replacePlay({ ...t.play, orientation: state.orientation });
-    render();
+    if (busy()) return;
+    createAndOpen(t.play);
   });
   return openTemplates;
 }
@@ -1764,10 +1844,8 @@ async function tryExample(dialog) {
     return;
   }
   dialog.close();
-  if (!isEmptyPlay(state) && !(await askConfirm(`Open the example "${play.name}"? It replaces the current play (you can undo).`, 'Open example'))) return;
   if (busy()) return;
-  replacePlay({ ...play, orientation: state.orientation });
-  render();
+  createAndOpen(play);
   playback.speed = 1;
   playback.setLoop(false);
   playback.play();
@@ -2014,67 +2092,179 @@ function initPlayControls() {
   });
 }
 
-// Another tab saved its play (the autosave is shared by every tab of this site). If it differs from this
-// one, ask which to keep: "Use theirs" loads it (one undo step), "Keep mine" saves this one again. Until
-// then nothing is autosaved here. Moving between phases or turning the pitch there isn't a change.
+// Another tab changed the library. The Plays list follows it. If the change is to the play open here and
+// differs from it, ask which to keep: "Use theirs" loads it (one undo step), "Keep mine" saves this one
+// again. Until then nothing is autosaved here. Moving between phases or turning the pitch there isn't a
+// change. Tabs with different plays open never ask.
+function remoteChange(msg) {
+  playsPanel?.refresh();
+  if (msg.type !== 'put' || msg.record.id !== currentId) return;
+  if (theirs == null && playKey(msg.record.play) === playKey(state)) return;
+  theirs = msg.record;
+  clearTimeout(autosaveTimer);
+  if (playback.playing) playback.pause();
+  const dialog = $('tab-dialog');
+  if (!dialog.open) {
+    finishInline?.(false);
+    dialog.returnValue = '';
+    dialog.showModal();
+  }
+}
+
 function initTabs() {
   const dialog = $('tab-dialog');
-  const sameAsMine = raw => {
-    try {
-      const other = JSON.parse(raw)?.play;
-      return JSON.stringify({ ...other, orientation: null }) === JSON.stringify({ ...state, orientation: null });
-    } catch {
-      return false;
-    }
-  };
-  addEventListener('storage', e => {
-    if (e.key !== AUTOSAVE_KEY || e.newValue == null) return;
-    if (theirs == null && sameAsMine(e.newValue)) return;
-    theirs = e.newValue;
-    clearTimeout(autosaveTimer);
-    if (playback.playing) playback.pause();
-    if (!dialog.open) {
-      finishInline?.(false);
-      dialog.returnValue = '';
-      dialog.showModal();
-    }
-  });
   dialog.addEventListener('close', () => {
-    const raw = theirs;
+    const rec = theirs;
     theirs = null;
-    if (dialog.returnValue === 'theirs') {
-      try {
-        const saved = parseAutosave(raw);
-        replacePlay({ ...saved.play, orientation: state.orientation }, saved.phase);
-        lastSaved = raw;
-        render();
-        return;
-      } catch {
-        showToast("The other tab's play couldn't be opened. Yours is kept.");
-      }
+    if (dialog.returnValue === 'theirs' && rec) {
+      replacePlay({ ...rec.play, orientation: state.orientation }, rec.phase);
+      lastSaved = autosaveText(state, ui.phase);
+      render();
+      return;
     }
     lastSaved = null; // save again even if nothing changed here, so this play is the one kept
     flushAutosave();
   });
 }
 
-function init() {
+// --- Plays panel actions ---
+
+function openPlays() {
+  if (busy()) return;
+  flushAutosave(); // so the list shows the open play as it is
+  playsPanel.show();
+}
+
+// "<name> copy", kept within the name limit.
+const copyName = name => `${name.slice(0, NAME_MAX - 5)} copy`;
+
+const playActions = {
+  open: id => switchTo(id),
+  duplicate(id) {
+    if (id === currentId) flushAutosave();
+    const rec = library.get(id);
+    if (!rec) return;
+    library.save(newRecord({ ...rec.play, name: copyName(rec.play.name) }, rec.phase)).catch(storageFailed);
+  },
+  rename(id, name) {
+    if (id === currentId) {
+      // The open play: an ordinary edit (one undo step), saved by the autosave.
+      state.name = name;
+      inputsStale = true;
+      render();
+      return;
+    }
+    const rec = library.get(id);
+    if (rec) library.save({ ...rec, play: { ...rec.play, name }, updated: Date.now() }).catch(storageFailed);
+  },
+  // Deleting the open play opens the most recently edited other one (or a new blank play).
+  trash(id) {
+    if (id === currentId) {
+      flushAutosave();
+      const next = library.all().find(r => r.id !== id && r.deletedAt == null);
+      // The limit applies in memory straight away (the writes follow), so the list is right at once.
+      Promise.all([library.trash(id), library.prune()]).catch(storageFailed);
+      if (next) switchTo(next.id);
+      else {
+        const rec = newRecord(blankPlay({ view: state.view, orientation: state.orientation }));
+        library.save(rec).catch(storageFailed);
+        showRecord(rec);
+        render();
+      }
+      return;
+    }
+    Promise.all([library.trash(id), library.prune()]).catch(storageFailed);
+  },
+  restore: id => { library.restore(id).catch(storageFailed); },
+  async purge(id) {
+    const rec = library.get(id);
+    if (!rec) return false;
+    if (!(await askConfirm(`Delete "${rec.play.name}" forever? This can't be undone.`, 'Delete forever'))) return false;
+    library.remove(id).catch(storageFailed);
+    return true;
+  },
+  backup() {
+    flushAutosave();
+    const blob = new Blob([JSON.stringify(backupData(library.all()), null, 2) + '\n'], { type: 'application/json' });
+    const name = backupFileName();
+    downloadBlob(blob, name);
+    playsPanel.setStatus(`Saved ${name}`);
+  },
+  // Adds the backup's plays to the library, never changing those already here.
+  async restoreFile(file) {
+    let data;
+    try {
+      data = JSON.parse(await file.text());
+    } catch {
+      return { ok: false, message: `"${file.name}" isn't a plays backup: it isn't valid JSON.` };
+    }
+    let result;
+    try {
+      result = restoreRecords(data, library.all());
+    } catch (err) {
+      return { ok: false, message: err.message };
+    }
+    const writes = result.add.map(rec => library.save(rec));
+    let failed = null;
+    await Promise.all(writes.map(w => w.catch(err => { failed ??= err; })));
+    await library.prune().catch(() => {});
+    if (failed) storageFailed(failed);
+    return { ok: !result.invalid, message: restoreSummary(result) };
+  },
+};
+
+// Opens the library and picks the play to show: the old autosave on first run (moved into the library, so
+// nobody loses their play), else this tab's play (after a reload), else the last play opened in any tab, else
+// the most recently edited, else a new blank play. Returns { broken }: the old autosave couldn't be read (it's
+// kept under its backup key).
+async function openStartPlay() {
+  library = await openLibrary({ onRemote: remoteChange });
+  window.rugbyLibrary = library; // for tests, like window.playState
+  library.openId = () => currentId;
+  if (!library.persistent) showToast(STORAGE_BLOCKED);
+  const raw = readAutosave();
+  if (raw != null) {
+    let saved = null;
+    try {
+      saved = parseAutosave(raw);
+    } catch {
+      backupAutosave(raw);
+      removeAutosave();
+    }
+    if (saved) {
+      const rec = newRecord(saved.play, saved.phase);
+      showRecord(rec, { keepOrientation: false });
+      // The old autosave goes only once its play is safely in the library.
+      try {
+        await library.save(rec);
+        removeAutosave();
+      } catch (err) {
+        storageFailed(err);
+      }
+      return { broken: false };
+    }
+    return { broken: true };
+  }
+  const live = library.all().filter(r => r.deletedAt == null);
+  const [mine, last] = rememberedOpen();
+  const rec = live.find(r => r.id === mine) ?? live.find(r => r.id === last) ?? live[0];
+  if (rec) {
+    showRecord(rec, { keepOrientation: false });
+    return { broken: false };
+  }
+  const blank = newRecord(blankPlay({ orientation: state.orientation }));
+  library.save(blank).catch(storageFailed);
+  showRecord(blank, { keepOrientation: false });
+  return { broken: false };
+}
+
+async function init() {
   // Read now: the first render puts #phase=1 in the address.
   const linked = /^#phase=/.test(location.hash);
-  // Bring back the last play from this browser, if there is one. If it can't be opened (or drawn), it's kept
-  // under a backup key and a blank play starts instead.
-  const raw = readAutosave();
-  let restored = false;
-  let broken = false;
-  if (raw) {
-    try {
-      const saved = parseAutosave(raw);
-      replacePlay(saved.play, saved.phase);
-      restored = true;
-    } catch {
-      broken = true;
-    }
-  }
+  // If the play can't be opened (or drawn), it stays in the library (or, for the old autosave, under its
+  // backup key) and a new blank play opens instead.
+  let { broken } = await openStartPlay();
+  const restored = !broken;
   // A link to a phase (#phase=3) opens on it.
   ui.phase = hashPhase() ?? ui.phase;
   history.reset();
@@ -2094,6 +2284,8 @@ function init() {
   initLogoDialog();
   initPlayControls();
   initTabs();
+  playsPanel = initPlaysPanel({ library, currentId: () => currentId, orientation: () => state.orientation, actions: playActions });
+  $('plays-button').addEventListener('click', openPlays);
   const openSetPiece = initSetPieceDialog();
 
   document.querySelector('.toolbar').addEventListener('click', e => {
@@ -2133,9 +2325,9 @@ function init() {
     }
   }
   if (broken) {
-    backupAutosave(raw);
-    replacePlay(blankPlay({ orientation: state.orientation }));
-    history.reset();
+    const blank = newRecord(blankPlay({ orientation: state.orientation }));
+    library.save(blank).catch(storageFailed);
+    showRecord(blank, { keepOrientation: false });
     pitchKey = '';
     render();
     showToast("Your last play couldn't be opened. A backup was kept.");

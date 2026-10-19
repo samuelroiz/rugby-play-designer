@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { open, drag, tap, click, state, shown, check, failed, toScreen, outDir, addPlayer, placeSetPiece, answerConfirm, nextFrame, URL_ } from './lib.mjs';
+import { open, drag, tap, click, state, shown, check, failed, toScreen, outDir, addPlayer, placeSetPiece, nextFrame, URL_, openId, plays, stored, loadFile } from './lib.mjs';
 import { TIMING } from '../../js/animate.js';
 import { animPlay } from '../anim-play.mjs';
 
@@ -122,9 +122,7 @@ async function throughEverything(page, dir, seen, label) {
   Object.assign(ph.routes[4], { option: 'b', order: '2' });
   const badFile = path.join(OUT, 'damaged.json');
   fs.writeFileSync(badFile, JSON.stringify(bad));
-  const input = await page.$('#load-input');
-  await input.uploadFile(badFile);
-  await answerConfirm(page);
+  await loadFile(page, badFile);
   const s = await state(page);
   const r = s.phases[0].routes;
   check('a damaged file loads, cleaned up', s.name.length === 60 && eq(s.tags, ['ok']) && s.category === 'attack' && s.players[0].label === '10' && s.phases[0].note === ''
@@ -157,7 +155,8 @@ async function throughEverything(page, dir, seen, label) {
   check('…the raw autosave is kept under the backup key', (await page.evaluate(k => localStorage.getItem(k), BACKUP)) === '{"play": {not json');
   check('…and a blank play starts', (await state(page)).players.length === 0 && (await state(page)).name === 'Untitled play');
   await sleep(600);
-  check('…which is autosaved in its place', (await page.evaluate(k => JSON.parse(localStorage.getItem(k)).play.players.length, AUTOSAVE)) === 0);
+  check('…which is saved in the library in its place, and the old autosave is gone',
+    JSON.parse(await stored(page))?.play.players.length === 0 && (await page.evaluate(k => localStorage.getItem(k), AUTOSAVE)) === null);
 
   // An autosave that loads but breaks the first drawing (forced here: the first getScreenCTM call throws).
   await page.evaluateOnNewDocument(() => {
@@ -171,8 +170,9 @@ async function throughEverything(page, dir, seen, label) {
   await page.evaluate((k, v) => { localStorage.removeItem('rugby-play-designer.autosave-backup'); localStorage.setItem(k, v); sessionStorage.setItem('break-render', '1'); }, AUTOSAVE, raw);
   await page.reload();
   await page.waitForSelector('#phase-tabs button');
-  check('autosave whose first drawing fails: message, backup kept, blank play',
-    (await toast(page)) === "Your last play couldn't be opened. A backup was kept." && (await page.evaluate(k => localStorage.getItem(k), BACKUP)) === raw
+  // It's moved into the library like any old autosave, so the library entry is its backup.
+  check('autosave whose first drawing fails: message, kept in the library, a blank play opens',
+    (await toast(page)) === "Your last play couldn't be opened. A backup was kept." && (await plays(page)).some(p => p.name === animPlay().name && p.play.players.length === animPlay().players.length)
     && (await state(page)).players.length === 0, await toast(page));
   await addPlayer(page, 'attack');
   check('…and the app works on as usual', (await state(page)).players.length === 1);
@@ -226,23 +226,37 @@ async function throughEverything(page, dir, seen, label) {
   await a.click('#tab-mine');
   await sleep(200);
   check('Keep mine: tab A keeps its play and saves it again', eq(await state(a), mine)
-    && (await a.evaluate(k => JSON.parse(localStorage.getItem(k)).play.players.length, AUTOSAVE)) === 1);
+    && JSON.parse(await stored(a)).play.players.length === 1);
   await sleep(600);
   check('…so tab B is asked in turn', await dialogOpen(b));
   await b.bringToFront();
   await b.click('#tab-theirs');
   await sleep(700);
   check('tab B takes it; nobody is asked again', (await state(b)).players.length === 1 && !(await dialogOpen(a)) && !(await dialogOpen(b)));
+
+  // Two tabs with different plays: neither is ever asked, and both plays are kept.
+  const aId = await openId(a);
+  await click(b, '[data-file="new"]');
+  const bId = await openId(b);
+  await addPlayer(a, 'attack', { n: 7 });
+  await sleep(700);
+  check('different plays: tab B isn\'t asked when tab A edits its play', !(await dialogOpen(b)) && bId !== aId);
+  await b.bringToFront();
+  await addPlayer(b, 'defense', { n: 4 });
+  await sleep(700);
+  check('…nor tab A when tab B edits its own', !(await dialogOpen(a)));
+  const lib = await plays(a);
+  check('…and the library has both, each with its own edits', lib.find(p => p.id === aId)?.play.players.some(p => p.id === 'a7') && lib.find(p => p.id === bId)?.play.players.some(p => p.id === 'd4') && !lib.find(p => p.id === bId).play.players.some(p => p.id === 'a7'));
   await b.close();
 
-  // Storage full: every write throws.
+  // Storage full: every write to the library fails.
   await a.bringToFront();
-  await a.evaluate(() => { Storage.prototype.setItem = function () { throw new DOMException('The quota has been exceeded.', 'QuotaExceededError'); }; });
+  await a.evaluate(() => { IDBObjectStore.prototype.put = function () { throw new DOMException('The quota has been exceeded.', 'QuotaExceededError'); }; });
   await addPlayer(a, 'attack');
   await sleep(700);
-  check('storage full: "Couldn\'t autosave. Save to a file to keep your work."', (await toast(a)) === "Couldn't autosave. Save to a file to keep your work.", await toast(a));
+  check('storage full: says so, and points to Back up', (await toast(a)) === "Couldn't save: this browser's storage is full. Your play is still here: use Plays → Back up all plays to keep it.", await toast(a));
   await addPlayer(a, 'attack');
-  check('…and editing carries on', (await state(a)).players.length === 3);
+  check('…and editing carries on', (await state(a)).players.length === 4);
 
   check('no console errors', errors.length === 0, errors.join(' | '));
   await browser.close();

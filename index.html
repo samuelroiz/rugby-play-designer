@@ -39,6 +39,10 @@
         <label>Tags
           <input id="play-tags" type="text" placeholder="e.g. backs, set move" spellcheck="false">
         </label>
+        <!-- On a phone the top bar wraps, so Plays lives here instead. -->
+        <div class="menu-actions plays-in-menu">
+          <button type="button" data-file="plays" aria-haspopup="dialog">Plays…</button>
+        </div>
         <div class="menu-actions">
           <button type="button" data-file="new">New play</button>
           <button type="button" data-file="save">Save file</button>
@@ -58,6 +62,7 @@
         <input id="load-input" type="file" accept=".json,application/json" hidden>
       </div>
     </details>
+    <button type="button" id="plays-button" aria-haspopup="dialog" title="Every play in this browser">Plays</button>
     <button type="button" id="templates-button" aria-haspopup="dialog">Templates</button>
     <button type="button" id="present-button" title="Present: the pitch alone, full screen (Esc leaves)">Present</button>
 
@@ -296,6 +301,39 @@
       <p class="tip" id="templates-status" aria-live="polite"></p>
       <div class="template-grid" id="template-grid"></div>
       <button value="" class="cancel">Cancel</button>
+    </form>
+  </dialog>
+
+  <dialog id="plays-dialog" aria-labelledby="plays-title">
+    <form method="dialog">
+      <div class="plays-head">
+        <h2 id="plays-title">Plays</h2>
+        <div class="plays-backup">
+          <button type="button" id="plays-backup">Back up all plays</button>
+          <button type="button" id="plays-restore">Restore from backup…</button>
+          <input id="restore-input" type="file" accept=".json,application/json" hidden>
+        </div>
+      </div>
+      <p class="tip">Your plays are kept only in this browser. Back up all plays to keep them safe or move them to another device.</p>
+      <div class="plays-filters">
+        <input type="search" id="plays-search" placeholder="Search names and tags" aria-label="Search plays by name or tag" spellcheck="false">
+        <select id="plays-category" aria-label="Category">
+          <option value="">All categories</option>
+          <option value="attack">Attack</option>
+          <option value="defense">Defense</option>
+          <option value="lineout">Lineout</option>
+          <option value="scrum">Scrum</option>
+        </select>
+      </div>
+      <p class="plays-status" id="plays-status" role="status" hidden></p>
+      <ul class="plays-list" id="plays-list"></ul>
+      <p class="tip" id="plays-empty" hidden></p>
+      <details class="plays-deleted" id="plays-deleted" hidden>
+        <summary id="plays-deleted-count">Recently deleted</summary>
+        <p class="tip">The last 20 deleted plays are kept here; older ones go for good.</p>
+        <ul class="plays-list" id="plays-deleted-list"></ul>
+      </details>
+      <button value="" class="cancel">Close</button>
     </form>
   </dialog>
 

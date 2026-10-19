@@ -1,17 +1,16 @@
 // The About box and its "Try an example". Desktop 1440x900, then a 390px phone.
 import fs from 'node:fs';
-import { open, addPlayer, answerConfirm, click, state, shown, check, failed } from './lib.mjs';
+import { open, addPlayer, click, state, shown, check, failed, openId, plays, stored } from './lib.mjs';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const example = JSON.parse(fs.readFileSync(new URL('../../templates/example.json', import.meta.url)));
 const isOpen = page => page.$eval('#about-dialog', d => d.open);
 const visible = (page, sel) => page.$eval(sel, el => { const r = el.getBoundingClientRect(); return getComputedStyle(el).display !== 'none' && r.width > 0 && r.height > 0; });
-const autosave = page => page.evaluate(() => localStorage.getItem('rugby-play-designer.autosave'));
 const undoDisabled = page => page.$eval('[data-action="undo"]', b => b.disabled);
 // Everything opening and closing the box must leave alone: the play, the phase, undo/redo and the autosave.
 const snapshot = async page => ({
-  play: await state(page), phase: await shown(page), autosave: await autosave(page),
+  play: await state(page), phase: await shown(page), autosave: await stored(page),
   undo: await undoDisabled(page), redo: await page.$eval('[data-action="redo"]', b => b.disabled),
 });
 
@@ -97,34 +96,30 @@ const snapshot = async page => ({
   await sleep(100);
   check('after Present mode: About shows again', await visible(page, '#about-button'));
 
-  // --- Try an example ---
+  // --- Try an example: a new play, the one before kept in Plays ---
   const mine = await state(page);
+  const mineId = await openId(page);
   await click(page, '#about-button');
   await page.click('#about-example');
-  const message = await answerConfirm(page, false);
-  check('Try an example on a play with something in it asks first', /example/.test(message), message);
-  check('…Cancel keeps the play, and the box is closed', eq(await state(page), mine) && !(await isOpen(page)));
-
-  await click(page, '#about-button');
-  await page.click('#about-example');
-  await answerConfirm(page, true);
+  await page.waitForFunction(() => window.playState.name === 'Example: Scrum 12 crash', { timeout: 5000 });
   const loaded = await state(page);
   const pb = await page.evaluate(() => ({ playing: rugbyPlayback.playing, speed: rugbyPlayback.speed, loop: rugbyPlayback.loop }));
-  check('OK loads the example', loaded.name === 'Example: Scrum 12 crash' && eq(loaded.phases, example.phases) && eq(loaded.players, example.players));
+  check('Try an example opens it as a new play, without asking', loaded.name === 'Example: Scrum 12 crash' && eq(loaded.phases, example.phases) && eq(loaded.players, example.players)
+    && !(await page.$eval('#confirm-dialog', d => d.open)) && (await openId(page)) !== mineId);
   check('…closes the box and plays it once from phase 1 at 1x', !(await isOpen(page)) && pb.playing && pb.speed === 1 && !pb.loop && (await shown(page)) === 0, JSON.stringify(pb));
   await page.evaluate(() => rugbyPlayback.stop());
-  await click(page, '[data-action="undo"]');
-  check('…as one undo step', eq(await state(page), mine));
+  const kept = (await plays(page)).find(p => p.id === mineId);
+  check('…the play before is still in Plays, unchanged', kept && eq(kept.play, mine));
+  check('…and the new play starts a fresh undo history', await page.$eval('[data-action="undo"]', b => b.disabled));
 
-  // An empty play: no question.
+  // From a blank play, after 2x and Loop: still once at 1x.
   await page.evaluate(() => { rugbyPlayback.setLoop(true); rugbyPlayback.speed = 2; });
   await click(page, '[data-file="new"]');
-  await answerConfirm(page, true);
   await click(page, '#about-button');
   await page.click('#about-example');
   await page.waitForFunction(() => window.playState.name === 'Example: Scrum 12 crash', { timeout: 5000 });
   const pb2 = await page.evaluate(() => ({ playing: rugbyPlayback.playing, speed: rugbyPlayback.speed, loop: rugbyPlayback.loop }));
-  check('on an empty play it loads without asking, and plays once at 1x even after 2x and Loop',
+  check('from a blank play it plays once at 1x even after 2x and Loop',
     !(await page.$eval('#confirm-dialog', d => d.open)) && pb2.playing && pb2.speed === 1 && !pb2.loop, JSON.stringify(pb2));
   await page.evaluate(() => rugbyPlayback.stop());
 

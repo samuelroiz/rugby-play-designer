@@ -1,13 +1,13 @@
 // The Welcome box on a first visit, and the Play / Pause labels. Desktop 1440x900, then a 390px phone.
 import fs from 'node:fs';
-import { open, URL_, WELCOME_KEY, addPlayer, answerConfirm, click, state, shown, check, failed } from './lib.mjs';
+import { open, URL_, WELCOME_KEY, addPlayer, click, state, shown, check, failed, openId, plays, stored } from './lib.mjs';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const example = JSON.parse(fs.readFileSync(new URL('../../templates/example.json', import.meta.url)));
 const isOpen = (page, id = 'welcome-dialog') => page.$eval(`#${id}`, d => d.open);
 const seen = page => page.evaluate(k => localStorage.getItem(k), WELCOME_KEY);
-const autosave = page => page.evaluate(() => localStorage.getItem('rugby-play-designer.autosave'));
+const autosave = stored;
 // Everything opening and closing the box must leave alone: the play, the phase, undo/redo and the autosave.
 const snapshot = async page => ({
   play: await state(page), phase: await shown(page), autosave: await autosave(page),
@@ -139,15 +139,17 @@ for (const [how, close] of [
   check('…closes the box, records it was seen, and plays once from phase 1 at 1x',
     !(await isOpen(page)) && (await seen(page)) !== null && pb.playing && pb.speed === 1 && !pb.loop && (await shown(page)) === 0, JSON.stringify(pb));
   await page.evaluate(() => rugbyPlayback.stop());
-  await click(page, '[data-action="undo"]');
-  check('…as one undo step', (await state(page)).players.length === 0);
+  const live = (await plays(page)).filter(p => !p.deleted);
+  check('…as a new play with a fresh undo history; the empty first play isn\'t left behind',
+    (await page.$eval('[data-action="undo"]', b => b.disabled)) && live.length === 1 && live[0].name === 'Example: Scrum 12 crash', JSON.stringify(live.map(p => p.name)));
   check('no console errors', errors.length === 0, errors.join(' | '));
   await browser.close();
 }
 
 {
   console.log('\n== Welcome: Try an example over a play ==');
-  // A first visit to the Welcome box, but with a play already autosaved: it asks first, like About.
+  // A first visit to the Welcome box, but with a play already saved: the example opens as a new play, and
+  // the one before stays in Plays.
   const { browser, page, errors } = await open();
   await addPlayer(page, 'attack');
   await sleep(600);
@@ -156,9 +158,13 @@ for (const [how, close] of [
   await page_ready(page);
   check('opens over an autosaved play', await isOpen(page));
   const mine = await state(page);
+  const mineId = await openId(page);
   await page.click('#welcome-example');
-  const message = await answerConfirm(page, false);
-  check('asks first; Cancel keeps the play and the box is closed', /example/.test(message) && eq(await state(page), mine) && !(await isOpen(page)), message);
+  await page.waitForFunction(() => window.playState.name === 'Example: Scrum 12 crash', { timeout: 5000 });
+  await page.evaluate(() => rugbyPlayback.stop());
+  const kept = (await plays(page)).find(p => p.id === mineId);
+  check('no question: the example opens as a new play, and the one before is still in Plays',
+    !(await page.$eval('#confirm-dialog', d => d.open)) && !(await isOpen(page)) && (await openId(page)) !== mineId && kept && eq(kept.play, mine));
   check('no console errors', errors.length === 0, errors.join(' | '));
   await browser.close();
 }

@@ -1,7 +1,8 @@
 import { startSpot } from './pitch.js';
 import { OPTION_LABEL_MAX, OPTION_TYPES } from './options.js';
 
-// Autosave to localStorage, and saving/loading plays as .json files.
+// The old single autosave (moved into the play library on first run, see library.js and app.js), and
+// saving/loading plays as .json files.
 // Storage can be missing or throw (private mode, blocked site data, full quota), so every access is
 // wrapped and the app carries on without it.
 
@@ -23,10 +24,10 @@ export function blankPlay({ view = 'full', orientation = 'horizontal' } = {}) {
   };
 }
 
-// --- Autosave ---
+// --- The old autosave ---
 
-// The autosave: { play, phase }. A broken one is moved to the backup key at startup (see app.js init), so
-// starting afresh doesn't overwrite it.
+// Before the library, the play was autosaved here as { play, phase }. On first run it is moved into the
+// library; a broken one is moved to the backup key instead, so it isn't lost.
 export const AUTOSAVE_KEY = 'rugby-play-designer.autosave';
 export const AUTOSAVE_BACKUP_KEY = 'rugby-play-designer.autosave-backup';
 
@@ -46,26 +47,14 @@ export function parseAutosave(raw) {
   return { play: parsePlay(saved.play), phase: Number.isInteger(saved.phase) ? saved.phase : 0 };
 }
 
-export function loadAutosave() {
-  const raw = readAutosave();
-  if (!raw) return null;
-  try {
-    return parseAutosave(raw);
-  } catch {
-    return null; // unreadable or unusable: start fresh rather than fail
-  }
-}
-
-// The text an autosave of this play would store, so a caller can tell whether anything changed.
+// The text saving this play and phase would store, so a caller can tell whether anything changed.
 export const autosaveText = (play, phase) => JSON.stringify({ play, phase });
 
-// Returns false if it couldn't be saved (storage full, blocked or missing).
-export function saveAutosave(play, phase, text = autosaveText(play, phase)) {
+export function removeAutosave() {
   try {
-    localStorage.setItem(AUTOSAVE_KEY, text);
-    return true;
+    localStorage.removeItem(AUTOSAVE_KEY);
   } catch {
-    return false;
+    // blocked: nothing to remove
   }
 }
 

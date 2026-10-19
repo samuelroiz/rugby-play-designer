@@ -509,8 +509,6 @@ const pitchArea = page => page.$eval('#pitch', el => { const r = el.getBoundingC
   await click(page, '#templates-button');
   await page.waitForSelector('.template-card[data-template="3"]');
   await page.$eval('.template-card[data-template="3"]', b => b.click());
-  await page.waitForSelector('#confirm-dialog[open]');
-  await page.click('#confirm-ok');
   await sleep(100);
   const scrum = (await state(page)).phases[0];
   const mark = scrum.objects.find(o => o.type === 'scrum');

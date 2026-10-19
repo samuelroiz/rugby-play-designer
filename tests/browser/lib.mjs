@@ -39,12 +39,42 @@ export async function open({ mobile = false, downloads = null, welcome = false, 
     await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads, eventsEnabled: true });
   }
   await page.goto(URL_);
-  await page.evaluate((welcome, key) => { localStorage.clear(); if (!welcome) localStorage.setItem(key, '1'); }, welcome, WELCOME_KEY);
+  await page.waitForSelector('#phase-tabs button'); // the app has opened its library
+  await page.evaluate(clearStorage, welcome, WELCOME_KEY);
   // A fresh load of the address (a reload would keep the #phase=1 the first load wrote).
   await page.goto('about:blank');
   await page.goto(URL_ + hash);
   await page.waitForSelector('#phase-tabs button');
   return { browser, page, errors };
+}
+
+// Empties everything the site keeps in this browser: localStorage, sessionStorage and the play library's
+// IndexedDB database (the app closes its connection when asked, so the delete goes through).
+export async function clearStorage(welcome = true, key = WELCOME_KEY) {
+  localStorage.clear();
+  sessionStorage.clear();
+  if (!welcome) localStorage.setItem(key, '1');
+  await new Promise(r => { const q = indexedDB.deleteDatabase('rugby-play-designer'); q.onsuccess = q.onerror = q.onblocked = () => r(); });
+}
+
+// The play library, through the app's test hook (window.rugbyLibrary).
+export const openId = page => page.evaluate(() => window.rugbyLibrary.openId());
+// Every entry (most recently edited first): { id, name, deleted, play, updated }.
+export const plays = page => page.evaluate(() => window.rugbyLibrary.all().map(r => ({ id: r.id, name: r.play.name, deleted: r.deletedAt != null, play: r.play, updated: r.updated })));
+// The open play's entry as written to storage (after any writes in flight), as text: { play, phase, updated }.
+export const stored = page => page.evaluate(async () => {
+  const lib = window.rugbyLibrary;
+  await lib.settled();
+  const r = await lib.read(lib.openId());
+  return r ? JSON.stringify({ play: r.play, phase: r.phase, updated: r.updated }) : null;
+});
+
+// File → Load file…: picks `file` and waits for it to open as a new play.
+export async function loadFile(page, file) {
+  const before = await openId(page);
+  await (await page.$('#load-input')).uploadFile(file);
+  await page.waitForFunction(id => window.rugbyLibrary.openId() !== id, { timeout: 5000 }, before);
+  await new Promise(r => setTimeout(r, 50));
 }
 
 // Pitch metres -> client px.

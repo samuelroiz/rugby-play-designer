@@ -1,7 +1,7 @@
 // Click-to-draw from a selected player. Desktop 1440x900 (mouse) + quick phone 390 touch check.
 import path from 'node:path';
 import fs from 'node:fs';
-import { open, drag, tap, click, state, check, failed, toScreen, outDir, addPlayer, answerConfirm } from './lib.mjs';
+import { open, drag, tap, click, state, check, failed, toScreen, outDir, addPlayer, loadFile } from './lib.mjs';
 
 const OUT = outDir('clickdraw');
 console.log(`Screenshots: ${OUT}`);
@@ -370,8 +370,7 @@ async function setup(page, { touch = false } = {}) {
   };
   const oldPath = path.join(OUT, 'old.json');
   fs.writeFileSync(oldPath, JSON.stringify(old));
-  await (await page.$('#load-input')).uploadFile(oldPath);
-  await answerConfirm(page);
+  await loadFile(page, oldPath);
   rs = await routes(page);
   check('old play loads unchanged: no option fields, badges 1 and 2', rs.every(r => !('option' in r)) && eq(tags(rs), ['1', '2']) && eq((await badges()).sort(), ['1', '2']), JSON.stringify(rs));
   check('options: no console errors', errors.length === 0, errors.join(' | '));
