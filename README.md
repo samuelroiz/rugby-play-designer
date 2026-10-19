@@ -6,6 +6,7 @@ A free, browser-based tool for designing rugby plays: formations, player movemen
 - Built in about a week as a personal project.
 - **Tech:** plain JavaScript ES modules and SVG, no framework, no build step, hosted on GitHub Pages.
 - **Testing:** Node tests for the play logic, plus headless Chrome suites (desktop and phone) that drive the real app.
+- **For AI assistants:** [docs/AI_PLAY_GUIDE.md](docs/AI_PLAY_GUIDE.md) explains how to write a play `.json` that loads and plays correctly.
 
 A browser whiteboard for drawing rugby plays: put attackers and defenders on a pitch, drag them around, draw runs, passes, kicks and other routes, and drop ball, ruck, scrum and lineout markers.
 
