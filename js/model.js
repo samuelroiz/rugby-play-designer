@@ -86,10 +86,13 @@ export const lastMove = (routes, id) => byOrder(routes).filter(r => r.from === i
 // pass or kick, or no ball.
 export function movingBall(objects, firstFlight) {
   if (!firstFlight) return null;
-  const [sx, sy] = firstFlight.points[0];
-  const balls = objects.filter(o => o.type === 'ball');
-  return balls.sort((a, b) => Math.hypot(a.x - sx, a.y - sy) - Math.hypot(b.x - sx, b.y - sy))[0] ?? null;
+  const [x, y] = firstFlight.points[0];
+  return nearestBall(objects, { x, y });
 }
+
+// The ball among `objects` nearest `at`, wherever it is, or null if there's none.
+export const nearestBall = (objects, at) => objects.filter(o => o.type === 'ball')
+  .sort((a, b) => Math.hypot(a.x - at.x, a.y - at.y) - Math.hypot(b.x - at.x, b.y - at.y))[0] ?? null;
 
 // Who catches a pass: its "to" player if they're on the pitch, otherwise the nearest team-mate of the
 // passer (anyone, for a pass from open grass) within CATCH_RADIUS of where it lands, the first in the players

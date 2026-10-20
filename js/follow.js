@@ -1,6 +1,6 @@
 // Following one player on a vertical pitch (attack playing up), as the phone viewer does and a position's
 // animation export draws it: the view (camera) round them and the ball when it's near, gliding after them,
-// who is drawn faded, and the frame-by-frame timing with their cues (cues.js). Pure functions of plain data;
+// with their team-mates drawn faded, and the frame-by-frame timing with their cues (cues.js). Pure functions of plain data;
 // the camera is in screen units of the turned pitch: pitch (x, y) is drawn at (y, -x).
 
 import { BOUNDS } from './pitch.js';

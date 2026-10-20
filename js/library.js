@@ -104,6 +104,9 @@ function localStorageBackend() {
 const BLOCKED = () => Promise.reject(new DOMException('Storage is blocked in this browser.', 'SecurityError'));
 const memoryBackend = () => ({ kind: 'memory', persistent: false, getAll: async () => [], get: async () => null, put: BLOCKED, remove: BLOCKED });
 
+// The phase a record opens on: its own, if it's one of the play's phases, else the first.
+const recordPhase = (phase, play) => (Number.isInteger(phase) && phase >= 0 ? Math.min(phase, play.phases.length - 1) : 0);
+
 // A stored record the app can use: its play passes parsePlay. Anything else is left in storage, unlisted.
 function cleanRecord(r) {
   if (!r || typeof r !== 'object' || typeof r.id !== 'string' || !r.id) return null;
@@ -117,7 +120,7 @@ function cleanRecord(r) {
   return {
     id: r.id,
     play,
-    phase: Number.isInteger(r.phase) && r.phase >= 0 ? Math.min(r.phase, play.phases.length - 1) : 0,
+    phase: recordPhase(r.phase, play),
     created: time(r.created),
     updated: time(r.updated),
     deletedAt: Number.isFinite(r.deletedAt) ? r.deletedAt : null,
@@ -270,7 +273,7 @@ export function restoreRecords(data, existing) {
     const record = {
       id,
       play,
-      phase: Number.isInteger(item.phase) && item.phase >= 0 ? Math.min(item.phase, play.phases.length - 1) : 0,
+      phase: recordPhase(item.phase, play),
       created: time(item.created),
       updated: time(item.updated),
       deletedAt: item.deleted ? time(item.deletedAt) : null,

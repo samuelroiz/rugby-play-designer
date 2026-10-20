@@ -3,13 +3,13 @@
 // send the hash to the server, so the play isn't stored anywhere. No DOM here: the Node tests use it as it is.
 
 import { parsePlay } from './storage.js';
+import { TEAM_NAME_MAX, STORED_IMAGE } from './logo.js';
 
 export const SHARE_URL = 'https://playbook.samuelroiz.com/view.html';
 // Links longer than this may be cut by some messaging apps.
 export const LONG_LINK = 16000;
-const TEAM_NAME_MAX = 40;
 // A stored team logo: the club's default, or a PNG or JPEG data URL (as logo.js keeps them).
-const LOGO = /^(default|data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+)$/;
+const isStoredLogo = logo => logo === 'default' || STORED_IMAGE.test(logo);
 const BROKEN = "This link doesn't open a play. It may have been cut short when it was sent: ask for it again.";
 
 // Bytes <-> base64url (no padding), in chunks so a long play doesn't overflow the argument list.
@@ -51,7 +51,7 @@ export async function decodeShare(text) {
   }
   const t = data.team;
   const team = t && typeof t === 'object'
-    ? { name: typeof t.name === 'string' ? t.name.slice(0, TEAM_NAME_MAX) : '', logo: typeof t.logo === 'string' && LOGO.test(t.logo) ? t.logo : null }
+    ? { name: typeof t.name === 'string' ? t.name.slice(0, TEAM_NAME_MAX) : '', logo: typeof t.logo === 'string' && isStoredLogo(t.logo) ? t.logo : null }
     : null;
   return { play, team: team && (team.name || team.logo) ? team : null };
 }

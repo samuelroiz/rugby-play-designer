@@ -12,7 +12,7 @@ const LOGO_MAX_BYTES = 2 * 1024 * 1024;
 const LOGO_MAX_SIDE = 512;
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const STORED_IMAGE = /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/;
+export const STORED_IMAGE = /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/;
 const TYPES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', svg: 'image/svg+xml' };
 
 // { logo: 'default' | null | data URL, name, exports }. 'default' is the club's logo; null means removed.

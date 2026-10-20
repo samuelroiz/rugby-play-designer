@@ -4,7 +4,7 @@
 // missing ones are added to every phase (ids 1-9 are always within the 15 limit).
 
 import { movePlayer } from './editor.js';
-import { nextId, round1 as round } from './model.js';
+import { nextId, nearestBall, round1 as round } from './model.js';
 
 // Across the pitch a scrum mark sits on the left 15 m line, the middle, or the right 15 m line.
 const SCRUM_SPOTS_Y = [15, 35, 55];
@@ -20,7 +20,8 @@ const PACK = [
   [8, -6.5, 0],
 ];
 
-const TEAMS = [['attack', 'a', 1], ['defense', 'd', -1]];
+// Each team and the way its pack faces along x.
+const TEAMS = [['attack', 1], ['defense', -1]];
 
 // A ball within this distance of the mark counts as "at the scrum": the preset reuses it and it moves with the scrum.
 const BALL_AT_SCRUM = 8;
@@ -51,10 +52,6 @@ function place(state, phase, team, n, x, y) {
   return id;
 }
 
-// The phase's ball nearest `at`, wherever it is, or null if it has none.
-const nearestBall = (objects, at) => objects.filter(o => o.type === 'ball')
-  .sort((a, b) => Math.hypot(a.x - at.x, a.y - at.y) - Math.hypot(b.x - at.x, b.y - at.y))[0] ?? null;
-
 // Moves the phase's ball nearest `near` to (x, y), so a set piece never adds a second ball; adds one only
 // if the phase has none.
 function placeBall(phase, near, x, y) {
@@ -79,7 +76,7 @@ export function placeScrum(state, phase, at, putIn) {
   const side = putInSide(putIn);
   const putInDir = putIn === 'defense' ? -1 : 1;
   const pack = [];
-  for (const [team, , dir] of TEAMS) {
+  for (const [team, dir] of TEAMS) {
     for (const [n, along, across] of PACK) pack.push(place(state, phase, team, n, mark.x + dir * along, mark.y + dir * across));
     // Both 9s stand on the put-in side, 1.9 m beyond the ball: the put-in 9 just on their own side of the
     // mark, the other 9 by their pack's flank.
@@ -122,15 +119,13 @@ export function placeLineout(state, phase, at, throwIn) {
     marker = { id: nextId('o', phase.objects), type: 'lineout' };
     phase.objects.push(marker);
   }
-  Object.assign(marker, { x: at.x, y: at.y });
-  const s = marker.y <= 35 ? 1 : -1; // into the field from the nearer touchline
+  const s = at.y <= 35 ? 1 : -1; // into the field from the nearer touchline
   const touch = s > 0 ? 0 : 70;
-  const x = round(Math.min(97, Math.max(3, marker.x)));
-  const y5 = touch + s * 5;
-  Object.assign(marker, { x, y: y5 });
+  Object.assign(marker, snapLineout(at, at.x));
+  const { x, y: y5 } = marker;
 
   const pack = [];
-  for (const [team, , dir] of TEAMS) {
+  for (const [team, dir] of TEAMS) {
     const line = x - dir * LINE_GAP;
     LINEOUT.forEach((n, i) => pack.push(place(state, phase, team, n, line, y5 + s * (LINE_GAP + i * LINEOUT_STEP))));
     if (team === throwIn) pack.push(place(state, phase, team, 2, x - dir * 0.5, touch + s * 1.2));
@@ -147,17 +142,21 @@ export function placeLineout(state, phase, at, throwIn) {
 // Moves a scrum to the snapped mark nearest (x, y), taking its pack and a ball at the scrum along by the
 // same amount, so players that were dragged out of formation keep their offset.
 export function moveScrum(phase, scrum, x, y) {
-  const to = snapScrum(x, y);
-  const dx = to.x - scrum.x;
-  const dy = to.y - scrum.y;
+  shiftGroup(phase, scrum, snapScrum(x, y));
+}
+
+// Moves a set piece's marker to `to`, and its pack and a ball at it by the same amount.
+function shiftGroup(phase, group, to) {
+  const dx = to.x - group.x;
+  const dy = to.y - group.y;
   if (!dx && !dy) return;
-  const ball = ballNear(phase.objects, scrum);
+  const ball = ballNear(phase.objects, group);
   if (ball) Object.assign(ball, { x: round(ball.x + dx), y: round(ball.y + dy) });
-  for (const id of scrum.pack ?? []) {
+  for (const id of group.pack ?? []) {
     const pos = phase.positions[id];
     if (pos) movePlayer(phase, id, pos.x + dx, pos.y + dy);
   }
-  Object.assign(scrum, to);
+  Object.assign(group, to);
 }
 
 // Where a lineout marker from the preset can go: anywhere along the pitch that keeps both lines in the field
@@ -170,15 +169,5 @@ function snapLineout(lineout, x) {
 // Moves a preset lineout along the touchline, taking its players and a ball at the lineout with it by the same
 // amount, so players dragged out of the formation keep their offset.
 export function moveLineout(phase, lineout, x) {
-  const to = snapLineout(lineout, x);
-  const dx = to.x - lineout.x;
-  const dy = to.y - lineout.y;
-  if (!dx && !dy) return;
-  const ball = ballNear(phase.objects, lineout);
-  if (ball) Object.assign(ball, { x: round(ball.x + dx), y: round(ball.y + dy) });
-  for (const id of lineout.pack ?? []) {
-    const pos = phase.positions[id];
-    if (pos) movePlayer(phase, id, pos.x + dx, pos.y + dy);
-  }
-  Object.assign(lineout, to);
+  shiftGroup(phase, lineout, snapLineout(lineout, x));
 }
