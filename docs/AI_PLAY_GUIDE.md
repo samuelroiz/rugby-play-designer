@@ -37,6 +37,7 @@ Turning the pitch (vertical view) only changes how it is drawn. The data never c
   "players": [{ "id": "a10", "team": "attack", "label": "10" }],
   "phases": [{
     "note": "What happens in this phase.",
+    "instructions": { "a10": "Flat, call for it early." },
     "positions": { "a10": { "x": 40, "y": 30 } },
     "objects": [{ "id": "o1", "type": "ball", "x": 41.1, "y": 30.9 }],
     "routes": [{ "id": "r1", "type": "run", "from": "a10", "points": [[40, 30], [46, 28]], "curve": 0, "order": 1, "option": null }]
@@ -104,6 +105,8 @@ Use drift and blitz for defenders: drift slides across, blitz rushes up.
 ### Phases
 
 `phases` is in play order. Each phase has `note` (text, the coach's caption), `positions`, `objects` and `routes`.
+
+`instructions` is optional: what one player does in this phase, by player id, e.g. `{ "a10": "Flat, call for it early." }`. Up to 120 characters each; longer ones are cut, empty ones and ids not in the play are dropped. When a player follows the play on their phone (a share link, see the README), their instruction is the caption for that phase, and the phase's note when they have none. Leave it out of a phase where nobody needs one. A new phase built from the one before starts with none.
 
 ## 3. The rules the app uses
 
@@ -228,6 +231,7 @@ Keep plays short: 2 to 5 phases, each with one clear idea in its note.
 - [ ] Each phase after the first matches what section 3 builds from the one before: positions, and every marker's id and place.
 - [ ] Each marker keeps its id from phase to phase. Scrums and lineouts use the section 4 layouts, `y` values and `pack` lists.
 - [ ] Every phase has a note a coach can read out.
+- [ ] Any `instructions` name players in the play and are 120 characters or fewer.
 - [ ] `name` is 60 characters or fewer and `category` is one of the four.
 
 ## 7. Worked example: Scrum 12 crash

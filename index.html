@@ -58,6 +58,7 @@
           <button type="button" data-file="png" aria-haspopup="dialog">Save image (PNG)…</button>
           <button type="button" data-file="pdf">Save PDF (all phases)</button>
           <button type="button" data-file="animation" aria-haspopup="dialog">Save animation…</button>
+          <button type="button" data-file="share" aria-haspopup="dialog">Share link…</button>
         </div>
         <div class="menu-actions">
           <button type="button" data-file="logo" aria-haspopup="dialog">Team logo…</button>
@@ -136,6 +137,11 @@
     <div class="group">
       <h2>Edit</h2>
       <button type="button" data-action="delete" class="danger">Delete</button>
+    </div>
+    <!-- Shown while one player is selected: what that player should do in this phase (the phone viewer's caption). -->
+    <div class="group instruction-group" id="instruction-group" hidden>
+      <label for="player-instruction"><h2 id="instruction-title">Instruction</h2></label>
+      <textarea id="player-instruction" rows="3" maxlength="120" spellcheck="true"></textarea>
     </div>
   </nav>
 
@@ -312,8 +318,8 @@
       <h2 id="animation-title">Save animation</h2>
       <fieldset>
         <legend>Format</legend>
-        <label><input type="radio" name="animation-format" value="gif" checked> GIF (loops forever)</label>
-        <label><input type="radio" name="animation-format" value="video"> Video (MP4, or WebM if the browser can't make MP4)</label>
+        <label><input type="radio" name="animation-format" value="gif" checked> GIF: plays everywhere, loops</label>
+        <label><input type="radio" name="animation-format" value="video"> Video: best quality (MP4, or WebM if the browser can't make MP4)</label>
         <p class="tip">A video plays once: it doesn't loop by itself.</p>
       </fieldset>
       <fieldset class="animation-row">
@@ -335,6 +341,25 @@
       <div class="choices">
         <button type="button" id="animation-save">Save</button>
         <button value="" class="cancel" id="animation-cancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="share-dialog" aria-labelledby="share-title">
+    <form method="dialog">
+      <h2 id="share-title">Share link</h2>
+      <p class="tip">Anyone with the link can watch the play on their phone and pick their position. The play travels inside the link: it isn't stored anywhere.</p>
+      <label class="share-logo"><input type="checkbox" id="share-logo" checked> Include team logo</label>
+      <input id="share-url" type="text" readonly aria-label="Share link" spellcheck="false">
+      <p class="share-status" id="share-status" aria-live="polite"></p>
+      <div class="share-warning" id="share-warning" hidden>
+        <p id="share-warning-text"></p>
+        <button type="button" id="share-drop-logo">Drop the logo</button>
+      </div>
+      <div class="choices">
+        <a class="button" id="share-open" target="_blank" rel="noopener">Open</a>
+        <button type="button" id="share-copy">Copy link</button>
+        <button value="" class="cancel">Close</button>
       </div>
     </form>
   </dialog>

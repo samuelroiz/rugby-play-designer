@@ -109,3 +109,14 @@ export function receiverOf(pass, players, positions) {
   }
   return best;
 }
+
+// Every spot a play reaches across all its phases, in pitch metres: where each player and marker stands, and
+// points along every route (players run along them and the ball flies along them). For fitting a view to it.
+export function playPoints(play) {
+  const points = [];
+  for (const ph of play.phases) {
+    points.push(...Object.values(ph.positions), ...ph.objects.map(o => ({ x: o.x, y: o.y })));
+    for (const r of ph.routes) for (let i = 0; i <= 8; i++) points.push(curvePoint(r, i / 8));
+  }
+  return points;
+}

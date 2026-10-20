@@ -96,6 +96,60 @@ export function pictureSvg(svg, { width, height, scale = 1, legend = null, css =
   return out;
 }
 
+// Animation frames (GIF and video): a header with the team logo (if any), the play name in bold and
+// "Phase n of N", the picture from pictureSvg under it, and the phase's note under that as a caption large
+// enough to read on a phone: at least CAPTION.notePx of the frame's height, wrapped to at most
+// CAPTION.maxLines lines and cut with "…". Sizes are shares of the frame's width, except the note's.
+const CAPTION = { titlePx: 0.03, labelPx: 0.022, pad: 0.016, notePx: 0.04, lineH: 1.25, maxLines: 3, logoMaxW: 0.2 };
+
+// The frame's layout, the same for every frame of the play so the size never changes: the caption has room
+// for as many lines as the longest of `notes` needs (none if no phase has a note). pictureH: the picture's
+// height at `width`. logo: { href, w, h } or null.
+export function captionLayout({ width, pictureH, notes, logo = null }) {
+  const pad = Math.round(width * CAPTION.pad);
+  const titlePx = Math.round(width * CAPTION.titlePx);
+  const labelPx = Math.round(width * CAPTION.labelPx);
+  const headerH = Math.round(2 * pad + titlePx * 1.2 + labelPx * 1.3);
+  let mark = null;
+  if (logo) {
+    const h = headerH - 2 * pad;
+    const w = Math.min(width * CAPTION.logoMaxW, h * logo.w / logo.h);
+    mark = { w, h: w * logo.h / logo.w };
+  }
+  const textW = width - 2 * pad;
+  const size = lines => {
+    const height = Math.ceil((headerH + pictureH + (lines ? 2 * pad : 0)) / (1 - lines * CAPTION.lineH * CAPTION.notePx));
+    return { height, notePx: Math.ceil(height * CAPTION.notePx) };
+  };
+  // The note's size depends on the frame's height, which depends on how many lines it takes: size it for the
+  // most lines, see how many the notes need at that size, then size it for those (a smaller font never needs more).
+  const most = size(CAPTION.maxLines);
+  const lines = Math.max(0, ...notes.map(n => wrapLines(n, textW, `400 ${most.notePx}px ${FONT}`, CAPTION.maxLines).length));
+  return { width, pad, titlePx, labelPx, headerH, mark, textW, lines, ...size(lines) };
+}
+
+// One frame: `picture` (from pictureSvg, layout.width wide) framed as captionLayout() says.
+export function captionedSvg(picture, layout, { title, label, note, logo = null }) {
+  const { width, height, pad, titlePx, labelPx, headerH, mark, textW, lines, notePx } = layout;
+  const out = svgEl('svg', { xmlns: NS, width, height, viewBox: `0 0 ${width} ${height}` });
+  svgEl('rect', { width, height, fill: '#fff' }, out);
+  const text = (str, y, px, attrs) => {
+    svgEl('text', { x: pad, y, 'font-size': px, 'font-family': FONT, fill: '#1d1d1d', 'dominant-baseline': 'hanging', ...attrs }, out).textContent = str;
+  };
+  const headW = textW - (mark ? mark.w + pad : 0);
+  text(wrapLines(title, headW, `700 ${titlePx}px ${FONT}`, 1)[0] ?? '', pad, titlePx, { 'font-weight': 700, class: 'export-title' });
+  text(label, pad + titlePx * 1.2, labelPx, { fill: '#444', 'font-weight': 600, class: 'export-caption' });
+  if (mark) logoImage(logo, { x: width - pad - mark.w, y: (headerH - mark.h) / 2, width: mark.w, height: mark.h }, out);
+  picture.setAttribute('x', 0);
+  picture.setAttribute('y', headerH);
+  out.appendChild(picture);
+  const top = headerH + Number(picture.getAttribute('height')) + pad;
+  wrapLines(note, textW, `400 ${notePx}px ${FONT}`, lines).forEach((line, i) => {
+    text(line, top + i * notePx * CAPTION.lineH, notePx, { class: 'export-note' });
+  });
+  return out;
+}
+
 // The route key as SVG, laid out like the on-screen legend: `cols` type/label pairs per row.
 // Returns the group (top left at 0, 0) and its size.
 function legendBox({ items, sample, cols }) {

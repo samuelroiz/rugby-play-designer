@@ -108,6 +108,8 @@ export async function readPlayFile(file) {
 
 export const NAME_MAX = 60;
 const LABEL_MAX = 3;
+// A player's instruction for one phase (phases[n].instructions, by player id), shown in the phone viewer.
+export const INSTRUCTION_MAX = 120;
 
 // Checks a play object and fills in optional fields. Throws a friendly Error if it can't be used.
 // Every optional field is checked and dropped (or given its default) if it's the wrong type, so a hand-edited
@@ -177,7 +179,16 @@ export function parsePlay(data) {
       if (out.option && typeof r.optionLabel === 'string' && r.optionLabel.trim()) out.optionLabel = r.optionLabel.trim().slice(0, OPTION_LABEL_MAX);
       return inOrder(r, out);
     });
-    return { note: typeof ph.note === 'string' ? ph.note : '', positions, objects: checkedObjects, routes: checkedRoutes };
+    const out = { note: typeof ph.note === 'string' ? ph.note : '', positions, objects: checkedObjects, routes: checkedRoutes };
+    // Optional: kept only for players in the play, as trimmed text, cut to INSTRUCTION_MAX; empty ones dropped.
+    if (isObj(ph.instructions)) {
+      const instructions = {};
+      for (const [id, text] of Object.entries(ph.instructions)) {
+        if (ids.has(id) && typeof text === 'string' && text.trim()) instructions[id] = text.trim().slice(0, INSTRUCTION_MAX);
+      }
+      if (Object.keys(instructions).length) out.instructions = instructions;
+    }
+    return out;
   });
 
   let tags = data.tags ?? [];

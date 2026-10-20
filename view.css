@@ -1,0 +1,146 @@
+/* The phone viewer (view.html). Phone first: one screen at a time, filling the window, no page scroll, thumb
+   sized controls (at least 44 px), and the iPhone's safe areas kept clear. */
+:root {
+  --ink: #f4f6f2;
+  --muted: #b9c4b9;
+  --surround: #1b2a1f;
+  --panel: #233628;
+  --accent: #4caf50;
+  --border: #3c5541;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; overflow: hidden; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: var(--surround);
+  /* No double-tap zoom, and no text picked by a long press on the pitch. */
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+[hidden] { display: none !important; }
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  width: 100%;
+  padding: max(.75rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(.75rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+}
+
+button, a.big {
+  font: inherit;
+  min-height: 44px;
+  min-width: 44px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+button:active { filter: brightness(1.2); }
+button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.big {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 52px;
+  padding: .7rem 1rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-decoration: none;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.big.secondary { background: var(--panel); border-color: var(--border); color: var(--ink); }
+
+/* Loading and broken links */
+.message { justify-content: center; gap: 1rem; text-align: center; max-width: 30rem; margin: 0 auto; }
+.message h1 { margin: 0; font-size: 1.5rem; }
+.message p { margin: 0; color: var(--muted); line-height: 1.45; }
+
+/* Start screen */
+.start { gap: .8rem; overflow-y: auto; max-width: 34rem; margin: 0 auto; }
+.team { display: flex; align-items: center; gap: .6rem; color: var(--muted); font-weight: 600; }
+.team img { height: 2.75rem; width: auto; max-width: 6rem; object-fit: contain; border-radius: 6px; background: #fff; }
+.start h1 { margin: .2rem 0 0; font-size: 1.7rem; line-height: 1.15; overflow-wrap: anywhere; }
+.start h2 { margin: .4rem 0 0; font-size: 1.15rem; }
+.meta { margin: 0; color: var(--muted); }
+.positions { display: grid; grid-template-columns: repeat(auto-fill, minmax(4.2rem, 1fr)); gap: .55rem; }
+.positions button { min-height: 60px; font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.positions button[aria-pressed="true"] { box-shadow: 0 0 0 3px #ffeb3b; }
+#watch-all { margin-top: .4rem; }
+
+/* Watching */
+.watch { gap: .5rem; padding-left: max(.5rem, env(safe-area-inset-left)); padding-right: max(.5rem, env(safe-area-inset-right)); }
+.watch-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding: 0 .25rem; font-size: 1.05rem; }
+#watch-who { color: var(--muted); font-weight: 600; }
+.stage { position: relative; flex: 1 1 auto; min-height: 0; border-radius: 10px; overflow: hidden; background: var(--surround); touch-action: none; user-select: none; -webkit-user-select: none; }
+#pitch { display: block; width: 100%; height: 100%; }
+/* The caption keeps its height, so the pitch doesn't change size between phases. */
+.caption {
+  flex: none;
+  height: calc(4 * 1.3em);
+  margin: 0;
+  padding: 0 .25rem;
+  overflow-y: auto;
+  font-size: clamp(1.15rem, 5vw, 1.5rem);
+  line-height: 1.3;
+  font-weight: 600;
+}
+.controls { flex: none; display: flex; justify-content: center; align-items: center; gap: .5rem; }
+.controls > button { min-width: 52px; min-height: 52px; font-size: 1.4rem; }
+.controls .play { min-width: 72px; background: var(--accent); border-color: var(--accent); color: #fff; }
+.speed { display: flex; }
+.speed button { min-height: 52px; padding: 0 .6rem; font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.speed button:first-child { border-radius: 12px 0 0 12px; }
+.speed button:last-child { border-radius: 0 12px 12px 0; border-left: 0; }
+
+/* The end of the play, over the pitch */
+.end {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: .7rem;
+  padding: 1.25rem;
+  background: rgba(17, 28, 20, .82);
+}
+.end h2 { margin: 0 0 .4rem; text-align: center; font-size: 1.5rem; overflow-wrap: anywhere; }
+.end-status { margin: 0; min-height: 1.2em; text-align: center; color: var(--muted); }
+
+/* SVG: the pitch (sizes in metres), as in the designer */
+.grass { fill: #3d8b40; }
+.stripe { fill: #43944a; }
+.ingoal { fill: #357a38; }
+.line { fill: none; stroke: #fff; stroke-width: .15; }
+.line.edge { stroke-width: .3; }
+.line.dash { stroke-dasharray: 2 1.5; }
+.line.short { stroke-dasharray: 1 4; }
+.crossbar { stroke: #fff; stroke-width: .35; }
+.post { fill: #fff; stroke: #333; stroke-width: .08; }
+.distance { fill: rgba(255, 255, 255, .6); font-family: system-ui, sans-serif; font-weight: 700; }
+.player, .marker, .route { transition: opacity .3s; }
+.player .body { stroke: #fff; stroke-width: .15; }
+.player.attack .body { fill: #d32f2f; }
+.player.defense .body { fill: #1565c0; }
+.player text, .marker text { fill: #fff; font-family: system-ui, sans-serif; font-weight: 700; }
+.me-ring { fill: none; stroke: #ffeb3b; stroke-width: .45; display: none; }
+.player.me .me-ring { display: inline; }
+.marker .outline { fill: rgba(0, 0, 0, .15); stroke: #fff; stroke-width: .25; }
+.marker .ball { fill: #8d5524; stroke: #fff; stroke-width: .1; }
+.scrum-mark { stroke: #fff; stroke-width: .15; stroke-dasharray: .5 .4; }
+.route-casing { stroke: rgba(0, 0, 0, .4); }
+.arrowhead { stroke: rgba(0, 0, 0, .45); stroke-width: .8; }
+
+/* A wider screen (a tablet, or a computer): the same, centred, not stretched. */
+@media (min-width: 700px) {
+  .watch { max-width: 40rem; margin: 0 auto; }
+}

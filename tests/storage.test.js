@@ -132,3 +132,21 @@ test('an autosave that isn\'t JSON or has no play throws (the app keeps it as a 
   for (const raw of ['{not json', 'null', '{"phase":0}', '{"play":{"schemaVersion":1}}']) assert.throws(() => parseAutosave(raw), raw);
   assert.equal(parseAutosave(JSON.stringify({ play: play(), phase: 'x' })).phase, 0);
 });
+
+test('instructions: kept per player and phase, checked like the rest', () => {
+  const p = play(q => {
+    q.phases[0].instructions = { a1: '  Flat, call for it early.  ', a2: '', d1: 7, zz: 'nobody', a9: 'gone' };
+  });
+  assert.deepEqual(p.phases[0].instructions, { a1: 'Flat, call for it early.' });
+  const long = play(q => { q.phases[0].instructions = { a1: 'x'.repeat(300) }; });
+  assert.equal(long.phases[0].instructions.a1.length, 120);
+  for (const bad of [null, 'text', ['a1'], { a2: ' ' }]) {
+    assert.ok(!('instructions' in play(q => { q.phases[0].instructions = bad; }).phases[0]), JSON.stringify(bad));
+  }
+});
+
+test('instructions: old plays load without them, and a play with them saves and loads the same', () => {
+  assert.ok(!('instructions' in play().phases[0]));
+  const p = play(q => { q.phases[0].instructions = { a2: 'Hit the line hard.' }; });
+  assert.deepEqual(parsePlay(JSON.parse(JSON.stringify(p))), p);
+});

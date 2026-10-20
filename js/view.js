@@ -1,0 +1,466 @@
+// The phone viewer (view.html): a play opened from a share link (view.html#p=<data>, see share.js), read-only.
+// It loads only the pitch drawing, the animation and the play checks: no editor, library, autosave or Welcome
+// box. The start screen asks which position you play. Focus mode then plays the play on a vertical pitch
+// (attack playing up) with the view following that player, their team-mates faded and opponents within
+// OPPONENT_NEAR_M at full strength, and their instruction for each phase as the caption (or the phase note).
+// At the end it zooms out and replays the whole play once with everyone at full strength and the phase notes,
+// then offers Watch again, Another position and Share. "Watch the whole play" goes straight to that view.
+
+import { drawPitch, svgEl, fitBox, uprightTurn, ROUTE_TYPES, BOUNDS, PLAYER_R } from './pitch.js';
+import { buildSchedule, frameAt } from './animate.js';
+import { playedRoutes, curveControl, playPoints, BALL_ROUTES } from './model.js';
+import { decodeShare, hashData } from './share.js';
+import { DEFAULT_LOGO_URL } from './logo.js';
+
+// The last position picked in this browser (its number, e.g. "10"), preselected next time.
+export const POSITION_KEY = 'rugby-play-designer.viewer-position';
+const FOLLOW_M = 20; // focus mode: this many metres round the player stay in view
+const BALL_NEAR_M = 25; // and the ball too, when it's this close to them
+const BALL_MARGIN_M = 4;
+const KEEP_IN_M = 3; // the followed player is always at least this far inside the view
+const OPPONENT_NEAR_M = 15; // opponents this close to the player stay at full strength
+const FADED = { mate: 0.2, opponent: 0.35 };
+const CAMERA_MS = 300; // how quickly the view glides after its target
+const ZOOM_OUT_MS = 1400; // after the focus run: the last moment held while the view zooms out to the whole play
+const MAX_FRAME_MS = 100;
+const SWIPE_PX = 50;
+const UP = uprightTurn('vertical');
+
+const $ = id => document.getElementById(id);
+const svg = $('pitch');
+const layers = {
+  pitch: $('pitch-layer'), objects: $('objects-layer'), routes: $('routes-layer'), players: $('players-layer'),
+  ballRoutes: $('ball-routes-layer'), balls: $('ball-layer'),
+};
+
+let play = null;
+let team = null;
+const v = {
+  screen: 'loading',
+  mode: null, // 'focus' (following a player), 'replay' (the whole play after a focus run) or 'whole'
+  focus: null, // the followed player's id
+  phase: 0,
+  sched: null,
+  t: 0, // ms into the phase's animation, at 1x
+  hold: 0, // ms (at 1x) left before the replay starts
+  playing: false,
+  ended: false,
+  speed: 1,
+  cam: null, // the view, in screen units (SVG user units after the pitch's quarter turn): { x, y, w, h }
+  timeScale: 1, // for tests: 4 runs the clock (and the camera) 4 times faster
+};
+let els = { players: new Map(), objects: new Map(), routes: [], extraBall: null };
+let raf = 0;
+let last = 0;
+let frameHook = null;
+
+// --- Loading ---
+
+async function load() {
+  show('loading');
+  const data = hashData(location.hash);
+  try {
+    if (!data) throw new Error('This page shows plays shared from the Rugby Play Designer. Open a share link, or make a play in the designer.');
+    ({ play, team } = await decodeShare(data));
+  } catch (err) {
+    $('broken-text').textContent = err.message;
+    show('broken');
+    return;
+  }
+  document.title = `${play.name} · Rugby play`;
+  wholeView = null;
+  buildStart();
+  drawPitch(layers.pitch, { view: 'full', orientation: 'vertical', distances: true, grid: false, direction: false });
+  buildArrows();
+  buildPlayers();
+  show('start');
+}
+
+function show(screen) {
+  v.screen = screen;
+  for (const id of ['loading', 'broken', 'start', 'watch']) $(id).hidden = id !== screen;
+  if (screen === 'watch') startLoop();
+  else stopLoop();
+}
+
+// --- Start screen ---
+
+const attackers = () => play.players.filter(p => p.team === 'attack')
+  .sort((a, b) => (Number(a.label) || 99) - (Number(b.label) || 99) || a.label.localeCompare(b.label));
+const remembered = () => { try { return localStorage.getItem(POSITION_KEY); } catch { return null; } };
+
+function buildStart() {
+  $('start-name').textContent = play.name;
+  const n = play.phases.length;
+  $('start-meta').textContent = `${n} phase${n === 1 ? '' : 's'}`;
+  $('start-team').hidden = !team;
+  $('start-team-name').textContent = team?.name ?? '';
+  const logo = team?.logo === 'default' ? DEFAULT_LOGO_URL : team?.logo;
+  $('start-logo').hidden = !logo;
+  if (logo) $('start-logo').src = logo;
+  const box = $('positions');
+  box.replaceChildren();
+  const last = remembered();
+  for (const p of attackers()) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.id = p.id;
+    b.textContent = p.label;
+    b.setAttribute('aria-label', `I play ${p.label}`);
+    b.setAttribute('aria-pressed', String(p.label === last));
+    b.addEventListener('click', () => {
+      try { localStorage.setItem(POSITION_KEY, p.label); } catch { /* storage blocked: not remembered */ }
+      for (const other of box.children) other.setAttribute('aria-pressed', String(other === b));
+      watch('focus', p.id);
+    });
+    box.appendChild(b);
+  }
+  if (!box.children.length) {
+    const none = document.createElement('p');
+    none.className = 'meta';
+    none.textContent = 'This play has no attacking players to follow.';
+    box.appendChild(none);
+  }
+}
+
+// --- Drawing ---
+
+function buildArrows() {
+  const defs = $('defs');
+  defs.replaceChildren();
+  for (const [type, st] of Object.entries(ROUTE_TYPES)) {
+    const size = Math.max(1.4, st.width * 4);
+    const marker = svgEl('marker', { id: `arrow-${type}`, viewBox: '0 0 10 10', refX: 7, refY: 5, markerWidth: size, markerHeight: size, markerUnits: 'userSpaceOnUse', orient: 'auto' }, defs);
+    svgEl('path', { d: 'M0 0L10 5L0 10z', fill: st.color, class: 'arrowhead' }, marker);
+  }
+}
+
+function buildPlayers() {
+  layers.players.replaceChildren();
+  els.players = new Map();
+  for (const p of play.players) {
+    const g = svgEl('g', { class: `player ${p.team}`, 'data-id': p.id }, layers.players);
+    svgEl('circle', { r: PLAYER_R + 0.75, class: 'me-ring' }, g);
+    svgEl('circle', { r: PLAYER_R, class: 'body' }, g);
+    svgEl('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': p.label.length > 2 ? 0.85 : 1.2 }, g).textContent = p.label;
+    els.players.set(p.id, g);
+  }
+}
+
+// The markers and the routes that play (option A) of phase i.
+function buildPhase(i) {
+  const ph = play.phases[i];
+  for (const l of [layers.objects, layers.balls, layers.routes, layers.ballRoutes]) l.replaceChildren();
+  els.objects = new Map();
+  els.extraBall = null;
+  for (const o of ph.objects) {
+    const g = svgEl('g', { class: `marker ${o.type}`, 'data-id': o.id }, o.type === 'ball' ? layers.balls : layers.objects);
+    if (o.type === 'ball') svgEl('ellipse', { rx: 0.7, ry: 0.45, class: 'ball', transform: 'rotate(-25)' }, g);
+    else if (o.type === 'ruck') {
+      svgEl('circle', { r: 2, class: 'outline' }, g);
+      svgEl('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': 1.3, transform: UP.trim() }, g).textContent = 'R';
+    } else if (o.type === 'scrum') svgEl('line', { x1: 0, y1: -3.8, x2: 0, y2: 3.8, class: 'scrum-mark' }, g);
+    else if (o.type === 'lineout') {
+      svgEl('line', { x1: -0.7, y1: -2, x2: -0.7, y2: 2, class: 'outline' }, g);
+      svgEl('line', { x1: 0.7, y1: -2, x2: 0.7, y2: 2, class: 'outline' }, g);
+    }
+    els.objects.set(o.id, g);
+  }
+  els.routes = [];
+  for (const r of playedRoutes(ph.routes, 'A')) {
+    const st = ROUTE_TYPES[r.type] ?? ROUTE_TYPES.run;
+    const [x1, y1] = r.points[0];
+    const [x2, y2] = r.points[r.points.length - 1];
+    const { control: c } = curveControl(r);
+    const d = `M${x1} ${y1} Q${c.x} ${c.y} ${x2} ${y2}`;
+    const g = svgEl('g', { class: 'route', 'data-from': r.from ?? '' }, BALL_ROUTES.has(r.type) ? layers.ballRoutes : layers.routes);
+    const line = { d, fill: 'none', stroke: st.color, 'stroke-width': st.width, 'stroke-dasharray': st.dash ?? 'none', 'stroke-linecap': st.cap ?? 'butt' };
+    svgEl('path', { ...line, class: 'route-casing', 'stroke-width': st.width + 0.16 }, g);
+    svgEl('path', { ...line, 'marker-end': `url(#arrow-${ROUTE_TYPES[r.type] ? r.type : 'run'})` }, g);
+    els.routes.push({ g, from: r.from });
+  }
+}
+
+const setAttr = (el, name, value) => { if (el.getAttribute(name) !== value) el.setAttribute(name, value); };
+const setOpacity = (el, o) => { const s = o >= 1 ? '' : String(Math.max(0, Math.round(o * 100) / 100)); if (el.style.opacity !== s) el.style.opacity = s; };
+const dist = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
+
+// How strongly each player is drawn: in focus mode the followed player and opponents near them in full, the
+// rest faded; otherwise everyone in full.
+function strength(f) {
+  const out = {};
+  const me = v.mode === 'focus' ? f.players[v.focus] : null;
+  const myTeam = play.players.find(p => p.id === v.focus)?.team;
+  for (const p of play.players) {
+    const pos = f.players[p.id];
+    if (!me || !pos || p.id === v.focus) out[p.id] = 1;
+    else if (p.team === myTeam) out[p.id] = FADED.mate;
+    else out[p.id] = dist(pos, me) <= OPPONENT_NEAR_M ? 1 : FADED.opponent;
+  }
+  return out;
+}
+
+// --- The view ---
+
+// Screen box (the SVG's user units: pitch (x, y) is drawn at (y, -x)) of a box in pitch metres.
+const screenBox = b => ({ x: b.minY, y: -b.maxX, w: b.maxY - b.minY, h: b.maxX - b.minX });
+
+// Grows a screen box to the stage's shape about its centre, then moves it to stay on the pitch where it fits.
+function shaped(box) {
+  const { clientWidth: sw, clientHeight: sh } = $('stage');
+  const aspect = sw && sh ? sw / sh : 0.6;
+  let { x, y, w, h } = box;
+  if (w / h < aspect) { x -= (h * aspect - w) / 2; w = h * aspect; } else { y -= (w / aspect - h) / 2; h = w / aspect; }
+  const lim = { x0: BOUNDS.minY, x1: BOUNDS.maxY, y0: -BOUNDS.maxX, y1: -BOUNDS.minX };
+  const fit = (start, size, lo, hi) => (size >= hi - lo ? (lo + hi) / 2 - size / 2 : Math.min(Math.max(start, lo), hi - size));
+  return { x: fit(x, w, lim.x0, lim.x1), y: fit(y, h, lim.y0, lim.y1), w, h };
+}
+
+const ballAt = f => {
+  const id = v.sched.ballId;
+  return id && f.objects[id] ? f.objects[id] : f.extraBall;
+};
+
+let wholeView = null; // the whole play's view, for the stage's size: { key, box }
+
+// Where the view should be: round the followed player (and the ball when it's near them), or the whole play.
+function target(f) {
+  if (v.mode !== 'focus') {
+    const { clientWidth: sw, clientHeight: sh } = $('stage');
+    const key = [sw, sh].join();
+    if (wholeView?.key !== key) wholeView = { key, box: shaped(screenBox(fitBox(playPoints(play), 8, sw && sh ? sh / sw : 1.6))) };
+    return { ...wholeView.box };
+  }
+  const me = f.players[v.focus];
+  const b = { minX: me.x - FOLLOW_M, maxX: me.x + FOLLOW_M, minY: me.y - FOLLOW_M, maxY: me.y + FOLLOW_M };
+  const ball = ballAt(f);
+  if (ball && dist(ball, me) <= BALL_NEAR_M) {
+    b.minX = Math.min(b.minX, ball.x - BALL_MARGIN_M);
+    b.maxX = Math.max(b.maxX, ball.x + BALL_MARGIN_M);
+    b.minY = Math.min(b.minY, ball.y - BALL_MARGIN_M);
+    b.maxY = Math.max(b.maxY, ball.y + BALL_MARGIN_M);
+  }
+  return shaped(screenBox(b));
+}
+
+// Glides the view towards the target; the followed player never leaves it, however fast they (or a phase
+// change) move.
+function moveCamera(f, dt) {
+  const to = target(f);
+  if (!v.cam) v.cam = to;
+  else {
+    const k = 1 - Math.exp(-dt / CAMERA_MS);
+    for (const key of ['x', 'y', 'w', 'h']) v.cam[key] += (to[key] - v.cam[key]) * k;
+  }
+  if (v.mode === 'focus') {
+    const me = f.players[v.focus];
+    const [px, py] = [me.y, -me.x];
+    const c = v.cam;
+    const m = Math.min(KEEP_IN_M, c.w / 4, c.h / 4);
+    c.x = Math.min(Math.max(c.x, px + m - c.w), px - m);
+    c.y = Math.min(Math.max(c.y, py + m - c.h), py - m);
+  }
+  const r = n => Math.round(n * 1000) / 1000;
+  setAttr(svg, 'viewBox', `${r(v.cam.x)} ${r(v.cam.y)} ${r(v.cam.w)} ${r(v.cam.h)}`);
+}
+
+function paint(dt) {
+  if (!v.sched) return;
+  const f = frameAt(v.sched, v.t);
+  const on = strength(f);
+  // Discs grow a little when the view shows more of the pitch, so they stay easy to see.
+  const k = Math.min(1.6, Math.max(1, (v.cam?.w ?? 40) / 45));
+  for (const [id, g] of els.players) {
+    const p = f.players[id];
+    g.style.display = p ? '' : 'none';
+    if (!p) continue;
+    setAttr(g, 'transform', `translate(${p.x} ${p.y})${UP} scale(${Math.round(k * 100) / 100})`);
+    setOpacity(g, on[id]);
+    g.classList.toggle('me', v.mode === 'focus' && id === v.focus);
+  }
+  for (const [id, g] of els.objects) {
+    const o = f.objects[id];
+    if (!o) continue;
+    setAttr(g, 'transform', `translate(${o.x} ${o.y})`);
+    setOpacity(g, o.opacity);
+  }
+  if (f.extraBall && !els.extraBall) {
+    els.extraBall = svgEl('g', { class: 'marker ball' }, layers.balls);
+    svgEl('ellipse', { rx: 0.7, ry: 0.45, class: 'ball', transform: 'rotate(-25)' }, els.extraBall);
+  }
+  if (els.extraBall) {
+    els.extraBall.style.display = f.extraBall ? '' : 'none';
+    if (f.extraBall) {
+      setAttr(els.extraBall, 'transform', `translate(${f.extraBall.x} ${f.extraBall.y})`);
+      setOpacity(els.extraBall, f.extraBall.opacity);
+    }
+  }
+  for (const r of els.routes) setOpacity(r.g, f.routeOpacity * (r.from ? on[r.from] ?? 1 : 1));
+  moveCamera(f, dt);
+  frameHook?.({ phase: v.phase, t: v.t, mode: v.mode, cam: { ...v.cam }, players: Object.fromEntries(Object.entries(f.players).map(([id, p]) => [id, { ...p, opacity: on[id] }])), ball: ballAt(f) });
+}
+
+// --- Playing ---
+
+function setPhase(i) {
+  v.phase = i;
+  v.sched = buildSchedule(play, i);
+  v.t = 0;
+  buildPhase(i);
+  updateText();
+}
+
+function updateText() {
+  const n = play.phases.length;
+  $('watch-phase').textContent = `Phase ${v.phase + 1} of ${n}`;
+  const me = play.players.find(p => p.id === v.focus);
+  $('watch-who').textContent = v.mode === 'focus' ? `Position ${me?.label ?? ''}` : 'Whole play';
+  const ph = play.phases[v.phase];
+  const text = v.mode === 'focus' ? ph.instructions?.[v.focus] || ph.note : ph.note;
+  $('caption').textContent = text.trim();
+  const toggle = $('toggle');
+  toggle.textContent = v.playing ? '❚❚' : '▶︎';
+  toggle.setAttribute('aria-label', v.playing ? 'Pause' : 'Play');
+  for (const b of document.querySelectorAll('[data-speed]')) b.setAttribute('aria-pressed', String(Number(b.dataset.speed) === v.speed));
+  $('end').hidden = !v.ended;
+}
+
+// Starts watching from phase 1 at 1x: following `focus` (mode 'focus') or the whole play ('whole').
+function watch(mode, focus = null) {
+  Object.assign(v, { mode, focus, speed: 1, playing: true, ended: false, hold: 0, cam: null });
+  setPhase(0);
+  show('watch');
+}
+
+function advance(ms) {
+  if (!v.playing) return;
+  if (v.hold > 0) {
+    v.hold -= ms;
+    if (v.hold <= 0) { v.hold = 0; setPhase(0); }
+    return;
+  }
+  v.t += ms;
+  while (v.t >= v.sched.total) {
+    const rest = v.t - v.sched.total;
+    if (v.phase < play.phases.length - 1) {
+      setPhase(v.phase + 1);
+      v.t = rest;
+    } else {
+      v.t = v.sched.total;
+      finish();
+      return;
+    }
+  }
+}
+
+// The end of a run through the play: after following a player, zoom out and replay it whole; after that
+// (or after watching it whole), the end screen.
+function finish() {
+  if (v.mode === 'focus') {
+    v.mode = 'replay';
+    v.hold = ZOOM_OUT_MS;
+  } else {
+    v.playing = false;
+    v.ended = true;
+    $('end-name').textContent = play.name;
+    $('end-status').textContent = '';
+  }
+  updateText();
+}
+
+function jump(delta) {
+  if (v.ended) return;
+  const i = v.phase + delta;
+  if (i >= play.phases.length) { v.hold = 0; v.t = v.sched.total; finish(); return; }
+  v.hold = 0;
+  setPhase(Math.max(0, i));
+}
+
+function toggle() {
+  if (v.ended) { watchAgain(); return; }
+  v.playing = !v.playing;
+  updateText();
+}
+
+function watchAgain() {
+  watch(v.focus ? 'focus' : 'whole', v.focus);
+}
+
+async function share() {
+  const url = location.href;
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: play.name, text: `${play.name}: pick your position and watch the play.`, url });
+      return;
+    }
+    await navigator.clipboard.writeText(url);
+    $('end-status').textContent = 'Link copied';
+  } catch (err) {
+    if (err?.name !== 'AbortError') $('end-status').textContent = "Couldn't share the link from here: copy it from the address bar.";
+  }
+}
+
+function loop(now) {
+  raf = requestAnimationFrame(loop);
+  const dt = Math.min(MAX_FRAME_MS, now - last) * v.timeScale;
+  last = now;
+  advance(dt * v.speed);
+  paint(dt);
+}
+function startLoop() {
+  cancelAnimationFrame(raf);
+  last = performance.now();
+  raf = requestAnimationFrame(loop);
+}
+function stopLoop() {
+  cancelAnimationFrame(raf);
+  raf = 0;
+}
+
+// --- Controls ---
+
+function initControls() {
+  $('watch-all').addEventListener('click', () => watch('whole'));
+  $('toggle').addEventListener('click', toggle);
+  $('back').addEventListener('click', () => jump(-1));
+  $('next').addEventListener('click', () => jump(1));
+  $('home').addEventListener('click', () => { v.playing = false; buildStart(); show('start'); });
+  for (const b of document.querySelectorAll('[data-speed]')) {
+    b.addEventListener('click', () => { v.speed = Number(b.dataset.speed); updateText(); });
+  }
+  $('watch-again').addEventListener('click', watchAgain);
+  $('another').addEventListener('click', () => { v.playing = false; buildStart(); show('start'); });
+  $('share').addEventListener('click', share);
+
+  // Swipe left for the next phase, right for the one before.
+  let down = null;
+  const stage = $('stage');
+  stage.addEventListener('pointerdown', e => { down = e.isPrimary ? { x: e.clientX, y: e.clientY, at: e.timeStamp } : null; });
+  stage.addEventListener('pointerup', e => {
+    if (!down || !e.isPrimary || v.ended) return;
+    const dx = e.clientX - down.x;
+    const dy = e.clientY - down.y;
+    down = null;
+    if (Math.abs(dx) >= SWIPE_PX && Math.abs(dx) > 1.5 * Math.abs(dy)) jump(dx < 0 ? 1 : -1);
+  });
+  stage.addEventListener('pointercancel', () => { down = null; });
+  addEventListener('hashchange', load);
+  addEventListener('keydown', e => {
+    if (v.screen !== 'watch' || e.target.closest?.('button') && e.key === ' ') return;
+    if (e.key === ' ') { e.preventDefault(); toggle(); } else if (e.key === 'ArrowRight') jump(1); else if (e.key === 'ArrowLeft') jump(-1);
+  });
+}
+
+// For tests: the viewer's state, its clock's pace, and a call on every drawn frame.
+window.rugbyViewer = {
+  state: () => ({
+    screen: v.screen, mode: v.mode, focus: v.focus, phase: v.phase, t: v.t, playing: v.playing, ended: v.ended,
+    speed: v.speed, hold: v.hold, caption: $('caption').textContent, cam: v.cam && { ...v.cam },
+  }),
+  set timeScale(s) { v.timeScale = s; },
+  get timeScale() { return v.timeScale; },
+  onFrame: fn => { frameHook = fn; },
+};
+
+initControls();
+load();

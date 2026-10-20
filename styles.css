@@ -187,6 +187,9 @@ button.danger { color: #b71c1c; }
   color: var(--muted);
 }
 .tip { margin: .25rem 0 0; font-size: .75rem; color: var(--muted); }
+.instruction-group[hidden] { display: none; }
+.instruction-group h2 { text-transform: none; letter-spacing: 0; font-size: .75rem; }
+#player-instruction { box-sizing: border-box; width: 100%; min-width: 0; font: inherit; font-size: .85rem; padding: .35rem .45rem; border: 1px solid var(--border); border-radius: 6px; resize: vertical; }
 
 /* "? Tips" at the top of the sidebar, opening a small popup beside it (placed by initTips) */
 .help { gap: .4rem; font-size: .8rem; font-weight: 600; color: var(--muted); flex: none; }
@@ -402,6 +405,18 @@ dialog .cancel { margin: .75rem 0 0 auto; }
 #save-dialog .choices > * { flex: 1; justify-content: center; }
 #save-dialog [hidden] { display: none; }
 #confirm-message { margin: 0 0 .9rem; }
+
+/* Share link box */
+#share-dialog { width: min(28rem, calc(100vw - 2rem)); max-width: none; }
+.share-logo { display: flex; align-items: center; gap: .4rem; margin: .6rem 0; }
+#share-url { box-sizing: border-box; width: 100%; font: .8rem ui-monospace, Menlo, Consolas, monospace; padding: .4rem .5rem; border: 1px solid var(--border); border-radius: 6px; color: var(--ink); }
+.share-status { min-height: 1.2em; margin: .4rem 0; font-size: .85rem; }
+.share-warning { padding: .5rem .6rem; margin-bottom: .5rem; border: 1px solid #e0b252; border-radius: 6px; background: #fff7e0; font-size: .85rem; }
+.share-warning[hidden] { display: none; }
+.share-warning p { margin: 0 0 .4rem; }
+#share-dialog .choices { justify-content: flex-end; }
+#share-dialog .choices > * { flex: 0 0 auto; padding: .5rem 1rem; }
+#share-dialog .cancel { margin: 0; }
 
 /* Save animation box */
 #animation-dialog { width: min(26rem, calc(100vw - 2rem)); max-width: none; }
@@ -736,6 +751,8 @@ body.presenting {
     grid-template-areas: "top" "pitch" "status" "phases" "tools";
   }
   .group h2, .toolbar .help, .long { display: none; }
+  /* As tall as the buttons beside it, so selecting a player doesn't shrink the pitch; the placeholder says whose it is. */
+  #player-instruction { min-width: 15rem; height: 2.3rem; min-height: 0; resize: none; padding: .3rem .45rem; }
   .statusbar { flex-wrap: wrap; column-gap: .5rem; height: auto; min-height: 2.7rem; padding: .25rem .5rem; font-size: .78rem; }
   .statusbar .legend { flex-basis: 100%; flex-wrap: wrap; margin-left: 0; font-size: .7rem; }
   .draw-hint { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; line-height: 1.25; }

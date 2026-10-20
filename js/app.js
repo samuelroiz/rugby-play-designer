@@ -4,7 +4,7 @@
 // Redraws that only show hover feedback pass { record: false } and record nothing.
 
 import {
-  drawPitch, setView, viewCentre, viewRange, isHalf, startSpot, directionBox, svgEl, uprightTurn, PLAYER_R, BOUNDS,
+  drawPitch, setView, viewCentre, viewRange, isHalf, startSpot, directionBox, svgEl, uprightTurn, PLAYER_R, BOUNDS, ROUTE_TYPES,
 } from './pitch.js';
 import { initEditor, routeGeometry, isAttached, drawingFrom } from './editor.js';
 import { placeScrum, moveScrum, placeLineout, moveLineout } from './setpiece.js';
@@ -12,17 +12,18 @@ import { appendPhase, insertPhaseAfter, movePhase } from './phases.js';
 import { createHistory } from './history.js';
 import {
   blankPlay, readAutosave, parseAutosave, removeAutosave, autosaveText, backupAutosave,
-  downloadPlay, downloadBlob, readPlayFile, parsePlay, safeFileName, NAME_MAX,
+  downloadPlay, downloadBlob, readPlayFile, parsePlay, safeFileName, NAME_MAX, INSTRUCTION_MAX,
 } from './storage.js';
 import { openLibrary, newRecord, backupData, backupFileName, restoreRecords, restoreSummary } from './library.js';
 import { initPlaysPanel } from './plays.js';
-import { pictureSvg, allPhasesSvg, legendSvg, pageCss, svgToPng, pageFit, makePdf, PX_PER_MM } from './export.js';
+import { pictureSvg, allPhasesSvg, legendSvg, pageCss, svgToPng, pageFit, makePdf, PX_PER_MM, captionLayout, captionedSvg } from './export.js';
 import { loadTemplates, loadExample, thumbnail, isEmptyPlay } from './templates.js';
 import { syncOptions, makeMainOption, optionGroup, optionLetters, OPTION_LABEL_MAX } from './options.js';
 import { nextId, nextOrder, round1, round2, curvePoint, playedRoutes, BALL_ROUTES } from './model.js';
 import { createPlayback, paintFrame } from './playback.js';
 import { makeAnimation, videoType, videoExtension, ANIMATION_SIZES } from './animation.js';
 import { initPresent } from './present.js';
+import { encodeShare, shareUrl, SHARE_URL, LONG_LINK } from './share.js';
 import {
   readLogoSettings, saveLogoSettings, logoSrc, readLogoFile, sanitizeSvg, exportLogo, LOGO_KEY, TEAM_NAME_MAX,
 } from './logo.js';
@@ -47,16 +48,6 @@ const AUTOSAVE_MS = 400;
 const HANDLE_HIT_PX = 22;
 const LINE_HIT_PX = 14;
 
-// Look of each route type. Widths and dashes are in metres. No reds or blues: those are the team colours.
-// Every route also gets a thin dark casing (see routePaths) so the light colours read on grass and on the white lines.
-const ROUTE_TYPES = {
-  run:   { label: 'Run',   color: '#ffe14d', width: 0.3 },
-  pass:  { label: 'Pass',  color: '#ffffff', width: 0.25, dash: '1 0.7' },
-  kick:  { label: 'Kick',  color: '#ffa033', width: 0.5,  dash: '0.01 0.95', cap: 'round' },
-  decoy: { label: 'Decoy', color: '#d4d4d4', width: 0.35, dash: '0.45 0.55' },
-  drift: { label: 'Drift', color: '#cfa6ff', width: 0.3 },
-  blitz: { label: 'Blitz', color: '#ff8fd0', width: 0.6 },
-};
 // Routes the ball travels along (BALL_ROUTES) are drawn above the players, so a pass over a lineout reads;
 // the others stay under them.
 // Option label text, in metres: at least as large as a player's number (1.2).
@@ -138,7 +129,7 @@ const layers = {
   edges: $('edge-layer'),
   pen: $('pen-layer'),
 };
-const inputs = { name: $('play-name'), category: $('play-category'), tags: $('play-tags'), note: $('phase-note') };
+const inputs = { name: $('play-name'), category: $('play-category'), tags: $('play-tags'), note: $('phase-note'), instruction: $('player-instruction') };
 
 const phase = () => state.phases[ui.phase];
 // Editing is off while the play is playing or a picture is being made (the toolbar, undo, phase editing and
@@ -970,6 +961,7 @@ function hashPhase() {
 // play or phase on the next keystroke.
 let inputsStale = true;
 let notePhase = null; // the phase object whose note the note box shows
+let instructionKey = null; // the player and phase whose instruction the box shows
 function syncInputs() {
   const force = inputsStale;
   const forceNote = force || notePhase !== phase();
@@ -983,6 +975,19 @@ function syncInputs() {
   if (inputs.note.value !== phase().note || forceNote) {
     set(inputs.note, phase().note, forceNote);
     fitNote();
+  }
+  // One player selected (and editing on): their instruction for this phase, in the side panel.
+  const sel = ui.selected?.kind === 'player' && !locked() ? state.players.find(p => p.id === ui.selected.id) : null;
+  $('instruction-group').hidden = !sel;
+  if (sel) {
+    const key = [sel.id, ui.phase].join();
+    $('instruction-title').textContent = `Instruction for ${sel.label} in this phase`;
+    inputs.instruction.setAttribute('aria-label', `Instruction for ${sel.label} in this phase`);
+    inputs.instruction.placeholder = `Instruction for ${sel.label} in this phase`;
+    set(inputs.instruction, phase().instructions?.[sel.id] ?? '', force || instructionKey !== key);
+    instructionKey = key;
+  } else {
+    instructionKey = null;
   }
 }
 
@@ -1106,6 +1111,10 @@ function deleteSelected() {
     state.players = state.players.filter(p => p.id !== sel.id);
     for (const each of state.phases) {
       delete each.positions[sel.id];
+      if (each.instructions) {
+        delete each.instructions[sel.id];
+        if (!Object.keys(each.instructions).length) delete each.instructions;
+      }
       for (const o of each.objects) if (o.pack) o.pack = o.pack.filter(id => id !== sel.id);
       // Passers who lose a pass to this player may be down to one option.
       const passers = each.routes.filter(r => r.to === sel.id).map(r => r.from);
@@ -1467,6 +1476,8 @@ async function fileAction(action) {
     savePdf();
   } else if (action === 'animation') {
     openAnimationDialog();
+  } else if (action === 'share') {
+    openShareDialog();
   } else if (action === 'load') {
     $('load-input').click();
   } else if (action === 'paste') {
@@ -1719,8 +1730,9 @@ function savePdf() {
 }
 
 // File → Save animation…: the whole play as Play runs it (every phase, option A), as a GIF that loops or a
-// video, each frame drawn like the PNG (route key, team logo, "Phase n" above the pitch, no ghost or
-// handles). The box shows the progress, and its Cancel (or Escape) stops it. Editing is locked meanwhile.
+// video. Each frame is the pitch drawn like the PNG (route key, no ghost or handles) under a header with the
+// team logo, the play name and "Phase n of N", with the phase's note as a large caption under it (see
+// captionedSvg). The box shows the progress, and its Cancel (or Escape) stops it. Editing is locked meanwhile.
 let animationJob = null; // { cancelled } while an animation is being made
 function saveAnimation({ format, speed, size }) {
   const dialog = $('animation-dialog');
@@ -1734,9 +1746,16 @@ function saveAnimation({ format, speed, size }) {
     try {
       const css = pageCss();
       const logo = await exportLogo(teamLogo);
+      const title = play.name.trim() || 'Untitled play';
+      const notes = play.phases.map(ph => ph.note.trim());
+      let layout = null;
       const blob = await makeAnimation({
         play, format, speed,
-        picture: ({ phase: i, sched, t }) => phasePicture(play, i, { width, height, scale: 1, css, logo, at: { sched, t }, caption: `Phase ${i + 1}` }),
+        picture: ({ phase: i, sched, t }) => {
+          const picture = phasePicture(play, i, { width, height, scale: 1, css, at: { sched, t } });
+          layout ??= captionLayout({ width, pictureH: Number(picture.getAttribute('height')), notes, logo });
+          return captionedSvg(picture, layout, { title, label: `Phase ${i + 1} of ${play.phases.length}`, note: notes[i], logo });
+        },
         progress: showAnimationProgress,
         cancelled: () => job.cancelled,
       });
@@ -1790,6 +1809,62 @@ function initAnimationDialog() {
     video.disabled = true;
     video.closest('label').title = "This browser can't record video";
   }
+}
+
+// File → Share link…: a link to the phone viewer (view.html) with the play inside its hash, and the team
+// name and logo if "Include team logo" is ticked. It's copied as soon as it's made (opening the box, or
+// changing the tick box); Copy link copies it again. A link over LONG_LINK characters gets a warning, and a
+// way to drop the logo when that would shorten it.
+let shareJob = 0;
+const shareBase = () => (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) || location.protocol === 'file:'
+  ? new URL('view.html', location.href).href
+  : SHARE_URL);
+
+async function makeShareLink() {
+  const job = ++shareJob;
+  const withLogo = $('share-logo').checked;
+  const team = withLogo && (teamLogo.logo || teamLogo.name.trim()) ? { name: teamLogo.name.trim(), logo: teamLogo.logo } : null;
+  $('share-status').textContent = 'Making the link…';
+  const url = shareUrl(await encodeShare(structuredClone(state), team), shareBase());
+  if (job !== shareJob) return null;
+  $('share-url').value = url;
+  $('share-open').href = url;
+  const long = url.length > LONG_LINK;
+  $('share-warning').hidden = !long;
+  $('share-drop-logo').hidden = !(withLogo && team?.logo);
+  $('share-warning-text').textContent = long
+    ? `This link is ${url.length.toLocaleString('en')} characters long. Some apps may cut it, and then it won't open.${withLogo && team?.logo ? ' Dropping the logo makes it shorter.' : ''}`
+    : '';
+  return url;
+}
+
+async function copyShareLink() {
+  const url = $('share-url').value;
+  if (!url) return;
+  const size = `${url.length.toLocaleString('en')} characters`;
+  try {
+    await navigator.clipboard.writeText(url);
+    $('share-status').textContent = `Link copied (${size})`;
+  } catch {
+    $('share-url').select();
+    $('share-status').textContent = `Couldn't copy it: select the link and copy it yourself (${size}).`;
+  }
+}
+
+async function openShareDialog() {
+  $('share-url').value = '';
+  $('share-open').removeAttribute('href');
+  $('share-warning').hidden = true;
+  $('share-dialog').showModal();
+  if (await makeShareLink()) copyShareLink();
+}
+
+function initShareDialog() {
+  const refresh = async () => { if (await makeShareLink()) copyShareLink(); };
+  $('share-logo').addEventListener('change', refresh);
+  $('share-drop-logo').addEventListener('click', () => { $('share-logo').checked = false; refresh(); });
+  $('share-copy').addEventListener('click', copyShareLink);
+  $('share-url').addEventListener('focus', e => e.target.select());
 }
 
 // Hands a made file to the user. Computers download it. Phones and tablets get the share sheet (Save
@@ -1896,6 +1971,19 @@ function initTopbar() {
     render('tags');
   });
   inputs.note.addEventListener('input', () => { phase().note = inputs.note.value; fitNote(); render(`note-${ui.phase}`); });
+  // A phase keeps instructions only for players who have one, and none at all when nobody has.
+  inputs.instruction.addEventListener('input', () => {
+    if (ui.selected?.kind !== 'player') return;
+    const id = ui.selected.id;
+    const ph = phase();
+    const text = inputs.instruction.value.slice(0, INSTRUCTION_MAX);
+    if (text.trim()) (ph.instructions ??= {})[id] = text;
+    else if (ph.instructions) {
+      delete ph.instructions[id];
+      if (!Object.keys(ph.instructions).length) delete ph.instructions;
+    }
+    render(`instruction-${ui.phase}-${id}`);
+  });
   addEventListener('resize', fitNote);
   // Clicking the name or its pencil selects the whole name, so typing replaces it. A press on the box
   // itself would otherwise put the cursor where it landed, so the first press focuses it by hand; once it
@@ -2505,6 +2593,7 @@ async function init() {
   initKeys();
   initImageDialog();
   initAnimationDialog();
+  initShareDialog();
   initOptionDialog();
   initNumberPicker();
   initTips();

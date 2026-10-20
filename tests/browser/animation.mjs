@@ -1,5 +1,6 @@
 // File → Save animation…: the box and its choices, a GIF of a 2-phase play (GIF89a, loops forever, about
-// one frame per 1/12 s of the play, the last held 1.5 s), a video where MediaRecorder can make one (MP4 or
+// one frame per 1/12 s of the play, the last held 1.5 s, each frame headed with the play name and "Phase n
+// of N" and captioned with the phase's note, a long one cut to 3 lines with "…"), a video where MediaRecorder can make one (MP4 or
 // WebM, matching its name), Cancel stopping it, editing locked while it renders, the team logo only while
 // "Show logo on exports" is on, and the size of a Medium GIF of the 3-phase example. Desktop 1440x900.
 import fs from 'node:fs';
@@ -40,8 +41,14 @@ const watchPictures = page => page.evaluate(() => {
   const orig = XMLSerializer.prototype.serializeToString;
   XMLSerializer.prototype.serializeToString = function (n) {
     const s = orig.call(this, n);
+    const outer = s.match(/^<svg[^>]*>/)?.[0] ?? '';
     window.__pics.push({
       caption: s.match(/class="export-caption"[^>]*>([^<]*)</)?.[1] ?? null,
+      title: s.match(/class="export-title"[^>]*>([^<]*)</)?.[1] ?? null,
+      note: [...s.matchAll(/<text[^>]*class="export-note"[^>]*>([^<]*)</g)].map(m => m[1]),
+      notePx: Number(s.match(/<text[^>]*font-size="([\d.]+)"[^>]*class="export-note"/)?.[1] ?? 0),
+      w: Number(outer.match(/ width="([\d.]+)"/)?.[1] ?? 0),
+      h: Number(outer.match(/ height="([\d.]+)"/)?.[1] ?? 0),
       logo: /class="export-logo"/.test(s),
       ghost: /class="ghost/.test(s),
       handles: /class="handle/.test(s),
@@ -119,7 +126,7 @@ const box = await page.evaluate(() => {
   return { title: document.getElementById('animation-title').textContent, format: choices('format'), speed: choices('speed'), size: choices('size'), text: d.textContent, busy: !document.getElementById('animation-busy').hidden };
 });
 check('File → Save animation… opens the box', box.title === 'Save animation');
-check('Format: GIF (loops forever), the default, or Video (MP4, or WebM …)', eq(box.format, [['gif', true, 'GIF (loops forever)'], ['video', false, "Video (MP4, or WebM if the browser can't make MP4)"]]), JSON.stringify(box.format));
+check('Format: GIF (plays everywhere, loops), the default, or Video (best quality …)', eq(box.format, [['gif', true, 'GIF: plays everywhere, loops'], ['video', false, "Video: best quality (MP4, or WebM if the browser can't make MP4)"]]), JSON.stringify(box.format));
 check('Speed: 0.5x, 1x (default), 2x', eq(box.speed.map(c => [c[0], c[1]]), [['0.5', false], ['1', true], ['2', false]]), JSON.stringify(box.speed));
 check('Size: Small 640, Medium 960 (default), Large 1280', eq(box.size.map(c => [c[0], c[1]]), [['small', false], ['medium', true], ['large', false]]) && /640/.test(box.size[0][2]) && /960/.test(box.size[1][2]) && /1280/.test(box.size[2][2]), JSON.stringify(box.size));
 check('…says a video doesn\'t loop by itself', /doesn't loop/.test(box.text));
@@ -161,8 +168,14 @@ check('…the last frame held 1.5 s', gif.frames.at(-1).delay >= 1500, String(gi
 let pics = await pictures(page);
 // The first pictures are the frames the shared palette is made from; the GIF's frames are the last ones.
 const encoded = pics.slice(-gif.frames.length).map(p => p.caption);
-check('the GIF\'s frames are captioned "Phase 1", then "Phase 2"', pics.length >= gif.frames.length && encoded[0] === 'Phase 1' && encoded.at(-1) === 'Phase 2'
-  && encoded.indexOf('Phase 2') > encoded.lastIndexOf('Phase 1'), JSON.stringify([...new Set(encoded)]));
+check('the GIF\'s frames are headed "Phase 1 of 2", then "Phase 2 of 2"', pics.length >= gif.frames.length && encoded[0] === 'Phase 1 of 2' && encoded.at(-1) === 'Phase 2 of 2'
+  && encoded.indexOf('Phase 2 of 2') > encoded.lastIndexOf('Phase 1 of 2'), JSON.stringify([...new Set(encoded)]));
+const frames = pics.slice(-gif.frames.length);
+check('…under the play name, in bold, on every frame', frames.every(p => p.title === 'Two phases'), JSON.stringify([...new Set(frames.map(p => p.title))]));
+check('…with each phase\'s note as the caption under the pitch', frames.every(p => p.note.join(' ') === (p.caption === 'Phase 1 of 2' ? 'Ten runs, then the pass' : 'Twelve kicks')),
+  JSON.stringify([...new Set(frames.map(p => `${p.caption}: ${p.note.join(' ')}`))]));
+check('…in large text: at least 4% of the frame\'s height', frames.every(p => p.notePx >= 0.04 * p.h), JSON.stringify(frames[0] && { px: frames[0].notePx, h: frames[0].h }));
+check('…every frame the GIF\'s own size (640 wide, the header and caption included)', frames.every(p => p.w === 640 && Math.ceil(p.h / 2) * 2 === gif.height), `${frames[0]?.w}x${frames[0]?.h} vs ${gif.width}x${gif.height}`);
 check('…with the team logo (Show logo on exports is on), no ghost and no handles', pics.every(p => p.logo && !p.ghost && !p.handles));
 check('editing is back after it', !(await page.$eval('#plays-button', b => b.disabled)) && (await state(page)).name === 'Two phases');
 
@@ -218,7 +231,9 @@ if (!type) {
   check(`…a real ${ext.slice(1).toUpperCase()} file`, header, bytes.subarray(0, 12).toString('hex'));
   check(`…"Saved Two phases${ext}"`, (await toast(page)) === `Saved Two phases${ext}`, await toast(page));
   pics = await pictures(page);
-  check('…its frames have the logo and the captions', pics.length > 10 && pics.every(p => p.logo) && pics.some(p => p.caption === 'Phase 2'));
+  check('…its frames have the logo and the captions', pics.length > 10 && pics.every(p => p.logo) && pics.some(p => p.caption === 'Phase 2 of 2' && p.note.join(' ') === 'Twelve kicks'));
+  const rate = await page.evaluate(() => import('./js/animation.js').then(m => [m.videoBitrate(640), m.videoBitrate(1080), m.videoBitrate(1280)]));
+  check('…recorded at about 8 Mbps up to 1080 px wide, more above that', rate[0] === 8e6 && rate[1] === 8e6 && rate[2] > 9e6, JSON.stringify(rate));
 
   clean();
   await startAnimation(page, { format: 'video', speed: '0.5', size: 'small' });
@@ -229,6 +244,23 @@ if (!type) {
   check('…nothing is saved', fs.readdirSync(OUT).length === 0, fs.readdirSync(OUT).join());
   await pictures(page);
 }
+
+// --- A long note: cut to three lines with "…" ---
+console.log('\n== Long notes ==');
+const long = structuredClone(two);
+long.name = 'Long notes';
+long.phases[0].note = 'Ten takes the ball flat to the line and holds the defender, '.repeat(8).trim();
+long.phases[1].note = '';
+await pastePlay(page, long);
+clean();
+await pictures(page);
+await startAnimation(page, { format: 'gif', speed: '2', size: 'small' });
+await finished(page);
+pics = (await pictures(page)).filter(p => p.title === 'Long notes');
+const first = pics.find(p => p.caption === 'Phase 1 of 2');
+check('a long note is wrapped to 3 lines, the last ending in "…"', first && first.note.length === 3 && first.note[2].endsWith('…') && !first.note[0].endsWith('…'), JSON.stringify(first?.note));
+check('…and a phase with no note has no caption', pics.some(p => p.caption === 'Phase 2 of 2') && pics.filter(p => p.caption === 'Phase 2 of 2').every(p => p.note.length === 0));
+check('…the frame keeps one size through both phases', new Set(pics.map(p => `${p.w}x${p.h}`)).size === 1, JSON.stringify([...new Set(pics.map(p => `${p.w}x${p.h}`))]));
 
 // --- Size: a Medium GIF of the 3-phase example ---
 console.log('\n== GIF size ==');

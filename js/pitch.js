@@ -8,6 +8,17 @@ const NS = 'http://www.w3.org/2000/svg';
 export const BOUNDS = { minX: -10, maxX: 110, minY: 0, maxY: 70 };
 export const PLAYER_R = 1.2; // radius of a player disc
 
+// Look of each route type. Widths and dashes are in metres. No reds or blues: those are the team colours.
+// Every route also gets a thin dark casing (see routePaths in app.js) so the light colours read on grass and on the white lines.
+export const ROUTE_TYPES = {
+  run:   { label: 'Run',   color: '#ffe14d', width: 0.3 },
+  pass:  { label: 'Pass',  color: '#ffffff', width: 0.25, dash: '1 0.7' },
+  kick:  { label: 'Kick',  color: '#ffa033', width: 0.5,  dash: '0.01 0.95', cap: 'round' },
+  decoy: { label: 'Decoy', color: '#d4d4d4', width: 0.35, dash: '0.45 0.55' },
+  drift: { label: 'Drift', color: '#cfa6ff', width: 0.3 },
+  blitz: { label: 'Blitz', color: '#ff8fd0', width: 0.6 },
+};
+
 // Length of pitch each view shows. The full width (y 0..70) is always shown, and nothing outside it.
 // 'half' is the half attack plays into (halfway to the dead ball line at x=110), 'half-own' the other one.
 export const VIEWS = {
@@ -53,10 +64,12 @@ export function setBox(svg, world, { minX, maxX, minY, maxY }, orientation) {
   else world.removeAttribute('transform');
 }
 
-// Thumbnails: the part of the pitch to show for things at `points` (pitch metres): their bounding box with
-// `margin` metres round it, grown to the full pitch's shape (120 x 70) and to at least a quarter of the pitch
-// (60 x 35), then moved (not shrunk) to stay on the pitch. No points: the full pitch.
-export function fitBox(points, margin = 8) {
+// Thumbnails and the phone viewer: the part of the pitch to show for things at `points` (pitch metres):
+// their bounding box with `margin` metres round it, grown to the shape `ar` (length along the pitch over
+// width across it; the full pitch's 120 x 70 unless given) and to at least a quarter of the pitch's area, then
+// moved (not shrunk) to stay on the pitch. It never grows past the pitch: a shape the points can't fit
+// inside the pitch is given up on that side. No points: the full pitch.
+export function fitBox(points, margin = 8, ar = (BOUNDS.maxX - BOUNDS.minX) / (BOUNDS.maxY - BOUNDS.minY)) {
   const W = BOUNDS.maxX - BOUNDS.minX;
   const H = BOUNDS.maxY - BOUNDS.minY;
   if (!points.length) return { ...BOUNDS };
@@ -64,9 +77,11 @@ export function fitBox(points, margin = 8) {
   const ys = points.map(p => p.y);
   const [x0, x1] = [Math.min(...xs) - margin, Math.max(...xs) + margin];
   const [y0, y1] = [Math.min(...ys) - margin, Math.max(...ys) + margin];
-  // Height first, from whichever needs more: the points, their width at the pitch's shape, or a quarter.
-  const h = Math.min(H, Math.max(y1 - y0, (x1 - x0) * H / W, H / 2));
-  const w = h * W / H;
+  // Height first, from whichever needs more: the points, their width at that shape, or a quarter of the pitch.
+  let h = Math.max(y1 - y0, (x1 - x0) / ar, Math.sqrt((W * H) / 4 / ar));
+  let w = h * ar;
+  if (h > H) { h = H; w = Math.min(W, Math.max(x1 - x0, h * ar)); }
+  if (w > W) { w = W; h = Math.min(H, Math.max(y1 - y0, w / ar)); }
   const place = (lo, hi, size, min, max) => {
     const start = (lo + hi) / 2 - size / 2;
     return Math.min(Math.max(start, min), max - size);

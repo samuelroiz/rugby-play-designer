@@ -14,6 +14,8 @@ To make a play for someone:
 
 A saved `.json` file can also be opened with File → Load file….
 
+To send a play to players' phones, use File → Share link… in the app: it copies a link to https://playbook.samuelroiz.com/view.html with the play inside the link. Give a player an instruction per phase with `instructions` in the play (see the guide) and the viewer shows it when they pick their position.
+
 ## Docs
 
 - [AI play guide](https://playbook.samuelroiz.com/docs/AI_PLAY_GUIDE.md): everything needed to write a play that loads and plays correctly

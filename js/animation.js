@@ -43,6 +43,10 @@ export function videoType() {
   const types = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
   return types.find(t => MediaRecorder.isTypeSupported(t)) ?? null;
 }
+// Bits a second for a video `w` px wide: VIDEO_BPS up to 1080 px, in proportion to the width above that, so
+// it stays as sharp as the app.
+export const VIDEO_BPS = 8e6;
+export const videoBitrate = w => Math.round(VIDEO_BPS * Math.max(1, w / 1080));
 export const videoExtension = type => (type.startsWith('video/mp4') ? '.mp4' : '.webm');
 
 // Draws an SVG picture onto the canvas, sizing the canvas to the first one (even sides, as video encoders
@@ -144,7 +148,7 @@ async function makeVideo({ frames, draw, ctx, fps, progress, cancelled }) {
   await draw(frames[0]);
   const stream = ctx.canvas.captureStream(0);
   const [track] = stream.getVideoTracks();
-  const recorder = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 8e6 });
+  const recorder = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: videoBitrate(ctx.canvas.width) });
   const chunks = [];
   recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
   const stopped = new Promise(resolve => { recorder.onstop = resolve; });
