@@ -171,8 +171,8 @@ button:hover:not(:disabled), a.button:hover { background: #eef3ee; }
 button[aria-pressed="true"], button[aria-pressed="true"]:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); color: #fff; }
 /* The route tool that's on: near-black with a yellow edge, so it stands out from the green samples. */
 #route-tools button[aria-pressed="true"], #route-tools button[aria-pressed="true"]:hover:not(:disabled) {
-  background: #1d1d1d;
-  border-color: #1d1d1d;
+  background: var(--ink);
+  border-color: var(--ink);
   color: #fff;
   font-weight: 600;
   box-shadow: inset 4px 0 0 #ffd600;
@@ -229,7 +229,7 @@ button.danger { color: #b71c1c; }
 .toolbar #cue-add { padding: .25rem .55rem; }
 .cue-list { display: flex; flex-direction: column; gap: .25rem; margin: 0; padding: 0; list-style: none; }
 .cue-list li { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .3rem; font-size: .8rem; }
-.cue-list .cue-text { flex: 1 1 100%; min-width: 0; padding: .1rem .4rem; border-radius: 6px; background: #ffeb3b; color: #1d1d1d; font-weight: 800; overflow-wrap: anywhere; }
+.cue-list .cue-text { flex: 1 1 100%; min-width: 0; padding: .1rem .4rem; border-radius: 6px; background: #ffeb3b; color: var(--ink); font-weight: 800; overflow-wrap: anywhere; }
 .cue-list .cue-at { flex: 1 1 auto; color: var(--muted); white-space: nowrap; }
 .toolbar .cue-list button { padding: .15rem .35rem; font-size: .75rem; }
 .cue-form { display: flex; flex-direction: column; gap: .3rem; }
@@ -399,8 +399,7 @@ button.danger { color: #b71c1c; }
 .phase-tools { flex: 1 1 auto; }
 .phase-tools > :not(#phase-note) { flex: none; }
 .phase-tabs { display: flex; flex: 0 1 auto; gap: .3rem; overflow-x: auto; min-width: 2.4rem; max-width: 22rem; scrollbar-width: thin; }
-.phase-tabs button { flex: none; }
-.phase-tabs button { min-width: 2.2rem; justify-content: center; font-variant-numeric: tabular-nums; }
+.phase-tabs button { flex: none; min-width: 2.2rem; justify-content: center; font-variant-numeric: tabular-nums; }
 .phase-tabs button[aria-current="step"] { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .add-phase { min-width: 2.2rem; justify-content: center; font-weight: 700; }
 #phase-count { white-space: nowrap; font-size: .9rem; }
@@ -676,7 +675,7 @@ dialog .field input { font: inherit; font-size: .95rem; color: var(--ink); paddi
 .pen-mark.magenta .pen-stroke { stroke: #e600e6; }
 .pen-swatch { display: block; width: 1rem; height: 1rem; border-radius: 50%; }
 .pen-swatch.black { background: #000; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #999; }
-.pen-swatch.cyan { background: #00e5ff; box-shadow: 0 0 0 2px #1d1d1d; }
+.pen-swatch.cyan { background: #00e5ff; box-shadow: 0 0 0 2px var(--ink); }
 .pen-swatch.magenta { background: #e600e6; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #999; }
 .pen-colours button { padding: .4rem .5rem; }
 .pen-colours button[aria-pressed="true"], .pen-colours button[aria-pressed="true"]:hover:not(:disabled) { background: #ffd600; border-color: #ffd600; }
@@ -779,7 +778,7 @@ body.presenting {
 .presenting .present-caption.covered { visibility: hidden; }
 .presenting .present-job { display: block; font-weight: 800; }
 .presenting .present-job[hidden] { display: none; }
-.present-job-who { display: inline-block; margin-right: .5em; padding: 0 .35em; border-radius: .25em; background: #ffeb3b; color: #1d1d1d; font-size: .8em; vertical-align: .08em; }
+.present-job-who { display: inline-block; margin-right: .5em; padding: 0 .35em; border-radius: .25em; background: #ffeb3b; color: var(--ink); font-size: .8em; vertical-align: .08em; }
 /* I play: a cue bubble next to the chosen player, as in the phone viewer */
 .present-cue rect { fill: #ffeb3b; stroke: #1d1d1d; }
 .present-cue text { fill: #1d1d1d; font-family: system-ui, sans-serif; font-weight: 800; }

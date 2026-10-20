@@ -10,7 +10,7 @@ A free, browser-based tool for designing rugby plays: formations, player movemen
 
 A browser whiteboard for drawing rugby plays: put attackers and defenders on a pitch, drag them around, draw runs, passes, kicks and other routes, and drop ball, ruck, scrum and lineout markers.
 
-It is plain HTML, CSS, JavaScript (ES modules) and SVG. There is no framework and no build step, and the site needs no npm packages (they are only for the tests). This is **Stage 3**: a play has several phases, every play is kept in a **library** in the browser (see *Your plays*), and a play can be saved to and loaded from `.json` files. A play can start from a template. A phase, or every phase on one sheet, can be saved as a PNG, the whole play as a PDF, and the play's animation as a GIF or a video. Every change can be undone. The play can be animated phase by phase, and shown full screen in Present mode, with a pen to draw on it. A link can open the play on a given phase, and a **share link** opens it in a phone viewer where each player picks their position and watches the play follow them, with their job for each phase and short cues that pop up as a step starts. Save animation can also make that view of one position as a phone-shaped GIF or video.
+It is plain HTML, CSS, JavaScript (ES modules) and SVG. There is no framework and no build step, and the site needs no npm packages (they are only for the tests). A play has several phases, every play is kept in a **library** in the browser (see *Your plays*), and a play can be saved to and loaded from `.json` files. A play can start from a template. A phase, or every phase on one sheet, can be saved as a PNG, the whole play as a PDF, and the play's animation as a GIF or a video. Every change can be undone. The play can be animated phase by phase, and shown full screen in Present mode, with a pen to draw on it. A link can open the play on a given phase, and a **share link** opens it in a phone viewer where each player picks their position and watches the play follow them, with their job for each phase and short cues that pop up as a step starts. Save animation can also make that view of one position as a phone-shaped GIF or video.
 
 ## Using it
 
@@ -307,7 +307,7 @@ llms.txt         for AI assistants: what the app is, the guide, and how to paste
 docs/            AI_PLAY_GUIDE.md, how to write a play file
 styles.css       layout (the toolbar moves to the bottom on phones) and SVG styling
 js/app.js        play state, toolbar and phase bar wiring, redraw (which also records undo steps and autosaves)
-js/pitch.js      pitch markings and screen-to-metre conversion
+js/pitch.js      pitch markings, screen-to-metre conversion, and the route lines, arrowheads and ball shared with the viewer
 js/editor.js     dragging, drawing routes and editing them with handles, selecting
 js/setpiece.js   scrum and lineout presets: formations, snapping the mark, moving each set piece's players and ball together
 js/model.js      the shared play rules: route curves, ball routes, ids, rounding, which ball moves and who catches it
@@ -332,9 +332,9 @@ js/logo.js       the team logo setting: localStorage, reading and shrinking uplo
 assets/          sfv-logo.jpeg, the default team logo
 templates/       starter templates (play files) and index.json listing them; example.json, the About box's example
 vendor/          jsPDF 4.2.1 (jspdf.umd.min.js) and gifenc 1.0.3 (gifenc.esm.js), each with its licence
-tests/           *.test.js Node tests (phases, model rules, animation, options, history, loading files, templates, share links, jobs, cues);
-                 anim-play.mjs, their shared play; run.mjs (npm test); browser/ headless Chrome suites
-plays/<category>/  for saved plays (later stages)
+tests/           *.test.js Node tests (phases, model rules, animation, options, history, loading files, templates, share links,
+                 jobs, cues, library, set pieces, our team); anim-play.mjs, a play shared by the Node tests and several
+                 browser suites; run.mjs (npm test); browser/ headless Chrome suites, with their shared helpers in lib.mjs
 ```
 
 ## Coordinates and data
