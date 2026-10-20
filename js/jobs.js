@@ -7,17 +7,17 @@ import { buildSchedule } from './animate.js';
 
 // Kicks, by length and direction (metres; forward is the kicker's way: +x for attack, -x for defense). A box
 // kick is the 9's (or a kick from within boxRuck of a ruck); anyone else's kick of that length is "Kick".
-export const KICK = { grubberMax: 15, longMin: 35, crossMin: 20, boxRuck: 5 };
+const KICK = { grubberMax: 15, longMin: 35, crossMin: 20, boxRuck: 5 };
 // The back three (wing and fullback numbers) cover the backfield: when their run goes back more than BACK_M,
 // or when they stay DEEP_M or more behind a kick their team-mates chase.
-export const BACK_THREE = new Set(['11', '14', '15']);
-export const BACK_M = 1;
-export const DEEP_M = 5;
+const BACK_THREE = new Set(['11', '14', '15']);
+const BACK_M = 1;
+const DEEP_M = 5;
 const COVER = 'Cover the backfield';
 // A run that ends this close to where a kick in the phase lands chases it.
-export const CHASE_M = 10;
+const CHASE_M = 10;
 // A ball carrier whose last run ends this close to a ruck that's new in the next phase carries into contact.
-export const CONTACT_M = 4;
+const CONTACT_M = 4;
 const MOVE_TEXT = { run: 'Run your line', decoy: 'Decoy run', drift: 'Drift across', blitz: 'Blitz up' };
 
 const dist = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);

@@ -22,8 +22,8 @@ export const ROUTE_TYPES = {
 // Length of pitch each view shows. The full width (y 0..70) is always shown, and nothing outside it.
 // 'half' is the half attack plays into (halfway to the dead ball line at x=110), 'half-own' the other one.
 // Each half also shows HALF_MARGIN metres past halfway, so players on or near it (a kick-off) are in view.
-export const HALF_MARGIN = 5;
-export const VIEWS = {
+const HALF_MARGIN = 5;
+const VIEWS = {
   full: { minX: -10, maxX: 110 },
   half: { minX: 50 - HALF_MARGIN, maxX: 110 },
   'half-own': { minX: -10, maxX: 50 + HALF_MARGIN },

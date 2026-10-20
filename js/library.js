@@ -20,9 +20,9 @@ const LS_PREFIX = 'rugby-play-designer.play.';
 const CHANNEL = 'rugby-play-designer.library';
 const OPEN_TIMEOUT_MS = 4000;
 // "Recently deleted" keeps this many plays; older ones go for good.
-export const DELETED_KEEP = 20;
+const DELETED_KEEP = 20;
 
-export const newId = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+const newId = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
 // A new record for `play`, not yet saved.
 export function newRecord(play, phase = 0) {

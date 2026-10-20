@@ -26,7 +26,7 @@ const TEAMS = [['attack', 'a', 1], ['defense', 'd', -1]];
 const BALL_AT_SCRUM = 8;
 
 // Nearest legal mark: x anywhere in the field of play, y snapped to the closest of the three spots.
-export function snapScrum(x, y) {
+function snapScrum(x, y) {
   return {
     x: round(Math.min(100, Math.max(0, x))),
     y: SCRUM_SPOTS_Y.reduce((best, s) => (Math.abs(s - y) < Math.abs(best - y) ? s : best)),
@@ -163,7 +163,7 @@ export function moveScrum(phase, scrum, x, y) {
 // Where a lineout marker from the preset can go: anywhere along the pitch that keeps both lines in the field
 // of play, and always on the 5 m line of its own touchline (crossing to the other one would need the
 // formation turned round, so the preset is run again for that).
-export function snapLineout(lineout, x) {
+function snapLineout(lineout, x) {
   return { x: round(Math.min(97, Math.max(3, x))), y: lineout.y <= 35 ? 5 : 65 };
 }
 

@@ -20,7 +20,7 @@ import { jobLine } from './jobs.js';
 
 // The last position picked in this browser, preselected next time: its team and number as JSON,
 // {"team":"defense","number":"10"} (an older plain "10" is the attack's 10).
-export const POSITION_KEY = 'rugby-play-designer.viewer-position';
+const POSITION_KEY = 'rugby-play-designer.viewer-position';
 const JOB_LINES = 2; // the job line is shrunk to fit this many lines
 const JOB_PX = { max: 24, min: 15 };
 const ZOOM_OUT_MS = 1400; // after the focus run: the last moment held while the view zooms out to the whole play

@@ -6,7 +6,7 @@
 export const BALL_ROUTES = new Set(['pass', 'kick']);
 export const MOVING_ROUTES = new Set(['run', 'drift', 'blitz', 'decoy']);
 // A pass with no receiver ("to") is caught by the nearest team-mate within this many metres of where it ends.
-export const CATCH_RADIUS = 5;
+const CATCH_RADIUS = 5;
 // The ball sits just off the player holding it so it isn't hidden under their disc.
 export const BALL_OFFSET = { x: 1.1, y: 0.9 };
 
@@ -30,9 +30,6 @@ export const nextOrder = routes => routes.reduce((max, r) => Math.max(max, r.ord
 // Order number for a newly drawn route of `type`: a pass or kick is the next step; a run, decoy, drift or
 // blitz moves together with the latest step (the highest number so far, or 1 when there's none).
 export const newRouteOrder = (type, routes) => (BALL_ROUTES.has(type) ? nextOrder(routes) : Math.max(1, nextOrder(routes) - 1));
-
-// Whether a route is an alternative to the main plan (option B, C …), which the next phase ignores.
-export const isOtherOption = r => !!r.option && r.option !== 'A';
 
 // A route is a quadratic Bézier from its first to its last point. "curve" is how far (metres) the route's
 // midpoint is pushed sideways from the straight line; the control point sits at twice that offset.
@@ -130,7 +127,7 @@ export function playPoints(play) {
 // first.
 export const TEAM_NAMES = { attack: 'Attack', defense: 'Defense' };
 export const ourTeam = play => (play.category === 'defense' ? 'defense' : 'attack');
-export const otherTeam = team => (team === 'defense' ? 'attack' : 'defense');
+const otherTeam = team => (team === 'defense' ? 'attack' : 'defense');
 // "Defense 13": a player named with their team, so the same number on both sides can't be mixed up.
 export const positionName = p => `${TEAM_NAMES[p.team] ?? ''} ${p.label}`.trim();
 // One team's players by number, or every player with our team first.

@@ -3,11 +3,10 @@
 // order number. "A" is the main plan, the one the next phase is built from. A lone pass or kick has
 // option null. route.optionLabel is an optional short note for an option, e.g. "if 13 bites".
 
-import { BALL_ROUTES, isOtherOption } from './model.js';
+import { BALL_ROUTES } from './model.js';
 
 export const OPTION_TYPES = BALL_ROUTES;
 export const OPTION_LABEL_MAX = 25;
-export { isOtherOption };
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const letterIndex = r => (r.option ? LETTERS.indexOf(r.option) : Infinity);

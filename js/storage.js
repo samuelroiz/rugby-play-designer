@@ -7,8 +7,8 @@ import { CUE_MAX, defaultCueStep } from './cues.js';
 // Storage can be missing or throw (private mode, blocked site data, full quota), so every access is
 // wrapped and the app carries on without it.
 
-export const SCHEMA_VERSION = 1;
-export const CATEGORIES = ['attack', 'defense', 'lineout', 'scrum'];
+const SCHEMA_VERSION = 1;
+const CATEGORIES = ['attack', 'defense', 'lineout', 'scrum'];
 
 const TEAMS = ['attack', 'defense'];
 
@@ -29,8 +29,8 @@ export function blankPlay({ view = 'full', orientation = 'horizontal' } = {}) {
 
 // Before the library, the play was autosaved here as { play, phase }. On first run it is moved into the
 // library; a broken one is moved to the backup key instead, so it isn't lost.
-export const AUTOSAVE_KEY = 'rugby-play-designer.autosave';
-export const AUTOSAVE_BACKUP_KEY = 'rugby-play-designer.autosave-backup';
+const AUTOSAVE_KEY = 'rugby-play-designer.autosave';
+const AUTOSAVE_BACKUP_KEY = 'rugby-play-designer.autosave-backup';
 
 // The raw autosave text, or null if there is none (or storage can't be read).
 export function readAutosave() {
@@ -223,7 +223,7 @@ export function parsePlay(data) {
 // Every player is on the pitch in every phase. Older plays can miss a player in some phases (e.g. one
 // re-added on a later phase): copy their spot from the nearest earlier phase, or the nearest later one if
 // there is no earlier one. A player with no spot anywhere gets their usual starting spot.
-export function fillMissingPositions(players, phases) {
+function fillMissingPositions(players, phases) {
   const out = phases.map(ph => ({ ...ph, positions: { ...ph.positions } }));
   for (const p of players) {
     const has = out.map(ph => ph.positions[p.id]);

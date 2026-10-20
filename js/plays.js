@@ -14,7 +14,7 @@ import { NAME_MAX } from './storage.js';
 const CATEGORY_LABELS = { attack: 'Attack', defense: 'Defense', lineout: 'Lineout', scrum: 'Scrum' };
 
 // "just now", "5 min ago", "3 h ago", "yesterday", or the date.
-export function ago(time, now = Date.now()) {
+function ago(time, now = Date.now()) {
   const min = Math.floor((now - time) / 60000);
   if (min < 1) return 'just now';
   if (min < 60) return `${min} min ago`;

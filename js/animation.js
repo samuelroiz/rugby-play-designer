@@ -47,7 +47,7 @@ export function videoType() {
 }
 // Bits a second for a video `w` px wide: VIDEO_BPS up to 1080 px, in proportion to the width above that, so
 // it stays as sharp as the app.
-export const VIDEO_BPS = 8e6;
+const VIDEO_BPS = 8e6;
 export const videoBitrate = w => Math.round(VIDEO_BPS * Math.max(1, w / 1080));
 export const videoExtension = type => (type.startsWith('video/mp4') ? '.mp4' : '.webm');
 

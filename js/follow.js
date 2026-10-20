@@ -7,12 +7,12 @@ import { BOUNDS } from './pitch.js';
 import { buildSchedule, frameAt } from './animate.js';
 import { phaseCues, firedBetween, cueSpeed, ageBubbles } from './cues.js';
 
-export const FOLLOW_M = 20; // this many metres round the player stay in view
+const FOLLOW_M = 20; // this many metres round the player stay in view
 const BALL_NEAR_M = 25; // and the ball too, when it's this close to them
 const BALL_MARGIN_M = 4;
 const KEEP_IN_M = 3; // the followed player is always at least this far inside the view
-export const OPPONENT_NEAR_M = 15; // opponents this close to the player stay at full strength
-export const FADED = { mate: 0.2, opponent: 0.35 };
+const OPPONENT_NEAR_M = 15; // opponents this close to the player stay at full strength
+const FADED = { mate: 0.2, opponent: 0.35 };
 const CAMERA_MS = 300; // how quickly the view glides after its target
 
 const dist = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
