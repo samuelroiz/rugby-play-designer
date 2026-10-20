@@ -210,7 +210,9 @@ const seed = (page, id, name, extra = {}) => page.evaluate((id, name, extra) => 
   fs.rmSync(backupFile);
 
   // --- Restore: adds, never overwrites ---
+  // A changed version that's newer than the one here (an older one is kept newer: tests/browser/coach.mjs).
   const changed = structuredClone(backup.plays.find(p => p.id === firstId));
+  changed.updated += 60000;
   changed.play.name = 'Mine';
   changed.play.players.push({ id: 'a2', team: 'attack', label: '2' });
   changed.play.phases[0].positions.a2 = { x: 30, y: 30 };

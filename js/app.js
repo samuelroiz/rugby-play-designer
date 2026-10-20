@@ -27,7 +27,7 @@ import { createPlayback, paintFrame } from './playback.js';
 import { makeAnimation, videoType, videoExtension, ANIMATION_SIZES, POSITION_SIZES, GIF_FPS, VIDEO_FPS } from './animation.js';
 import { focusFrames, strength } from './follow.js';
 import { autoJob, jobLine } from './jobs.js';
-import { CUE_MAX, defaultCueStep, placeBubble } from './cues.js';
+import { CUE_MAX, defaultCueStep, placeBubble, phaseCues, firedBetween, ageBubbles } from './cues.js';
 import { frameAt, flightEnds, shownRoute } from './animate.js';
 import { initPresent } from './present.js';
 import { encodeShare, shareUrl, SHARE_URL, LONG_LINK } from './share.js';
@@ -174,6 +174,7 @@ const playback = createPlayback({
   state, ui, layers, turn,
   show: i => { ui.phase = i; ui.tool = null; render(); },
   changed: () => render(),
+  tick: presentCueTick,
 });
 const present = initPresent({ state, ui, svg, world, penLayer: layers.pen, render, phase, playback });
 // For tests and debugging, like window.playState.
@@ -349,6 +350,7 @@ function render(commitKey = null, { record = true } = {}) {
   updateRouteBar();
   updatePlayControls();
   present.update();
+  if (!ui.presenting || !ui.focusPlayer || !(playback.playing || playback.paused)) clearPresentCues();
   syncHash();
 
   if (record && !ui.dragging) {
@@ -453,6 +455,43 @@ function renderDirection() {
 function shownRoutes(i) {
   const ends = flightEnds(state, i);
   return r => shownRoute(r, ends.get(r.id));
+}
+
+// Present mode, I play: the chosen player's cues pop up in a bubble next to them as each one's step starts, as
+// in the phone viewer (each held CUE.holdMs; several at once share the bubble). Only while playing or paused.
+let presentBubbles = { phase: null, list: [] };
+function presentCueTick(sched, from, to, wall) {
+  const id = ui.presenting ? ui.focusPlayer : null;
+  if (!id) { clearPresentCues(); return; }
+  if (presentBubbles.phase !== sched.phase) presentBubbles = { phase: sched.phase, list: [] };
+  presentBubbles.list = ageBubbles(presentBubbles.list, wall);
+  presentBubbles.list.push(...firedBetween(phaseCues(state, sched.phase, id, sched), from, to).map(c => ({ text: c.text, age: 0 })));
+  drawPresentCues(frameAt(sched, to).players[id]);
+}
+function clearPresentCues() {
+  presentBubbles = { phase: null, list: [] };
+  $('present-cue-layer').replaceChildren();
+}
+// The bubble, in the SVG's screen units (outside the turned pitch), about 2.6% of the window's height in type,
+// beside the player (pitch metres `pos`) and inside the view, never over their disc (cues.js placeBubble).
+function drawPresentCues(pos) {
+  const layer = $('present-cue-layer');
+  layer.replaceChildren();
+  if (!pos || !presentBubbles.list.length) return;
+  const [vx, vy, vw, vh] = svg.getAttribute('viewBox').split(' ').map(Number);
+  const k = svg.clientHeight / vh || 1; // px per unit
+  const size = Math.max(18, innerHeight * 0.026) / k;
+  const pad = size * 0.45;
+  const lines = presentBubbles.list.map(b => b.text.toUpperCase());
+  const w = Math.max(...lines.map(l => l.length)) * size * 0.66 + 2 * pad;
+  const h = lines.length * size * 1.2 + 2 * pad - size * 0.2;
+  const [sx, sy] = state.orientation === 'vertical' ? [pos.y, -pos.x] : [pos.x, pos.y];
+  const at = placeBubble({ x: sx - vx, y: sy - vy, r: playerR() + 0.75, w, h, width: vw, height: vh, margin: size * 0.4, gap: size * 0.35 });
+  const g = svgEl('g', { class: 'present-cue', transform: `translate(${round2(vx + at.left)} ${round2(vy + at.top)})` }, layer);
+  svgEl('rect', { width: round2(w), height: round2(h), rx: round2(size * 0.35), 'stroke-width': round2(size * 0.08) }, g);
+  lines.forEach((line, i) => {
+    svgEl('text', { x: round2(w / 2), y: round2(pad + size * (0.5 + i * 1.2)), 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': round2(size) }, g).textContent = line;
+  });
 }
 
 // The selected player's cues for this phase, as small bubbles stacked over them (each "2 JUMP!": its step
@@ -1105,7 +1144,7 @@ function syncInputs() {
   $('instruction-group').hidden = !sel;
   if (sel) {
     const key = [sel.id, ui.phase].join();
-    $('instruction-title').textContent = 'Your job (this phase)';
+    $('instruction-title').textContent = 'Your job';
     inputs.instruction.setAttribute('aria-label', `${sel.label}'s job in this phase`);
     inputs.instruction.placeholder = `${sel.label}: ${autoJob(state, ui.phase, sel.id)}`;
     set(inputs.instruction, phase().instructions?.[sel.id] ?? '', force || instructionKey !== key);
@@ -1128,7 +1167,8 @@ function syncCues(sel) {
   const key = JSON.stringify([sel.id, sel.label, ui.phase, cues, cueEdit?.index]);
   if (key === cueListKey) return;
   cueListKey = key;
-  $('cues-title').textContent = `Cues for ${sel.label}`;
+  $('cues-title').textContent = 'Cues';
+  $('cue-list').setAttribute('aria-label', `${sel.label}'s cues in this phase`);
   $('cue-list').replaceChildren(...cues.filter(c => c.index !== cueEdit?.index).map(c => {
     const li = document.createElement('li');
     const text = document.createElement('span');

@@ -8,13 +8,13 @@ import { parsePlay } from '../js/storage.js';
 
 const POS = { a9: { x: 50, y: 30 }, a10: { x: 44, y: 32 }, a12: { x: 42, y: 40 }, a13: { x: 40, y: 48 }, d10: { x: 60, y: 32 } };
 // A play whose phase 1 has `routes` (and `objects`), and, with `next`, a phase 2 with those objects.
-function play(routes, { objects = [], next = null, instructions } = {}) {
+function play(routes, { objects = [], next = null, instructions, positions = POS } = {}) {
   const p = {
     schemaVersion: 1, name: 'Jobs',
-    players: Object.keys(POS).map(id => ({ id, team: id[0] === 'a' ? 'attack' : 'defense', label: id.slice(1) })),
-    phases: [{ note: '', positions: structuredClone(POS), objects: [{ id: 'o1', type: 'ball', x: 51.1, y: 30.9 }, ...objects], routes, instructions }],
+    players: Object.keys(positions).map(id => ({ id, team: id[0] === 'a' ? 'attack' : 'defense', label: id.slice(1) })),
+    phases: [{ note: '', positions: structuredClone(positions), objects: [{ id: 'o1', type: 'ball', x: 51.1, y: 30.9 }, ...objects], routes, instructions }],
   };
-  if (next) p.phases.push({ note: '', positions: structuredClone(POS), objects: next, routes: [] });
+  if (next) p.phases.push({ note: '', positions: structuredClone(positions), objects: next, routes: [] });
   return parsePlay(p);
 }
 const at = id => [POS[id].x, POS[id].y];
@@ -31,15 +31,53 @@ test('receives a pass: "Take the pass from 10"', () => {
 });
 
 test('kick: by its length and direction', () => {
-  const k = to => kickKind({ points: [[50, 30], to] }, 'attack');
+  const k = (to, box = false) => kickKind({ points: [[50, 30], to] }, 'attack', { box });
   assert.equal(k([60, 32]), 'Grubber', '10 m forward');
-  assert.equal(k([75, 30]), 'Box kick', '25 m forward');
+  assert.equal(k([75, 30], true), 'Box kick', '25 m forward, by a 9 (or from a ruck)');
+  assert.equal(k([75, 30]), 'Kick', '25 m forward by anyone else');
   assert.equal(k([90, 35]), 'Long kick', '40 m forward');
   assert.equal(k([60, 62]), 'Cross-field kick', 'more across than forward');
-  assert.equal(k([40, 30]), 'Kick', 'backwards');
-  assert.equal(kickKind({ points: [[50, 30], [25, 30]] }, 'defense'), 'Box kick', "defense kicks towards -x");
+  assert.equal(k([40, 30], true), 'Kick', 'backwards');
+  assert.equal(kickKind({ points: [[50, 30], [25, 30]] }, 'defense', { box: true }), 'Box kick', "defense kicks towards -x");
   assert.equal(autoJob(play([kick('a9', [75, 30])]), 0, 'a9'), 'Box kick');
   assert.equal(autoJob(play([kick('a9', [56, 31])]), 0, 'a9'), 'Grubber');
+});
+
+test('"Box kick" only from 9, or from within 5 m of a ruck; otherwise the length rules or "Kick"', () => {
+  assert.equal(autoJob(play([kick('a10', [69, 32])]), 0, 'a10'), 'Kick', '25 m by 10, no ruck');
+  assert.equal(autoJob(play([kick('a10', [69, 32])], { objects: [{ id: 'o2', type: 'ruck', x: 47, y: 33 }] }), 0, 'a10'), 'Box kick', '10 kicks from 3 m off a ruck');
+  assert.equal(autoJob(play([kick('a10', [69, 32])], { objects: [{ id: 'o2', type: 'ruck', x: 52, y: 40 }] }), 0, 'a10'), 'Kick', 'the ruck is more than 5 m away');
+  assert.equal(autoJob(play([kick('a10', [84, 32])]), 0, 'a10'), 'Long kick', 'a long kick is a long kick whoever takes it');
+  assert.equal(autoJob(play([kick('a10', [52, 33])]), 0, 'a10'), 'Grubber');
+  // Kicked after a run: measured from where the kick is taken.
+  assert.equal(autoJob(play([run('a10', [60, 32]), kick('a10', [84, 32], 2)]), 0, 'a10'), 'Run your line, then kick', '24 m from where he kicks it');
+});
+
+// The back three: 15 deep at (30, 35), 14 and 11 on the wings.
+const BACK = { ...POS, a11: { x: 36, y: 8 }, a14: { x: 36, y: 62 }, a15: { x: 30, y: 35 } };
+const backPlay = routes => play(routes, { positions: BACK });
+const runFrom = (id, to, order = 1) => ({ id: `b-${id}-${order}`, type: 'run', from: id, points: [[BACK[id].x, BACK[id].y], to], curve: 0, order, option: null });
+
+test('a wing or the fullback running backwards: "Cover the backfield"', () => {
+  assert.equal(autoJob(backPlay([runFrom('a15', [24, 35])]), 0, 'a15'), 'Cover the backfield', '15 drops back 6 m');
+  assert.equal(autoJob(backPlay([runFrom('a14', [30, 60])]), 0, 'a14'), 'Cover the backfield', '14 drops back');
+  assert.equal(autoJob(backPlay([runFrom('a15', [40, 35])]), 0, 'a15'), 'Run your line', 'running forward');
+  assert.equal(autoJob(backPlay([runFrom('a15', [30, 45])]), 0, 'a15'), 'Run your line', 'straight across');
+  assert.equal(autoJob(backPlay([{ ...run('a13', [34, 48]) }]), 0, 'a13'), 'Run your line', 'a centre running back is just a run');
+});
+
+test('a wing or the fullback staying deep while team-mates chase a kick: "Cover the backfield"', () => {
+  const chase = [kick('a9', [75, 30]), run('a13', [68, 36]), run('a12', [70, 40])];
+  assert.equal(autoJob(backPlay(chase), 0, 'a15'), 'Cover the backfield', '15 holds 20 m behind the kick');
+  assert.equal(autoJob(backPlay([...chase, runFrom('a15', [32, 30])]), 0, 'a15'), 'Cover the backfield', '15 shuffles across, still deep');
+  assert.equal(autoJob(backPlay([...chase, runFrom('a14', [72, 36])]), 0, 'a14'), 'Chase the kick', 'the wing who chases chases');
+  assert.equal(autoJob(backPlay([kick('a9', [75, 30])]), 0, 'a15'), 'Hold your spot', 'nobody chases');
+  assert.equal(autoJob(backPlay(chase), 0, 'a10'), 'Hold your spot', 'only the back three cover');
+  // 11 near the kick (36 vs the kick at 50: 14 m behind) is deep too; level with it isn't.
+  assert.equal(autoJob(backPlay(chase), 0, 'a11'), 'Cover the backfield');
+  const level = backPlay(chase);
+  level.phases[0].positions.a11 = { x: 48, y: 8 };
+  assert.equal(autoJob(level, 0, 'a11'), 'Hold your spot', 'not 5 m behind the kick');
 });
 
 test('run that ends within 10 m of where a kick lands: "Chase the kick"', () => {

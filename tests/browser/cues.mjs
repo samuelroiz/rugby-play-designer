@@ -1,4 +1,4 @@
-// Position cues and jobs. Editor (desktop 1440x900): "Your job (this phase)" with the made job as its
+// Position cues and jobs. Editor (desktop 1440x900): "Your job" with the made job as its
 // placeholder, the Cues list (add, edit, delete, Escape, undo and redo, autosaved), the cue bubbles on the pitch
 // while the player is selected and never in a PNG, deleting a player taking their cues, and the share link
 // carrying cues. Viewer (390x844, touch): the job line (written vs made, at most 2 lines), a cue bubble at its
@@ -79,7 +79,7 @@ await pastePlay(page, base);
 await tap(page, 45, 40); // 12
 await sleep(100);
 let p = await panel(page);
-check('selecting 12: "Your job (this phase)", the made job as the placeholder, no cues yet', !p.hidden && p.title === 'Your job (this phase)' && p.placeholder === `12: ${JOB_12[0]}` && p.list.length === 0 && !p.form && p.add, JSON.stringify(p));
+check('selecting 12: "Your job", the made job as the placeholder, no cues yet', !p.hidden && p.title === 'Your job' && p.placeholder === `12: ${JOB_12[0]}` && p.list.length === 0 && !p.form && p.add, JSON.stringify(p));
 await click(page, '#cue-add');
 const form = await page.evaluate(() => ({
   shown: !document.getElementById('cue-form').hidden,
@@ -137,7 +137,7 @@ check('cues are autosaved', eq(saved, [{ player: 'a12', step: 2, text: 'Jump now
 await page.$eval('#phase-tabs [data-index="1"]', b => b.click());
 await sleep(50);
 p = await panel(page);
-check('another phase: its own cues (none) and its own made job', p.hidden || (p.list.length === 0 && p.marks.length === 0 && p.placeholder === '12: Box kick'), JSON.stringify(p));
+check('another phase: its own cues (none) and its own made job', p.hidden || (p.list.length === 0 && p.marks.length === 0 && p.placeholder === '12: Kick'), JSON.stringify(p)); // 12's 30 m kick, not from 9 or a ruck
 await page.$eval('#phase-tabs [data-index="0"]', b => b.click());
 await tap(page, 45, 40);
 await sleep(50);

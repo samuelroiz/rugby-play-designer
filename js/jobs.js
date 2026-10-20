@@ -5,8 +5,15 @@
 
 import { buildSchedule } from './animate.js';
 
-// Kicks, by length and direction (metres; forward is the kicker's way: +x for attack, -x for defense).
-export const KICK = { grubberMax: 15, longMin: 35, crossMin: 20 };
+// Kicks, by length and direction (metres; forward is the kicker's way: +x for attack, -x for defense). A box
+// kick is the 9's (or a kick from within boxRuck of a ruck); anyone else's kick of that length is "Kick".
+export const KICK = { grubberMax: 15, longMin: 35, crossMin: 20, boxRuck: 5 };
+// The back three (wing and fullback numbers) cover the backfield: when their run goes back more than BACK_M,
+// or when they stay DEEP_M or more behind a kick their team-mates chase.
+export const BACK_THREE = new Set(['11', '14', '15']);
+export const BACK_M = 1;
+export const DEEP_M = 5;
+const COVER = 'Cover the backfield';
 // A run that ends this close to where a kick in the phase lands chases it.
 export const CHASE_M = 10;
 // A ball carrier whose last run ends this close to a ruck that's new in the next phase carries into contact.
@@ -16,8 +23,9 @@ const MOVE_TEXT = { run: 'Run your line', decoy: 'Decoy run', drift: 'Drift acro
 const dist = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
 const end = r => { const [x, y] = r.points[r.points.length - 1]; return { x, y }; };
 
-// "Grubber", "Box kick", "Cross-field kick", "Long kick", or "Kick" (backwards or sideways).
-export function kickKind(route, team) {
+// "Grubber", "Box kick" (only with box: the kicker is 9, or kicks from by a ruck), "Cross-field kick",
+// "Long kick", or "Kick" (backwards or sideways, or a mid-length kick that isn't a box kick).
+export function kickKind(route, team, { box = false } = {}) {
   const [x1, y1] = route.points[0];
   const { x: x2, y: y2 } = end(route);
   const forward = (team === 'defense' ? -1 : 1) * (x2 - x1);
@@ -26,8 +34,11 @@ export function kickKind(route, team) {
   if (across >= KICK.crossMin && across > forward) return 'Cross-field kick';
   const len = Math.hypot(x2 - x1, y2 - y1);
   if (len < KICK.grubberMax) return 'Grubber';
-  return len >= KICK.longMin ? 'Long kick' : 'Box kick';
+  return len >= KICK.longMin ? 'Long kick' : box ? 'Box kick' : 'Kick';
 }
+
+// The shirt number in a player id ("a9" -> "9").
+const number = id => id?.slice(1) ?? '';
 
 // Rucks in the phase after phase i that weren't there (within 2 m) in phase i.
 function newRucks(play, i) {
@@ -48,18 +59,35 @@ export function autoJob(play, i, id) {
   const hasBall = sched.holder === id || sched.flights.some(f => f.catcher === id);
   const mine = sched.moves.filter(m => m.player === id);
   const rucks = newRucks(play, i);
+  const forward = team === 'defense' ? -1 : 1;
+  const chases = m => m.route.type === 'run' && kicks.some(f => dist(end(f.route), end(m.route)) <= CHASE_M);
+  // A wing or the fullback staying deep behind a kick of their team's that team-mates chase.
+  const ourKicks = kicks.filter(f => f.from !== id && play.players.find(p => p.id === f.from)?.team === team);
+  const chased = ourKicks.length && sched.moves.some(m => m.player !== id && chases(m));
+  const last = mine.length ? end(mine.at(-1).route) : sched.positions[id];
+  const deep = BACK_THREE.has(number(id)) && chased && !mine.some(chases) && !!last
+    && ourKicks.some(f => forward * (f.release.x - last.x) >= DEEP_M);
   mine.forEach((m, k) => {
     const at = end(m.route);
     let text = MOVE_TEXT[m.route.type] ?? MOVE_TEXT.run;
     let weight = 1;
-    if (m.route.type === 'run' && kicks.some(f => dist(end(f.route), at) <= CHASE_M)) [text, weight] = ['Chase the kick', 2];
+    if (chases(m)) [text, weight] = ['Chase the kick', 2];
+    // The back three running back (or staying deep while the kick is chased): covering the backfield.
+    const back = forward * (at.x - m.route.points[0][0]) < -BACK_M;
+    if (BACK_THREE.has(number(id)) && m.route.type === 'run' && (back || (deep && k === mine.length - 1))) [text, weight] = [COVER, 2];
     if (m.route.type === 'run' && k === mine.length - 1 && hasBall && rucks.some(r => dist(r, at) <= CONTACT_M)) [text, weight] = ['Carry into contact', 3];
     events.push({ time: m.start, text, weight });
   });
+  if (deep && !mine.length) events.push({ time: ourKicks[0].start, text: COVER, weight: 2 });
+  // Rucks in this phase, for box kicks from beside one.
+  const here = play.phases[i].objects.filter(o => o.type === 'ruck');
   for (const f of sched.flights) {
     if (f.from === id) {
       const to = f.catcher ?? f.to;
-      const text = f.route.type === 'kick' ? kickKind(f.route, team) : to ? `Pass to ${label(to)}` : 'Pass';
+      // The kick as it's taken: from where the kicker is when it goes.
+      const taken = { points: [[f.release.x, f.release.y], f.route.points[f.route.points.length - 1]] };
+      const box = number(id) === '9' || here.some(r => dist(r, f.release) <= KICK.boxRuck);
+      const text = f.route.type === 'kick' ? kickKind(taken, team, { box }) : to ? `Pass to ${label(to)}` : 'Pass';
       events.push({ time: f.start, text, weight: 3 });
     } else if (f.catcher === id) {
       events.push({ time: f.end, text: f.from ? `Take the pass from ${label(f.from)}` : 'Take the pass', weight: 3 });

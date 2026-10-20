@@ -46,6 +46,7 @@ const steps = [
   ['Share link and phone viewer suite', ['tests/browser/viewer.mjs']],
   ['Position cues and jobs suite', ['tests/browser/cues.mjs']],
   ['Test session fixes suite', ['tests/browser/session.mjs']],
+  ['Viewer, Present, auto jobs and restore suite', ['tests/browser/coach.mjs']],
 ];
 
 // Async child processes, so this process keeps serving while they run.

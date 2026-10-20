@@ -147,10 +147,12 @@
     <!-- Shown while one player is selected: their job in this phase (the phone viewer's job line; the placeholder
          is the one made from their routes) and their cues, which pop up next to them in the viewer. -->
     <div class="group instruction-group" id="instruction-group" hidden>
-      <label for="player-instruction"><h2 id="instruction-title">Your job (this phase)</h2></label>
-      <textarea id="player-instruction" rows="3" maxlength="120" spellcheck="true"></textarea>
+      <label for="player-instruction"><h2 id="instruction-title">Your job</h2></label>
+      <p class="tip side-hint" id="instruction-hint">One line shown at the bottom of the phone viewer.</p>
+      <textarea id="player-instruction" rows="2" maxlength="120" spellcheck="true"></textarea>
       <div class="cues" id="cues">
         <h2 id="cues-title">Cues</h2>
+        <p class="tip side-hint" id="cues-hint">Short shouts that pop up at a moment.</p>
         <ul class="cue-list" id="cue-list"></ul>
         <form class="cue-form" id="cue-form" hidden>
           <input id="cue-text" type="text" maxlength="30" autocomplete="off" spellcheck="false" aria-label="Cue text" placeholder="e.g. JUMP!">
@@ -184,6 +186,8 @@
         <g id="edge-layer" pointer-events="none"></g>
         <g id="pen-layer" pointer-events="none"></g>
       </g>
+      <!-- Present mode, I play: the chosen player's cue bubbles, in screen units (outside the turned pitch). -->
+      <g id="present-cue-layer" pointer-events="none"></g>
     </svg>
     <input class="inline-edit" id="inline-edit" type="text" autocomplete="off" spellcheck="false" hidden>
     <p class="present-count" id="present-count" aria-live="polite"></p>
@@ -206,7 +210,12 @@
     <div class="legend" id="legend" aria-hidden="true"></div>
   </div>
 
-  <p class="present-caption" id="present-caption" hidden></p>
+  <!-- Present mode's caption: the phase note, or with "I play" the chosen player's job line in its place. Both
+       sit in one spot that always has room for two lines of the job, so choosing I play never moves the controls. -->
+  <div class="present-text" id="present-text">
+    <p class="present-caption" id="present-caption" hidden></p>
+    <p class="present-job" id="present-job" aria-live="polite" hidden><span class="present-job-who" id="present-job-who"></span><span id="present-job-text"></span></p>
+  </div>
 
   <section class="phasebar" aria-label="Phases">
     <div class="phase-nav">

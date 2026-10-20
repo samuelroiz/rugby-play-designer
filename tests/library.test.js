@@ -26,15 +26,33 @@ test('restore into an empty library adds everything, keeping ids, times and dele
 });
 
 test('restore never overwrites: the same play is skipped, a changed one comes back as a "(restored)" copy', () => {
-  const here = [rec('p1', 'One'), rec('p2', 'Two')];
-  const backup = JSON.parse(JSON.stringify(backupData([here[0], { ...here[1], play: play('Two, older') }, rec('p3', 'Three')])));
+  const here = [rec('p1', 'One'), rec('p2', 'Two', { updated: 1000 })];
+  const backup = JSON.parse(JSON.stringify(backupData([here[0], { ...here[1], play: play('Two, newer'), updated: 2000 }, rec('p3', 'Three')])));
   const result = restoreRecords(backup, here);
   assert.equal(result.skipped, 1);
   assert.equal(result.add.length, 2);
-  const copy = result.add.find(r => r.play.name === 'Two, older (restored)');
+  const copy = result.add.find(r => r.play.name === 'Two, newer (restored)');
   assert.ok(copy && copy.id !== 'p2', 'a new id');
   assert.ok(result.add.some(r => r.id === 'p3' && r.play.name === 'Three'));
   assert.equal(restoreSummary(result), 'Added 2 plays, 1 skipped (already here)');
+});
+
+test('restore: a play whose copy here was updated more recently is kept as it is, with no "(restored)" copy', () => {
+  const here = [rec('p1', 'One, edited since', { updated: 5000 }), rec('p2', 'Two', { updated: 3000 }), rec('p3', 'Three', { updated: 3000 })];
+  const backup = JSON.parse(JSON.stringify(backupData([
+    rec('p1', 'One, older', { updated: 4000 }), // older than here: kept newer
+    rec('p2', 'Two, same time', { updated: 3000 }), // not newer than here: kept newer too
+    rec('p3', 'Three, newer', { updated: 6000 }), // newer: a "(restored)" copy
+  ])));
+  // A changed p1 with no update time to compare: a "(restored)" copy.
+  const untimed = backupData([rec('p1', 'One, no time')]).plays[0];
+  delete untimed.updated;
+  backup.plays.push(JSON.parse(JSON.stringify(untimed)));
+  const result = restoreRecords(backup, here);
+  assert.equal(result.keptNewer, 2);
+  assert.deepEqual(result.add.map(r => r.play.name).sort(), ['One, no time (restored)', 'Three, newer (restored)']);
+  assert.ok(!result.add.some(r => ['p1', 'p2', 'p3'].includes(r.id)), 'nothing here is replaced');
+  assert.equal(restoreSummary(result), 'Added 2 plays, 2 kept newer (the copy here is newer)');
 });
 
 test('restore: an invalid play is counted and left out; a long name stays within 60 characters', () => {

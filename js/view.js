@@ -60,6 +60,7 @@ let frameHook = null;
 
 async function load() {
   show('loading');
+  resumePhase = null;
   const data = hashData(location.hash);
   try {
     if (!data) throw new Error('This page shows plays shared from the Rugby Play Designer. Open a share link, or make a play in the designer.');
@@ -113,7 +114,7 @@ function buildStart() {
     b.addEventListener('click', () => {
       try { localStorage.setItem(POSITION_KEY, p.label); } catch { /* storage blocked: not remembered */ }
       for (const other of box.children) other.setAttribute('aria-pressed', String(other === b));
-      watch('focus', p.id);
+      watch('focus', p.id, resumeAt());
     });
     box.appendChild(b);
   }
@@ -330,6 +331,7 @@ function updateText() {
     const job = jobLine(play, v.phase, v.focus);
     if ($('job').textContent !== job) { $('job').textContent = job; fitJob(); }
     $('note-button').hidden = !note;
+    $('caption').textContent = ''; // the whole-play note goes: following a player shows their job
   } else if ($('caption').textContent !== note) {
     $('caption').textContent = note;
   }
@@ -343,10 +345,12 @@ function updateText() {
   $('end').hidden = !v.ended;
 }
 
-// Starts watching from phase 1 at 1x: following `focus` (mode 'focus') or the whole play ('whole').
-function watch(mode, focus = null) {
+// Starts watching at 1x, from the start of phase `from` (phase 1 unless given): following `focus` (mode
+// 'focus') or the whole play ('whole'). Everything from what was watched before goes: the mode, the notes or
+// job line, the cues and the camera.
+function watch(mode, focus = null, from = 0) {
   Object.assign(v, { mode, focus, speed: 1, playing: true, ended: false, hold: 0, cam: null, bubbles: [] });
-  setPhase(0);
+  setPhase(Math.min(Math.max(0, from), play.phases.length - 1));
   show('watch');
   updateText(); // now the screen is shown, the caption's size can be measured
 }
@@ -414,6 +418,18 @@ function watchAgain() {
   watch(v.focus ? 'focus' : 'whole', v.focus);
 }
 
+// ☰ during a run through the play remembers the phase it was on, so picking a position (or the whole play)
+// carries on from there, following the new choice from that phase's start. After the end, or from a fresh
+// start, it starts at phase 1.
+let resumePhase = null;
+const resumeAt = () => resumePhase ?? 0;
+function backToPositions() {
+  resumePhase = v.screen === 'watch' && !v.ended ? v.phase : null;
+  v.playing = false;
+  buildStart();
+  show('start');
+}
+
 async function share() {
   const url = location.href;
   try {
@@ -448,16 +464,16 @@ function stopLoop() {
 // --- Controls ---
 
 function initControls() {
-  $('watch-all').addEventListener('click', () => watch('whole'));
+  $('watch-all').addEventListener('click', () => watch('whole', null, resumeAt()));
   $('toggle').addEventListener('click', toggle);
   $('back').addEventListener('click', () => jump(-1));
   $('next').addEventListener('click', () => jump(1));
-  $('home').addEventListener('click', () => { v.playing = false; buildStart(); show('start'); });
+  $('home').addEventListener('click', backToPositions);
   for (const b of document.querySelectorAll('[data-speed]')) {
     b.addEventListener('click', () => { v.speed = Number(b.dataset.speed); updateText(); });
   }
   $('watch-again').addEventListener('click', watchAgain);
-  $('another').addEventListener('click', () => { v.playing = false; buildStart(); show('start'); });
+  $('another').addEventListener('click', backToPositions);
   $('share').addEventListener('click', share);
   // The Coach's note sheet (the job line opens it too): the phase note in full. Playing pauses while it's open.
   const sheet = $('note-sheet');

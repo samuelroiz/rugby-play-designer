@@ -236,8 +236,10 @@ const RESTORED = ' (restored)';
 
 // Works out what a backup adds to the library, never changing what's there: each play is checked with
 // parsePlay (one that fails is counted as invalid); one whose id is already here with the same play is
-// skipped; one whose id is here with a different play gets a new id and " (restored)" after its name.
-// Returns { add: [records], skipped, invalid }. Throws a friendly Error if `data` isn't a backup at all.
+// skipped; one whose id is here with a different play is kept as it is here when the library's copy was
+// updated as recently or more recently (counted as keptNewer), and otherwise (the backup's is newer, or there's
+// no update time to compare) gets a new id and " (restored)" after its name.
+// Returns { add: [records], skipped, keptNewer, invalid }. Throws a friendly Error if `data` isn't a backup.
 export function restoreRecords(data, existing) {
   if (!data || typeof data !== 'object' || !Array.isArray(data.plays)) {
     throw new Error("That file isn't a plays backup (from Back up all plays).");
@@ -245,6 +247,7 @@ export function restoreRecords(data, existing) {
   const byId = new Map(existing.map(r => [r.id, r]));
   const add = [];
   let skipped = 0;
+  let keptNewer = 0;
   let invalid = 0;
   for (const item of data.plays) {
     let play;
@@ -258,6 +261,7 @@ export function restoreRecords(data, existing) {
     const here = byId.get(id);
     if (here) {
       if (canonical(here.play) === JSON.stringify(play)) { skipped++; continue; }
+      if (Number.isFinite(item.updated) && Number.isFinite(here.updated) && here.updated >= item.updated) { keptNewer++; continue; }
       id = newId();
       play.name = play.name.slice(0, NAME_MAX - RESTORED.length) + RESTORED;
     }
@@ -274,15 +278,17 @@ export function restoreRecords(data, existing) {
     byId.set(id, record);
     add.push(record);
   }
-  return { add, skipped, invalid };
+  return { add, skipped, keptNewer, invalid };
 }
 
-// "Added 12 plays, 2 skipped (already here)", and how many couldn't be read, if any.
-export function restoreSummary({ add, skipped, invalid }) {
+// "Added 12 plays, 2 skipped (already here), 1 kept newer (the copy here is newer)", and how many couldn't be
+// read, if any.
+export function restoreSummary({ add, skipped, keptNewer = 0, invalid }) {
   const plays = n => `${n} play${n === 1 ? '' : 's'}`;
   return [
     `Added ${plays(add.length)}`,
     skipped && `${skipped} skipped (already here)`,
+    keptNewer && `${keptNewer} kept newer (the copy here is newer)`,
     invalid && `${plays(invalid)} couldn't be read`,
   ].filter(Boolean).join(', ');
 }

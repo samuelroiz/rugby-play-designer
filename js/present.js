@@ -1,12 +1,19 @@
 // Present mode: the pitch alone, full screen and as large as it fits, for a TV or a screen recording.
 // The phase note is a large caption under it and "Phase n of N" sits in a corner. The play controls sit
 // between the pitch and the caption and fade after a while without mouse movement. "I play" (click a player,
-// or pick one from the list) fades the rest of that player's team. The pen draws over the pitch for the
+// or pick one from the list) fades the rest of that player's team and, as in the phone viewer, shows their
+// job line in the note's place (the app pops up their cue bubbles as each step starts). The pen draws over the pitch for the
 // moment: never saved, kept through phase changes until Clear, and gone when Present mode ends.
 // Editing is off while presenting, so there are no hover hints, handles or selection highlights.
 
 import { svgEl, toMetres } from './pitch.js';
 import { round2 } from './model.js';
+import { jobLine } from './jobs.js';
+
+// The job line is shrunk (to no less than this share of the caption's size) to fit the caption's room (at least
+// one line, or the note's height), on at most JOB_LINES lines.
+const JOB_LINES = 2;
+const JOB_MIN = 0.45;
 
 const IDLE_MS = 2000;
 const PEN_STEP = 0.15; // metres the pointer must move before the stroke gets another point
@@ -145,13 +152,42 @@ export function initPresent({ state, ui, svg, world, penLayer, render, phase, pl
   svg.addEventListener('pointerup', endStroke);
   svg.addEventListener('pointercancel', endStroke);
 
-  // Called from every render: the caption and the phase count follow the shown phase.
+  // Called from every render: the caption (the note, or with I play the chosen player's job line in its
+  // place) and the phase count follow the shown phase.
   function update() {
     const note = phase().note.trim();
     const caption = document.getElementById('present-caption');
     caption.textContent = note;
     caption.hidden = !note;
+    const player = ui.presenting && ui.focusPlayer ? state.players.find(p => p.id === ui.focusPlayer) : null;
+    caption.classList.toggle('covered', !!player);
+    const job = document.getElementById('present-job');
+    job.hidden = !player;
+    if (player) {
+      document.getElementById('present-job-who').textContent = player.label;
+      document.getElementById('present-job-text').textContent = jobLine(state, ui.phase, player.id);
+      fitJob(job);
+    }
     document.getElementById('present-count').textContent = `Phase ${ui.phase + 1} of ${state.phases.length}`;
+  }
+
+  // As large as fits the room the caption has without it (the note's height, or one line), on at most
+  // JOB_LINES lines, so the caption, and the controls above it, keep their place. Only measured again when the
+  // text, the note or the window changes.
+  let fitted = '';
+  function fitJob(job) {
+    const caption = document.getElementById('present-caption');
+    const key = [job.textContent, caption.textContent, innerWidth, innerHeight].join('|');
+    if (key === fitted) return;
+    fitted = key;
+    job.style.fontSize = '';
+    const full = parseFloat(getComputedStyle(job).fontSize);
+    const line = parseFloat(getComputedStyle(job).lineHeight);
+    const room = Math.max(caption.hidden ? 0 : caption.offsetHeight, line);
+    for (let k = 1; k >= JOB_MIN - 1e-9; k -= 0.05) {
+      job.style.fontSize = `${full * k}px`;
+      if (job.offsetHeight <= room + 1 && job.offsetHeight <= Math.ceil(JOB_LINES * line * k) + 1) return;
+    }
   }
 
   return Object.assign(api, { enter, exit, togglePen, clearPen, undoStroke, setPenColour, update });

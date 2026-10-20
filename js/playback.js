@@ -65,7 +65,9 @@ export function paintFrame(layers, sched, t, up) {
 }
 
 // show(i): make phase i the shown phase and render. changed(): playing or paused, so refresh the controls.
-export function createPlayback({ state, ui, layers, turn, show, changed }) {
+// tick(sched, from, to, wall): the clock moved from `from` to `to` (ms into sched's phase), with `wall` ms of
+// real time passed (0 for a part of the move that ended a phase); for Present mode's cue bubbles.
+export function createPlayback({ state, ui, layers, turn, show, changed, tick = () => {} }) {
   const pb = {
     playing: false,
     speed: 1,
@@ -171,9 +173,12 @@ export function createPlayback({ state, ui, layers, turn, show, changed }) {
   // Moves the clock on by `ms` (at 1x; the speed is applied here) and draws the frame.
   function advance(ms) {
     if (!pb.playing) return;
+    let from = t;
     t += ms * pb.speed;
     while (t >= sched.total) {
       const rest = t - sched.total;
+      tick(sched, from, sched.total, 0);
+      from = 0;
       if (sched.looping) start(0, rest);
       else if (sched.next) start(ui.phase + 1, rest);
       else {
@@ -183,6 +188,7 @@ export function createPlayback({ state, ui, layers, turn, show, changed }) {
         return;
       }
     }
+    tick(sched, from, t, ms);
     draw();
   }
 

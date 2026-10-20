@@ -48,7 +48,7 @@ const p10 = { x: 39.4, y: 29.6 };
 await tap(page, p10.x, p10.y);
 await sleep(100);
 const box = await page.evaluate(() => ({ hidden: document.getElementById('instruction-group').hidden, title: document.getElementById('instruction-title').textContent, value: document.getElementById('player-instruction').value, max: document.getElementById('player-instruction').maxLength }));
-check('selecting 10: "Your job (this phase)", empty, at most 120 characters', !box.hidden && box.title === 'Your job (this phase)' && box.value === '' && box.max === 120, JSON.stringify(box));
+check('selecting 10: "Your job", empty, at most 120 characters', !box.hidden && box.title === 'Your job' && box.value === '' && box.max === 120, JSON.stringify(box));
 await page.click('#player-instruction');
 await page.keyboard.type('Flat, call for it early.');
 await page.$eval('#player-instruction', t => t.blur());

@@ -216,6 +216,13 @@ button.danger { color: #b71c1c; }
 .tip { margin: .25rem 0 0; font-size: .75rem; color: var(--muted); }
 .instruction-group[hidden] { display: none; }
 .instruction-group h2 { text-transform: none; letter-spacing: 0; font-size: .75rem; }
+/* The one-line hint under "Your job" and "Cues" */
+.side-hint { margin: -.2rem 0 0; font-size: .65rem; line-height: 1.15; letter-spacing: -.01em; }
+/* With a player's job and cues showing, the sidebar's spacing tightens, so it still fits a 780 px window. */
+@media (min-width: 701px) {
+  .toolbar:has(#instruction-group:not([hidden])) { gap: .4rem; }
+  .toolbar:has(#instruction-group:not([hidden])) .group { gap: .22rem; }
+}
 #player-instruction { box-sizing: border-box; width: 100%; min-width: 0; font: inherit; font-size: .85rem; padding: .35rem .45rem; border: 1px solid var(--border); border-radius: 6px; resize: vertical; }
 /* The selected player's cues: a list (text and step, Edit, Delete), and the form for adding or editing one */
 .cues { display: flex; flex-direction: column; gap: .25rem; }
@@ -421,7 +428,7 @@ button.danger { color: #b71c1c; }
 .phasebar .play-button { min-width: 6rem; justify-content: center; gap: .45rem; font-weight: 600; white-space: nowrap; }
 .play-icon { display: inline-block; flex: none; min-width: 1.1em; text-align: center; font-size: .9em; line-height: 1; }
 .speed button { min-width: 2.6rem; justify-content: center; font-variant-numeric: tabular-nums; }
-.present-only, .present-count, .present-caption, .present-logo { display: none; }
+.present-only, .present-count, .present-text, .present-logo { display: none; }
 .i-play { display: none; align-items: center; gap: .35rem; font-size: .85rem; }
 .i-play select { font: inherit; padding: .35rem .4rem; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--ink); }
 
@@ -750,19 +757,31 @@ body.presenting {
   background: rgba(255, 255, 255, .85);
   pointer-events: none;
 }
-.presenting .present-caption {
+.presenting .present-text {
+  --present-size: clamp(1.2rem, 2.4vw, 2.6rem);
   grid-area: caption;
-  display: block;
-  margin: 0;
+  display: grid;
+  align-items: start;
+  /* Always room for one line (as with a one-line note), and as much as the note takes: choosing I play swaps
+     the note for the job line, shrunk to fit that room, so the controls above never move. */
+  min-height: calc(1.25 * var(--present-size) + 1.4rem);
   padding: .4rem 2rem 1rem;
   color: #fff;
-  font-size: clamp(1.2rem, 2.4vw, 2.6rem);
-  font-weight: 600;
+  font-size: var(--present-size);
   line-height: 1.25;
   text-align: center;
-  overflow-wrap: anywhere;
 }
+.presenting .present-text > * { grid-area: 1 / 1; margin: 0; overflow-wrap: anywhere; }
+.presenting .present-caption { display: block; font-weight: 600; }
 .presenting .present-caption[hidden] { display: none; }
+/* With I play the note keeps its room (so nothing moves) but gives way to the job line. */
+.presenting .present-caption.covered { visibility: hidden; }
+.presenting .present-job { display: block; font-weight: 800; }
+.presenting .present-job[hidden] { display: none; }
+.present-job-who { display: inline-block; margin-right: .5em; padding: 0 .35em; border-radius: .25em; background: #ffeb3b; color: #1d1d1d; font-size: .8em; vertical-align: .08em; }
+/* I play: a cue bubble next to the chosen player, as in the phone viewer */
+.present-cue rect { fill: #ffeb3b; stroke: #1d1d1d; }
+.present-cue text { fill: #1d1d1d; font-family: system-ui, sans-serif; font-weight: 800; }
 .presenting .phasebar {
   justify-self: center;
   z-index: 8;
@@ -802,7 +821,7 @@ body.presenting {
     grid-template-rows: auto minmax(0, 1fr) auto auto auto;
     grid-template-areas: "top" "pitch" "status" "phases" "tools";
   }
-  .group h2, .toolbar .help, .long { display: none; }
+  .group h2, .toolbar .help, .long, .side-hint { display: none; }
   /* As tall as the buttons beside it, so selecting a player doesn't shrink the pitch; the placeholder says whose it is. */
   #player-instruction { min-width: 15rem; height: 2.3rem; min-height: 0; resize: none; padding: .3rem .45rem; }
   .cues { flex-direction: row; align-items: center; margin-top: 0; }
