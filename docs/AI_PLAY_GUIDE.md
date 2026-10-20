@@ -55,7 +55,7 @@ Turning the pitch (vertical view) only changes how it is drawn. The data never c
 | `name` | text, up to 60 characters | `"Untitled play"` |
 | `category` | `"attack"`, `"defense"`, `"lineout"`, `"scrum"` | `"attack"` |
 | `tags` | list of short texts | `[]` |
-| `view` | `"full"`, `"half"` (x 50 to 110, the half attack plays into), `"half-own"` (x −10 to 50). Each half also shows 3 m past halfway (from x 47, or to x 53). | `"full"` |
+| `view` | `"full"`, `"half"` (x 50 to 110, the half attack plays into), `"half-own"` (x −10 to 50). Each half also shows 5 m past halfway (from x 45, or to x 55). | `"full"` |
 | `orientation` | `"horizontal"`, `"vertical"` | `"horizontal"` |
 
 ### Players

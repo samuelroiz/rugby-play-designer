@@ -475,6 +475,7 @@ dialog .cancel { margin: .75rem 0 0 auto; }
 .share-warning p { margin: 0 0 .4rem; }
 #share-dialog .choices { justify-content: flex-end; }
 #share-dialog .choices > * { flex: 0 0 auto; padding: .5rem 1rem; }
+#share-dialog .choices > [hidden] { display: none; }
 #share-dialog .cancel { margin: 0; }
 
 /* Save animation box */

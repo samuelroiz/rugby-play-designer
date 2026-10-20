@@ -282,12 +282,12 @@ for (const [width, height] of [[1080, 720], [1500, 780]]) {
   for (const [n, x] of [[1, 10], [2, 20], [3, 30]]) await addPlayer(page, 'attack', { n, at: [x, 20 + n * 5] });
   await addPlayer(page, 'defense', { n: 1, at: [80, 30] });
   await click(page, '[data-view="half"]');
-  check('Half shows the half where most players are (-10 to 50, and 3 m past halfway)', (await view(page)) === 'half-own' && (await viewBox(page)) === '-10 0 63 70', `${await view(page)} ${await viewBox(page)}`);
+  check('Half shows the half where most players are (-10 to 50, and 5 m past halfway)', (await view(page)) === 'half-own' && (await viewBox(page)) === '-10 0 65 70', `${await view(page)} ${await viewBox(page)}`);
   let arrows = await page.$$eval('#edge-layer .edge-arrow', gs => gs.map(g => ({ id: g.dataset.edge, t: g.getAttribute('transform'), label: g.textContent })));
-  check('…a player off it gets an arrow at the edge pointing to them', eq(arrows.map(a => a.id), ['d1']) && arrows[0].t === 'translate(51.7 30)' && arrows[0].label === '1', JSON.stringify(arrows));
+  check('…a player off it gets an arrow at the edge pointing to them', eq(arrows.map(a => a.id), ['d1']) && arrows[0].t === 'translate(53.7 30)' && arrows[0].label === '1', JSON.stringify(arrows));
   check('the other-half toggle shows', !(await page.$eval('#flip-half', b => b.hidden)));
   await click(page, '#flip-half');
-  check('the toggle flips to 50 to 110 (from 47)', (await view(page)) === 'half' && (await viewBox(page)) === '47 0 63 70');
+  check('the toggle flips to 50 to 110 (from 45)', (await view(page)) === 'half' && (await viewBox(page)) === '45 0 65 70');
   arrows = await page.$$eval('#edge-layer .edge-arrow', gs => gs.map(g => g.dataset.edge));
   check('…with arrows for the three now off it', eq(arrows.sort(), ['a1', 'a2', 'a3']), arrows.join());
   await click(page, '[data-action="undo"]');
@@ -296,9 +296,9 @@ for (const [width, height] of [[1080, 720], [1500, 780]]) {
   await sleep(600);
   await page.reload();
   await page.waitForSelector('#phase-tabs button');
-  check('…and after a reload', (await view(page)) === 'half' && (await viewBox(page)) === '47 0 63 70');
+  check('…and after a reload', (await view(page)) === 'half' && (await viewBox(page)) === '45 0 65 70');
   await click(page, '[data-orientation="vertical"]');
-  check('vertical: the same half', (await viewBox(page)) === '0 -110 70 63');
+  check('vertical: the same half', (await viewBox(page)) === '0 -110 70 65');
   await click(page, '[data-orientation="horizontal"]');
   await click(page, '[data-view="full"]');
   check('Full: no toggle, no arrows', (await page.$eval('#flip-half', b => b.hidden)) && (await page.$$('#edge-layer .edge-arrow')).length === 0);

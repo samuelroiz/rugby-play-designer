@@ -28,13 +28,18 @@ async function pastePlay(page, p) {
   await click(page, '#paste-play-import');
   await sleep(150);
 }
-// File → Share link…; resolves with what was copied (the clipboard is stubbed) once the box says so.
+// File → Share link…: waits for the link to be made, notes whether anything was copied before Copy was
+// pressed (window.__early), then presses Copy; resolves with what was copied (the clipboard is stubbed).
 async function shareLink(page) {
   await page.evaluate(() => { window.__copied = []; navigator.clipboard.writeText = async t => { window.__copied.push(t); }; });
   await click(page, '#file-menu summary');
   await click(page, '[data-file="share"]');
   await page.waitForSelector('#share-dialog[open]');
-  await page.waitForFunction(() => window.__copied.length > 0, { timeout: 10000 }).catch(() => null);
+  await page.waitForFunction(() => document.getElementById('share-url').value && !document.getElementById('share-copy').disabled, { timeout: 10000 }).catch(() => null);
+  await sleep(200);
+  await page.evaluate(() => { window.__early = window.__copied.length; });
+  await click(page, '#share-copy');
+  await page.waitForFunction(() => window.__copied.length > 0, { timeout: 5000 }).catch(() => null);
   return page.evaluate(() => window.__copied.at(-1) ?? null);
 }
 
@@ -78,17 +83,44 @@ await page.keyboard.press('Escape');
 console.log('\n== Editor: Share link ==');
 await pastePlay(page, play);
 const url = await shareLink(page);
+const early = await page.evaluate(() => window.__early);
 const dlg = await page.evaluate(() => ({ status: document.getElementById('share-status').textContent, field: document.getElementById('share-url').value, warn: !document.getElementById('share-warning').hidden, logo: document.getElementById('share-logo').checked }));
 check('Share link copies a link to view.html#p=…', !!url && url.startsWith(new URL('view.html', URL_).href + '#p=') && /#p=[A-Za-z0-9_-]+$/.test(url), String(url).slice(0, 80));
-check('…shows it in the box with "Link copied" and its length', dlg.field === url && dlg.status === `Link copied (${url.length.toLocaleString('en')} characters)`, dlg.status);
+check('opening it copies nothing until Copy is pressed', early === 0, String(early));
+check('Copy copies it: the box shows it with "Link copied" and its length', dlg.field === url && dlg.status === `Link copied (${url.length.toLocaleString('en')} characters)`, dlg.status);
 check('…"Include team logo" is on by default, and a short link gets no warning', dlg.logo && !dlg.warn);
 const decoded = await page.evaluate(u => import('./js/share.js').then(m => m.decodeShare(m.hashData(new URL(u).hash))), url);
 check('…the link holds the play (instructions too) and the team', eq(decoded.play.phases.map(ph => ph.instructions ?? null), play.phases.map(ph => ph.instructions ?? null)) && decoded.play.name === 'Ten follows' && decoded.team?.logo === 'default' && !!decoded.team?.name, JSON.stringify(decoded.team));
 await click(page, '#share-logo');
+await page.waitForFunction(u => { const v = document.getElementById('share-url').value; return v && v !== u; }, { timeout: 5000 }, url).catch(() => null);
+check('unticking makes a new link but copies nothing by itself', (await page.evaluate(() => window.__copied.length)) === 1);
+await click(page, '#share-copy');
 await page.waitForFunction(n => window.__copied.length > n, { timeout: 5000 }, 1).catch(() => null);
 const noLogo = await page.evaluate(() => window.__copied.at(-1));
 const noTeam = await page.evaluate(u => import('./js/share.js').then(m => m.decodeShare(m.hashData(new URL(u).hash))), noLogo);
 check('unticking "Include team logo" copies a link without the team name or logo', noTeam.team === null && noLogo !== url);
+const buttons = await page.$$eval('#share-dialog .choices > *', els => els.filter(e => !e.hidden).map(e => e.textContent.trim()));
+check('the buttons are Copy, Share…, Open and Close', eq(buttons, ['Copy', 'Share…', 'Open', 'Close']) || eq(buttons, ['Copy', 'Open', 'Close']), JSON.stringify(buttons));
+check('Open opens the link shown in the box in a new tab', await page.evaluate(() => { const a = document.getElementById('share-open'); return a.href === document.getElementById('share-url').value && a.target === '_blank'; }));
+check('the link field is read-only', await page.$eval('#share-url', i => i.readOnly));
+await page.click('#share-dialog .cancel');
+// Share… uses the native share sheet with the link, and is hidden where the browser has none.
+await page.evaluate(() => { window.__shared = []; navigator.share = async d => { window.__shared.push(d); }; });
+const copiedBefore = await page.evaluate(() => window.__copied.length);
+await click(page, '#file-menu summary');
+await click(page, '[data-file="share"]');
+await page.waitForFunction(() => document.getElementById('share-url').value && !document.getElementById('share-native').disabled, { timeout: 10000 }).catch(() => null);
+check('with a share sheet, Share… is shown', await page.$eval('#share-native', b => !b.hidden && b.getBoundingClientRect().width > 0));
+await click(page, '#share-native');
+await sleep(100);
+const sheet = await page.evaluate(() => ({ shared: window.__shared, field: document.getElementById('share-url').value, copied: window.__copied.length }));
+check('Share… calls navigator.share with the link (and copies nothing)', sheet.shared.length === 1 && sheet.shared[0].url === sheet.field && sheet.copied === copiedBefore, JSON.stringify(sheet.shared));
+await page.click('#share-dialog .cancel');
+await page.evaluate(() => { navigator.share = undefined; });
+await click(page, '#file-menu summary');
+await click(page, '[data-file="share"]');
+await page.waitForSelector('#share-dialog[open]');
+check('without a share sheet, Share… is hidden', await page.$eval('#share-native', b => b.hidden && b.getBoundingClientRect().width === 0));
 await page.click('#share-dialog .cancel');
 await browser.close();
 
@@ -111,6 +143,8 @@ let warn = await page.evaluate(() => ({ shown: !document.getElementById('share-w
 check(`a link over 16000 characters (${longUrl?.length}) warns that some apps may cut it`, longUrl?.length > 16000 && warn.shown && /some apps may cut it/i.test(warn.text), JSON.stringify(warn));
 check('…and offers to drop the logo', warn.drop);
 await click(page, '#share-drop-logo');
+await page.waitForFunction(u => { const v = document.getElementById('share-url').value; return v && v !== u; }, { timeout: 5000 }, longUrl).catch(() => null);
+await click(page, '#share-copy');
 await page.waitForFunction(n => window.__copied.length > n, { timeout: 5000 }, 1).catch(() => null);
 const shortUrl = await page.evaluate(() => window.__copied.at(-1));
 warn = await page.evaluate(() => ({ shown: !document.getElementById('share-warning').hidden, logo: document.getElementById('share-logo').checked }));

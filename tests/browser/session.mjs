@@ -3,7 +3,7 @@
 // 2. A pass at a later step is drawn from where the passer is then (on screen, in the ghost, PNG and PDF).
 // 3. A pop pass to a runner meets him on his run: in the animation and where the arrow ends.
 // 4. A second run from a player carries on from the end of the first, as the next step.
-// 5. Half views show 3 m past halfway, so kick-off players on halfway are on the pitch.
+// 5. Half views show 5 m past halfway, so kick-off players on halfway are on the pitch.
 // 6. Polish: numbers above route lines, the Attack label clear of players, the header (long names, the
 //    Other half slot), the File menu (Escape, a short window), Play details, the L block's tooltip, the
 //    note's fixed height, hints never cut off.
@@ -260,19 +260,18 @@ const schedule = (page, i = 0) => page.evaluate(async i => {
     await click(page, '[data-view="half"]'); // a redraw in the half view chosen
     if ((await state(page)).view !== view) await click(page, '#flip-half');
     const s = await state(page);
-    const [lo, hi] = view === 'half' ? [47, 110] : [-10, 53];
-    const near50 = Object.entries(s.phases[0].positions).filter(([, p]) => p.x >= 47 && p.x <= 53).map(([id]) => id);
+    const [lo, hi] = view === 'half' ? [45, 110] : [-10, 55];
+    const near50 = Object.entries(s.phases[0].positions).filter(([, p]) => p.x >= 45 && p.x <= 55).map(([id]) => id);
     const arrows = await page.$$eval('#edge-layer [data-edge]', gs => gs.map(g => g.dataset.edge));
     const box = await rect(page, '#pitch');
     const shown = await page.evaluate(ids => ids.map(id => {
-      // Its centre is on the pitch (the chasers 3 m behind halfway sit right on the edge of the view).
+      // Its whole disc is on the pitch (the chasers 3 m behind halfway too).
       const r = document.querySelector(`#players-layer [data-id="${id}"] .body`).getBoundingClientRect();
       const p = document.getElementById('pitch').getBoundingClientRect();
-      const cx = r.left + r.width / 2;
-      return cx >= p.left - 1 && cx <= p.right + 1;
+      return r.left >= p.left - 1 && r.right <= p.right + 1;
     }), near50);
     check(`${view}: the view runs from ${lo} to ${hi}`, (await page.$eval('#pitch', p => p.getAttribute('viewBox'))) === `${lo} 0 ${hi - lo} 70`);
-    check(`${view}: the kick-off players on or near halfway are on the pitch, not edge arrows`, near50.length >= 10 && near50.every(id => !arrows.includes(id)) && shown.every(Boolean), JSON.stringify({ near50, arrows, shown }));
+    check(`${view}: the kick-off players on or near halfway are whole on the pitch, not edge arrows`, near50.length >= 10 && near50.every(id => !arrows.includes(id)) && shown.every(Boolean), JSON.stringify({ near50, arrows, shown }));
     check(`${view}: players further off still get an arrow`, arrows.length > 0 && arrows.every(id => { const p = s.phases[0].positions[id]; return p.x < lo || p.x > hi; }), arrows.join());
     check(`${view}: the pitch is as large as fits`, box.w > pitch.w * 0.4, JSON.stringify(box));
   }
