@@ -2,9 +2,8 @@
 // phase made with jsPDF (vendor/jspdf.umd.min.js, loaded on first use). All start from a copy of the pitch
 // SVG as currently drawn; the app redraws the phase with nothing selected and no ghost before copying.
 
-import { svgEl } from './pitch.js';
+import { svgEl, NS } from './pitch.js';
 
-const NS = 'http://www.w3.org/2000/svg';
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 export const PX_PER_MM = 96 / 25.4;
 
@@ -48,6 +47,10 @@ function logoBox(logo, width) {
   return { w, h };
 }
 const logoImage = (logo, attrs, parent) => svgEl('image', { href: logo.href, preserveAspectRatio: 'xMidYMid meet', class: 'export-logo', ...attrs }, parent);
+// A line of text in `out`, its top at y.
+function text(out, str, x, y, px, attrs = {}) {
+  svgEl('text', { x, y, 'font-size': px, 'font-family': FONT, fill: '#1d1d1d', 'dominant-baseline': 'hanging', ...attrs }, out).textContent = str;
+}
 
 // Copy of the pitch as a standalone SVG of width x height (CSS px), drawn `scale` times larger.
 // legend: { items: [[type, label]], sample: type -> <svg> } adds the route key in a white strip under the
@@ -106,16 +109,7 @@ const CAPTION = { titlePx: 0.03, labelPx: 0.022, pad: 0.016, notePx: 0.04, lineH
 // for as many lines as the longest of `notes` needs (none if no phase has a note). pictureH: the picture's
 // height at `width`. logo: { href, w, h } or null.
 export function captionLayout({ width, pictureH, notes, logo = null }) {
-  const pad = Math.round(width * CAPTION.pad);
-  const titlePx = Math.round(width * CAPTION.titlePx);
-  const labelPx = Math.round(width * CAPTION.labelPx);
-  const headerH = Math.round(2 * pad + titlePx * 1.2 + labelPx * 1.3);
-  let mark = null;
-  if (logo) {
-    const h = headerH - 2 * pad;
-    const w = Math.min(width * CAPTION.logoMaxW, h * logo.w / logo.h);
-    mark = { w, h: w * logo.h / logo.w };
-  }
+  const { pad, titlePx, labelPx, headerH, mark } = headerLayout(width, CAPTION, logo);
   const textW = width - 2 * pad;
   const size = lines => {
     const height = Math.ceil((headerH + pictureH + (lines ? 2 * pad : 0)) / (1 - lines * CAPTION.lineH * CAPTION.notePx));
@@ -130,23 +124,44 @@ export function captionLayout({ width, pictureH, notes, logo = null }) {
 
 // One frame: `picture` (from pictureSvg, layout.width wide) framed as captionLayout() says.
 export function captionedSvg(picture, layout, { title, label, note, logo = null }) {
-  const { width, height, pad, titlePx, labelPx, headerH, mark, textW, lines, notePx } = layout;
+  const { headerH, pad, textW, lines, notePx } = layout;
+  const out = headedSvg(picture, layout, { title, label, logo });
+  const top = headerH + Number(picture.getAttribute('height')) + pad;
+  wrapLines(note, textW, `400 ${notePx}px ${FONT}`, lines).forEach((line, i) => {
+    text(out, line, pad, top + i * notePx * CAPTION.lineH, notePx, { class: 'export-note' });
+  });
+  return out;
+}
+
+// An animation frame's header (captionLayout, focusLayout): its padding, text sizes, height, and the logo's
+// size beside the text (mark, null without a logo). Sizes in `sizes` are shares of the frame's width.
+function headerLayout(width, sizes, logo) {
+  const pad = Math.round(width * sizes.pad);
+  const titlePx = Math.round(width * sizes.titlePx);
+  const labelPx = Math.round(width * sizes.labelPx);
+  const headerH = Math.round(2 * pad + titlePx * 1.2 + labelPx * 1.3);
+  let mark = null;
+  if (logo) {
+    const h = headerH - 2 * pad;
+    const w = Math.min(width * sizes.logoMaxW, h * logo.w / logo.h);
+    mark = { w, h: w * logo.h / logo.w };
+  }
+  return { pad, titlePx, labelPx, headerH, mark };
+}
+
+// A white frame layout.width x layout.height with the header (the title in bold, the label under it, the
+// logo on the right) and `picture` under it.
+function headedSvg(picture, layout, { title, label, logo }) {
+  const { width, height, pad, titlePx, labelPx, headerH, mark, textW } = layout;
   const out = svgEl('svg', { xmlns: NS, width, height, viewBox: `0 0 ${width} ${height}` });
   svgEl('rect', { width, height, fill: '#fff' }, out);
-  const text = (str, y, px, attrs) => {
-    svgEl('text', { x: pad, y, 'font-size': px, 'font-family': FONT, fill: '#1d1d1d', 'dominant-baseline': 'hanging', ...attrs }, out).textContent = str;
-  };
   const headW = textW - (mark ? mark.w + pad : 0);
-  text(wrapLines(title, headW, `700 ${titlePx}px ${FONT}`, 1)[0] ?? '', pad, titlePx, { 'font-weight': 700, class: 'export-title' });
-  text(label, pad + titlePx * 1.2, labelPx, { fill: '#444', 'font-weight': 600, class: 'export-caption' });
+  text(out, wrapLines(title, headW, `700 ${titlePx}px ${FONT}`, 1)[0] ?? '', pad, pad, titlePx, { 'font-weight': 700, class: 'export-title' });
+  text(out, label, pad, pad + titlePx * 1.2, labelPx, { fill: '#444', 'font-weight': 600, class: 'export-caption' });
   if (mark) logoImage(logo, { x: width - pad - mark.w, y: (headerH - mark.h) / 2, width: mark.w, height: mark.h }, out);
   picture.setAttribute('x', 0);
   picture.setAttribute('y', headerH);
   out.appendChild(picture);
-  const top = headerH + Number(picture.getAttribute('height')) + pad;
-  wrapLines(note, textW, `400 ${notePx}px ${FONT}`, lines).forEach((line, i) => {
-    text(line, top + i * notePx * CAPTION.lineH, notePx, { class: 'export-note' });
-  });
   return out;
 }
 
@@ -157,16 +172,7 @@ export function captionedSvg(picture, layout, { title, label, note, logo = null 
 const FOCUS = { titlePx: 0.045, labelPx: 0.032, pad: 0.03, jobLabelPx: 0.028, jobPx: 0.058, jobMinPx: 0.04, lineH: 1.2, jobLines: 2, logoMaxW: 0.22, cuePx: 0.06 };
 
 export function focusLayout({ width, height, logo = null }) {
-  const pad = Math.round(width * FOCUS.pad);
-  const titlePx = Math.round(width * FOCUS.titlePx);
-  const labelPx = Math.round(width * FOCUS.labelPx);
-  const headerH = Math.round(2 * pad + titlePx * 1.2 + labelPx * 1.3);
-  let mark = null;
-  if (logo) {
-    const h = headerH - 2 * pad;
-    const w = Math.min(width * FOCUS.logoMaxW, h * logo.w / logo.h);
-    mark = { w, h: w * logo.h / logo.w };
-  }
+  const { pad, titlePx, labelPx, headerH, mark } = headerLayout(width, FOCUS, logo);
   const jobLabelPx = Math.round(width * FOCUS.jobLabelPx);
   const jobPx = Math.round(width * FOCUS.jobPx);
   const jobH = Math.round(2 * pad + jobLabelPx * 1.5 + FOCUS.jobLines * jobPx * FOCUS.lineH);
@@ -197,19 +203,8 @@ export function cueBubbleSize(lines, layout) {
 // One frame: `picture` (from pictureSvg, layout.width x layout.pitchH, already framed on the player) under
 // the header, the job under it, and bubble: { lines, left, top, scale } (top left in the pitch's px) or null.
 export function focusFrameSvg(picture, layout, { title, label, job, logo = null, bubble = null }) {
-  const { width, height, pad, titlePx, labelPx, headerH, mark, jobLabelPx, pitchH, textW } = layout;
-  const out = svgEl('svg', { xmlns: NS, width, height, viewBox: `0 0 ${width} ${height}` });
-  svgEl('rect', { width, height, fill: '#fff' }, out);
-  const text = (str, x, y, px, attrs) => {
-    svgEl('text', { x, y, 'font-size': px, 'font-family': FONT, fill: '#1d1d1d', 'dominant-baseline': 'hanging', ...attrs }, out).textContent = str;
-  };
-  const headW = textW - (mark ? mark.w + pad : 0);
-  text(wrapLines(title, headW, `700 ${titlePx}px ${FONT}`, 1)[0] ?? '', pad, pad, titlePx, { 'font-weight': 700, class: 'export-title' });
-  text(label, pad, pad + titlePx * 1.2, labelPx, { fill: '#444', 'font-weight': 600, class: 'export-caption' });
-  if (mark) logoImage(logo, { x: width - pad - mark.w, y: (headerH - mark.h) / 2, width: mark.w, height: mark.h }, out);
-  picture.setAttribute('x', 0);
-  picture.setAttribute('y', headerH);
-  out.appendChild(picture);
+  const { pad, headerH, jobLabelPx, pitchH } = layout;
+  const out = headedSvg(picture, layout, { title, label, logo });
   if (bubble) {
     const size = cueBubbleSize(bubble.lines, layout);
     const cx = bubble.left + size.w / 2;
@@ -225,9 +220,9 @@ export function focusFrameSvg(picture, layout, { title, label, job, logo = null,
     });
   }
   const top = headerH + pitchH + pad;
-  text('YOUR JOB', pad, top, jobLabelPx, { fill: '#555', 'font-weight': 700, 'letter-spacing': jobLabelPx * 0.08 });
+  text(out, 'YOUR JOB', pad, top, jobLabelPx, { fill: '#555', 'font-weight': 700, 'letter-spacing': jobLabelPx * 0.08 });
   const { px, lines } = fitJob(job, layout);
-  lines.forEach((line, i) => text(line, pad, top + jobLabelPx * 1.5 + i * px * FOCUS.lineH, px, { 'font-weight': 800, class: 'export-job' }));
+  lines.forEach((line, i) => text(out, line, pad, top + jobLabelPx * 1.5 + i * px * FOCUS.lineH, px, { 'font-weight': 800, class: 'export-job' }));
   return out;
 }
 
@@ -312,23 +307,20 @@ export function allPhasesSvg({ title, tiles, tileW, tileH, cols, scale = 2, css 
   const out = svgEl('svg', { xmlns: NS, width: Math.round(width * s), height: Math.round(height * s), viewBox: `0 0 ${width} ${height}` });
   if (css) svgEl('style', {}, out).textContent = css;
   svgEl('rect', { width, height, fill: '#fff' }, out);
-  const text = (str, x, y, px, attrs = {}) => {
-    svgEl('text', { x, y, 'font-size': px, 'font-family': FONT, fill: '#1d1d1d', 'dominant-baseline': 'hanging', ...attrs }, out).textContent = str;
-  };
   const titleLine = wrapLines(title, width - 2 * margin - (mark ? mark.w + gap : 0), `700 ${titlePx}px ${FONT}`, 1)[0];
-  text(titleLine, margin, margin, titlePx, { 'font-weight': 700, class: 'sheet-title' });
+  text(out, titleLine, margin, margin, titlePx, { 'font-weight': 700, class: 'sheet-title' });
   if (mark) logoImage(logo, { x: width - margin - mark.w, y: margin, width: mark.w, height: mark.h }, out);
 
   tiles.forEach(({ picture, label, note }, i) => {
     const x = margin + (i % cols) * (tileW + gap);
     const y = margin + titleH + Math.floor(i / cols) * (tileFullH + gap);
-    text(label, x, y, labelPx, { 'font-weight': 700, class: 'tile-label' });
+    text(out, label, x, y, labelPx, { 'font-weight': 700, class: 'tile-label' });
     picture.setAttribute('x', x);
     picture.setAttribute('y', y + labelH);
     picture.setAttribute('class', 'tile');
     out.appendChild(picture);
     wrapLines(note, tileW, `400 ${notePx}px ${FONT}`, noteLines).forEach((line, j) => {
-      text(line, x, y + labelH + tileH + 6 + j * noteLineH, notePx, { fill: '#444', class: 'tile-note' });
+      text(out, line, x, y + labelH + tileH + 6 + j * noteLineH, notePx, { fill: '#444', class: 'tile-note' });
     });
   });
 
@@ -368,19 +360,29 @@ export function pageCss() {
   return rules.join('\n');
 }
 
-// SVG element -> PNG Blob, at the SVG's own width and height attributes.
-export async function svgToPng(picture) {
-  const width = Number(picture.getAttribute('width'));
-  const height = Number(picture.getAttribute('height'));
+// Loads an SVG element as an <img> (rejecting with `error` if it can't be drawn), runs draw(img) and
+// returns what it returns.
+export async function withSvgImage(picture, error, draw) {
   const xml = new XMLSerializer().serializeToString(picture);
   const url = URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml' }));
   try {
     const img = new Image();
     await new Promise((resolve, reject) => {
       img.onload = resolve;
-      img.onerror = () => reject(new Error("The picture couldn't be drawn."));
+      img.onerror = () => reject(new Error(error));
       img.src = url;
     });
+    return await draw(img);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+// SVG element -> PNG Blob, at the SVG's own width and height attributes.
+export function svgToPng(picture) {
+  const width = Number(picture.getAttribute('width'));
+  const height = Number(picture.getAttribute('height'));
+  return withSvgImage(picture, "The picture couldn't be drawn.", async img => {
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
@@ -388,9 +390,7 @@ export async function svgToPng(picture) {
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
     if (!blob) throw new Error("The picture couldn't be saved.");
     return blob;
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  });
 }
 
 // Pitch size on a PDF page, in mm, for a view of aspect ratio `ar` (width / height): the full width

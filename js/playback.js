@@ -5,7 +5,7 @@
 // on from it. Editing is locked while playing (the app checks `playing`).
 
 import { buildSchedule, frameAt } from './animate.js';
-import { svgEl } from './pitch.js';
+import { svgEl, drawBall } from './pitch.js';
 
 // Longest step between two frames, so a tab that was hidden for a while doesn't jump through the play.
 const MAX_FRAME_MS = 100;
@@ -47,7 +47,7 @@ function paint(els, layers, sched, t, up) {
   if (f.extraBall && !els.extraBall) {
     // A phase with a pass but no ball: one is drawn for the animation only.
     els.extraBall = svgEl('g', { class: 'marker ball anim-ball', 'pointer-events': 'none' }, layers.balls);
-    svgEl('ellipse', { rx: 0.7, ry: 0.45, class: 'ball', transform: 'rotate(-25)' }, els.extraBall);
+    drawBall(els.extraBall);
   }
   if (els.extraBall) {
     els.extraBall.style.display = f.extraBall ? '' : 'none';

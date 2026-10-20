@@ -5,6 +5,7 @@
 // page stays responsive, and stops as soon as `cancelled()` says so.
 
 import { buildSchedule } from './animate.js';
+import { withSvgImage } from './export.js';
 
 export const GIF_FPS = 12;
 export const VIDEO_FPS = 30;
@@ -61,21 +62,11 @@ async function drawPicture(ctx, picture) {
     ctx.canvas.height = Math.ceil(h / 2) * 2;
     ctx.canvas.dataset.sized = '1';
   }
-  const xml = new XMLSerializer().serializeToString(picture);
-  const url = URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml' }));
-  try {
-    const img = new Image();
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = () => reject(new Error("The animation couldn't be drawn."));
-      img.src = url;
-    });
+  await withSvgImage(picture, "The animation couldn't be drawn.", img => {
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     ctx.drawImage(img, 0, 0, w, h);
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  });
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));

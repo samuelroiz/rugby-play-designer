@@ -3,13 +3,13 @@
 
 import { round1 } from './model.js';
 
-const NS = 'http://www.w3.org/2000/svg';
+export const NS = 'http://www.w3.org/2000/svg';
 
 export const BOUNDS = { minX: -10, maxX: 110, minY: 0, maxY: 70 };
 export const PLAYER_R = 1.2; // radius of a player disc
 
 // Look of each route type. Widths and dashes are in metres. No reds or blues: those are the team colours.
-// Every route also gets a thin dark casing (see routePaths in app.js) so the light colours read on grass and on the white lines.
+// Every route also gets a thin dark casing (see routePaths) so the light colours read on grass and on the white lines.
 export const ROUTE_TYPES = {
   run:   { label: 'Run',   color: '#ffe14d', width: 0.3 },
   pass:  { label: 'Pass',  color: '#ffffff', width: 0.25, dash: '1 0.7' },
@@ -45,6 +45,51 @@ export function svgEl(tag, attrs = {}, parent) {
   return el;
 }
 
+// The SVG attributes of a route line of `type`, with its arrowhead (see buildArrowMarkers).
+export function strokeAttrs(type) {
+  const st = ROUTE_TYPES[type] ?? ROUTE_TYPES.run;
+  return {
+    fill: 'none',
+    stroke: st.color,
+    'stroke-width': st.width,
+    'stroke-dasharray': st.dash ?? 'none',
+    'stroke-linecap': st.cap ?? 'butt',
+    'marker-end': `url(#arrow-${ROUTE_TYPES[type] ? type : 'run'})`,
+  };
+}
+
+// Dark casing underneath, then the coloured line. Used on the pitch, in the viewer and for the samples.
+export function routePaths(parent, tag, geometry, type) {
+  const attrs = strokeAttrs(type);
+  svgEl(tag, { ...geometry, ...attrs, class: 'route-casing', 'stroke-width': attrs['stroke-width'] + 0.16, 'marker-end': null }, parent);
+  svgEl(tag, { ...geometry, ...attrs, 'pointer-events': 'none' }, parent);
+}
+
+// An arrowhead marker per route type, in its colour, for strokeAttrs' marker-end.
+export function buildArrowMarkers(defs) {
+  for (const [type, st] of Object.entries(ROUTE_TYPES)) {
+    const size = Math.max(1.4, st.width * 4);
+    const marker = svgEl('marker', {
+      id: `arrow-${type}`,
+      viewBox: '0 0 10 10',
+      refX: 7,
+      refY: 5,
+      markerWidth: size,
+      markerHeight: size,
+      markerUnits: 'userSpaceOnUse',
+      orient: 'auto',
+    }, defs);
+    svgEl('path', { d: 'M0 0L10 5L0 10z', fill: st.color, class: 'arrowhead' }, marker);
+  }
+}
+
+// The ball, and a lineout's mark (two short lines), drawn at the origin of `g`.
+export const drawBall = g => svgEl('ellipse', { rx: 0.7, ry: 0.45, class: 'ball', transform: 'rotate(-25)' }, g);
+export function drawLineoutMark(g) {
+  svgEl('line', { x1: -0.7, y1: -2, x2: -0.7, y2: 2, class: 'outline' }, g);
+  svgEl('line', { x1: 0.7, y1: -2, x2: 0.7, y2: 2, class: 'outline' }, g);
+}
+
 // Rotation that keeps text upright inside the (possibly turned) pitch.
 export const uprightTurn = orientation => (orientation === 'vertical' ? ' rotate(90)' : '');
 
@@ -52,7 +97,7 @@ export const uprightTurn = orientation => (orientation === 'vertical' ? ' rotate
 // (rotate(-90) on the world group), so pitch (x, y) is drawn at (y, -x): x=110 at the top, y=0 on the left.
 // --ar is the view's width/height; the CSS sizes the SVG to it so no extra field shows at any screen shape.
 export function setView(svg, world, view, orientation) {
-  const { minX, maxX } = VIEWS[view] ?? VIEWS.full;
+  const { minX, maxX } = viewRange(view);
   setBox(svg, world, { minX, maxX, minY: BOUNDS.minY, maxY: BOUNDS.maxY }, orientation);
 }
 
@@ -94,7 +139,8 @@ export function fitBox(points, margin = 8, ar = (BOUNDS.maxX - BOUNDS.minX) / (B
 }
 
 export function viewCentre(view) {
-  return view === 'half' ? { x: 77.5, y: 35 } : view === 'half-own' ? { x: 22.5, y: 35 } : { x: 50, y: 35 };
+  const { minX, maxX } = viewRange(view);
+  return { x: (minX + maxX) / 2, y: 35 };
 }
 
 // Where a new player number n starts: each team lined up across the pitch either side of the view centre.

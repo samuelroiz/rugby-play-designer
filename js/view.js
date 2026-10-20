@@ -9,11 +9,11 @@
 // At the end it zooms out and replays the whole play once with everyone at full strength and the phase notes,
 // then offers Watch again, Another position and Share. "Watch the whole play" goes straight to that view.
 
-import { drawPitch, svgEl, fitBox, uprightTurn, ROUTE_TYPES, PLAYER_R } from './pitch.js';
+import { drawPitch, svgEl, fitBox, uprightTurn, routePaths, buildArrowMarkers, drawBall, drawLineoutMark, PLAYER_R } from './pitch.js';
 import { buildSchedule, frameAt, flightEnds, shownRoute } from './animate.js';
 import { playedRoutes, curveControl, playPoints, BALL_ROUTES, ourTeam, teamPlayers, positionName, TEAM_NAMES } from './model.js';
 import { decodeShare, hashData } from './share.js';
-import { DEFAULT_LOGO_URL } from './logo.js';
+import { logoSrc } from './logo.js';
 import { shaped, screenBox, followTarget, glide, strength, ballIn } from './follow.js';
 import { phaseCues, firedBetween, cueSpeed, ageBubbles, placeBubble } from './cues.js';
 import { jobLine } from './jobs.js';
@@ -78,7 +78,8 @@ async function load() {
   listTeam = ourTeam(play);
   buildStart();
   drawPitch(layers.pitch, { view: 'full', orientation: 'vertical', distances: true, grid: false, direction: false });
-  buildArrows();
+  $('defs').replaceChildren();
+  buildArrowMarkers($('defs'));
   buildPlayers();
   show('start');
 }
@@ -112,7 +113,7 @@ function buildStart() {
   $('start-meta').textContent = `${n} phase${n === 1 ? '' : 's'}`;
   $('start-team').hidden = !team;
   $('start-team-name').textContent = team?.name ?? '';
-  const logo = team?.logo === 'default' ? DEFAULT_LOGO_URL : team?.logo;
+  const logo = team && logoSrc(team);
   $('start-logo').hidden = !logo;
   if (logo) $('start-logo').src = logo;
   // Attack / Defense, when both teams have players.
@@ -127,7 +128,7 @@ function buildStart() {
   const box = $('positions');
   box.replaceChildren();
   box.setAttribute('aria-label', `${TEAM_NAMES[listTeam]} positions`);
-  const last = remembered();
+  const picked = remembered();
   for (const p of teamPlayers(play, listTeam)) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -135,7 +136,7 @@ function buildStart() {
     b.className = p.team;
     b.textContent = p.label;
     b.setAttribute('aria-label', `I play ${positionName(p)}`);
-    b.setAttribute('aria-pressed', String(!!last && last.team === p.team && last.number === p.label));
+    b.setAttribute('aria-pressed', String(!!picked && picked.team === p.team && picked.number === p.label));
     b.addEventListener('click', () => {
       remember(p);
       for (const other of box.children) other.setAttribute('aria-pressed', String(other === b));
@@ -152,16 +153,6 @@ function buildStart() {
 }
 
 // --- Drawing ---
-
-function buildArrows() {
-  const defs = $('defs');
-  defs.replaceChildren();
-  for (const [type, st] of Object.entries(ROUTE_TYPES)) {
-    const size = Math.max(1.4, st.width * 4);
-    const marker = svgEl('marker', { id: `arrow-${type}`, viewBox: '0 0 10 10', refX: 7, refY: 5, markerWidth: size, markerHeight: size, markerUnits: 'userSpaceOnUse', orient: 'auto' }, defs);
-    svgEl('path', { d: 'M0 0L10 5L0 10z', fill: st.color, class: 'arrowhead' }, marker);
-  }
-}
 
 // The discs, and their numbers in a layer above every route line (a line can cross a disc, never its number).
 function buildPlayers() {
@@ -188,15 +179,12 @@ function buildPhase(i) {
   els.extraBall = null;
   for (const o of ph.objects) {
     const g = svgEl('g', { class: `marker ${o.type}`, 'data-id': o.id }, o.type === 'ball' ? layers.balls : layers.objects);
-    if (o.type === 'ball') svgEl('ellipse', { rx: 0.7, ry: 0.45, class: 'ball', transform: 'rotate(-25)' }, g);
+    if (o.type === 'ball') drawBall(g);
     else if (o.type === 'ruck') {
       svgEl('circle', { r: 2, class: 'outline' }, g);
       svgEl('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': 1.3, transform: UP.trim() }, g).textContent = 'R';
     } else if (o.type === 'scrum') svgEl('line', { x1: 0, y1: -3.8, x2: 0, y2: 3.8, class: 'scrum-mark' }, g);
-    else if (o.type === 'lineout') {
-      svgEl('line', { x1: -0.7, y1: -2, x2: -0.7, y2: 2, class: 'outline' }, g);
-      svgEl('line', { x1: 0.7, y1: -2, x2: 0.7, y2: 2, class: 'outline' }, g);
-    }
+    else if (o.type === 'lineout') drawLineoutMark(g);
     els.objects.set(o.id, g);
   }
   els.routes = [];
@@ -204,15 +192,12 @@ function buildPhase(i) {
   const ends = flightEnds(play, i);
   for (const route of playedRoutes(ph.routes, 'A')) {
     const r = shownRoute(route, ends.get(route.id));
-    const st = ROUTE_TYPES[r.type] ?? ROUTE_TYPES.run;
     const [x1, y1] = r.points[0];
     const [x2, y2] = r.points[r.points.length - 1];
     const { control: c } = curveControl(r);
     const d = `M${x1} ${y1} Q${c.x} ${c.y} ${x2} ${y2}`;
     const g = svgEl('g', { class: 'route', 'data-from': r.from ?? '' }, BALL_ROUTES.has(r.type) ? layers.ballRoutes : layers.routes);
-    const line = { d, fill: 'none', stroke: st.color, 'stroke-width': st.width, 'stroke-dasharray': st.dash ?? 'none', 'stroke-linecap': st.cap ?? 'butt' };
-    svgEl('path', { ...line, class: 'route-casing', 'stroke-width': st.width + 0.16 }, g);
-    svgEl('path', { ...line, 'marker-end': `url(#arrow-${ROUTE_TYPES[r.type] ? r.type : 'run'})` }, g);
+    routePaths(g, 'path', { d }, r.type);
     els.routes.push({ g, from: r.from });
   }
 }
@@ -302,7 +287,7 @@ function paint(dt) {
   }
   if (f.extraBall && !els.extraBall) {
     els.extraBall = svgEl('g', { class: 'marker ball' }, layers.balls);
-    svgEl('ellipse', { rx: 0.7, ry: 0.45, class: 'ball', transform: 'rotate(-25)' }, els.extraBall);
+    drawBall(els.extraBall);
   }
   if (els.extraBall) {
     els.extraBall.style.display = f.extraBall ? '' : 'none';

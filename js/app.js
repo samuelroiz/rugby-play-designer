@@ -5,7 +5,7 @@
 
 import {
   drawPitch, setView, viewCentre, viewRange, isHalf, startSpot, directionBox, placeDirection, drawDirection, svgEl, uprightTurn,
-  PLAYER_R, BOUNDS, ROUTE_TYPES,
+  routePaths, buildArrowMarkers, drawBall, drawLineoutMark, PLAYER_R, BOUNDS, ROUTE_TYPES,
 } from './pitch.js';
 import { initEditor, routeGeometry, isAttached, drawingFrom, continuation } from './editor.js';
 import { placeScrum, moveScrum, placeLineout, moveLineout } from './setpiece.js';
@@ -55,8 +55,6 @@ const AUTOSAVE_MS = 400;
 const HANDLE_HIT_PX = 22;
 const LINE_HIT_PX = 14;
 
-// Routes the ball travels along (BALL_ROUTES) are drawn above the players, so a pass over a lineout reads;
-// the others stay under them.
 // Option label text, in metres: at least as large as a player's number (1.2).
 const OPTION_LABEL_SIZE = 1.25;
 
@@ -268,12 +266,15 @@ function switchTo(id) {
   render();
 }
 
+// A new play nobody has touched: nothing on it and still "Untitled play". Not worth keeping in the library.
+const isBlank = play => isEmptyPlay(play) && play.name === 'Untitled play';
+
 // New play, a template, the example and Load file: each becomes a new library entry and opens, so nothing is
 // ever replaced. The open play is saved first and stays in the library; if it's empty (nothing on it at all),
 // it's dropped rather than left behind as an empty "Untitled play".
 function createAndOpen(play) {
   flushAutosave();
-  const empty = currentId && isEmptyPlay(state) && state.name === 'Untitled play';
+  const empty = currentId && isBlank(state);
   if (empty) library.remove(currentId).catch(() => {});
   const rec = newRecord({ ...play, orientation: state.orientation });
   library.save(rec).catch(storageFailed);
@@ -289,7 +290,7 @@ function createAndOpen(play) {
 function replaceOpenPlay(play) {
   flushAutosave();
   const old = library.get(currentId);
-  if (old && !(isEmptyPlay(old.play) && old.play.name === 'Untitled play')) {
+  if (old && !isBlank(old.play)) {
     Promise.all([library.save({ ...newRecord(old.play, old.phase), created: old.created, deletedAt: Date.now() }), library.prune()])
       .catch(storageFailed);
   }
@@ -310,25 +311,6 @@ function showToast(message, kind = 'error') {
   toast.hidden = false;
   clearTimeout(showToast.timer);
   showToast.timer = setTimeout(() => { toast.hidden = true; fitHint(); }, 5000);
-}
-
-function strokeAttrs(type) {
-  const st = ROUTE_TYPES[type] ?? ROUTE_TYPES.run;
-  return {
-    fill: 'none',
-    stroke: st.color,
-    'stroke-width': st.width,
-    'stroke-dasharray': st.dash ?? 'none',
-    'stroke-linecap': st.cap ?? 'butt',
-    'marker-end': `url(#arrow-${ROUTE_TYPES[type] ? type : 'run'})`,
-  };
-}
-
-// Dark casing underneath, then the coloured line. Used on the pitch and for the samples.
-function routePaths(parent, tag, geometry, type) {
-  const attrs = strokeAttrs(type);
-  svgEl(tag, { ...geometry, ...attrs, class: 'route-casing', 'stroke-width': attrs['stroke-width'] + 0.16, 'marker-end': null }, parent);
-  svgEl(tag, { ...geometry, ...attrs, 'pointer-events': 'none' }, parent);
 }
 
 // --- Rendering ---
@@ -861,8 +843,6 @@ function groupActive(o) {
   return !!sel && ((sel.kind === 'object' && sel.id === o.id) || (sel.kind === 'player' && o.pack.includes(sel.id)));
 }
 
-// Markers go under the routes and players; balls go in their own layer above the players, so a player
-// holding the ball never hides it.
 // The drag block of a scrum or lineout, at (x, y) from its mark. Pressing it drags the whole set piece.
 function groupTab(g, x, y, letter, selected, name) {
   const tab = svgEl('g', { transform: `translate(${x} ${y})`, class: 'group-tab', 'aria-label': name }, g);
@@ -873,6 +853,8 @@ function groupTab(g, x, y, letter, selected, name) {
   label(tab, letter);
 }
 
+// Markers go under the routes and players; balls go in their own layer above the players, so a player
+// holding the ball never hides it.
 function renderObjects() {
   layers.objects.replaceChildren();
   layers.balls.replaceChildren();
@@ -896,8 +878,7 @@ function renderObjects() {
       // "L" block beside the defense's line, into the field, to drag the whole lineout by.
       svgEl('circle', { r: 2.4, class: 'hit' }, g);
       if (selected) svgEl('circle', { r: 2.4, class: 'select-ring' }, g);
-      svgEl('line', { x1: -0.7, y1: -2, x2: -0.7, y2: 2, class: 'outline' }, g);
-      svgEl('line', { x1: 0.7, y1: -2, x2: 0.7, y2: 2, class: 'outline' }, g);
+      drawLineoutMark(g);
       if (groupActive(o)) groupTab(g, 5, (o.y <= 35 ? 1 : -1) * 5, 'L', selected, 'Drag to move the lineout');
       continue;
     }
@@ -907,7 +888,7 @@ function renderObjects() {
     if (selected) svgEl('circle', { r: ringR, class: 'select-ring' }, g);
 
     if (o.type === 'ball') {
-      svgEl('ellipse', { rx: 0.7, ry: 0.45, class: 'ball', transform: 'rotate(-25)' }, g);
+      drawBall(g);
     } else if (o.type === 'ruck') {
       svgEl('circle', { r: 2, class: 'outline' }, g);
       label(g, 'R');
@@ -916,8 +897,7 @@ function renderObjects() {
       svgEl('rect', { x: -2.5, y: -1.5, width: 5, height: 3, class: 'outline' }, g);
       label(g, 'S');
     } else if (o.type === 'lineout') {
-      svgEl('line', { x1: -0.7, y1: -2, x2: -0.7, y2: 2, class: 'outline' }, g);
-      svgEl('line', { x1: 0.7, y1: -2, x2: 0.7, y2: 2, class: 'outline' }, g);
+      drawLineoutMark(g);
       label(g, 'L', 0, -2.9);
     }
   }
@@ -1262,14 +1242,14 @@ function initCues() {
 
 // Free numbers (1-15) for a team, lowest first.
 function freeNumbers(team) {
-  const prefix = team === 'attack' ? 'a' : 'd';
-  return Array.from({ length: MAX_PER_TEAM }, (_, i) => i + 1).filter(n => !state.players.some(p => p.id === prefix + n));
+  return Array.from({ length: MAX_PER_TEAM }, (_, i) => i + 1).filter(n => !state.players.some(p => p.id === playerId(team, n)));
 }
+// Player n of `team` is always "a<n>" or "d<n>".
+const playerId = (team, n) => (team === 'attack' ? 'a' : 'd') + n;
 
 // Adds player n of `team` at `at` (where the user clicked), or at their usual spot.
 function addPlayer(team, n, at = null) {
-  const prefix = team === 'attack' ? 'a' : 'd';
-  const id = prefix + n;
+  const id = playerId(team, n);
   if (!freeNumbers(team).includes(n)) return;
   const spot = at ? { x: round1(at.x), y: round1(at.y) } : defaultSpot(team, n);
   state.players.push({ id, team, label: String(n) });
@@ -1503,6 +1483,14 @@ function editOrder(id) {
   });
 }
 
+// A click outside the box (on its backdrop) closes it.
+function closeOnClickOutside(dialog) {
+  dialog.addEventListener('click', e => {
+    const r = dialog.getBoundingClientRect();
+    if (e.target === dialog && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) dialog.close();
+  });
+}
+
 // In-app confirm, so the page never opens a native dialog. Resolves true for OK.
 function askConfirm(message, ok = 'OK') {
   const dialog = $('confirm-dialog');
@@ -1553,11 +1541,7 @@ function initNumberPicker() {
     dialog.close();
     startPlacing({ kind: 'player', team: dialog.dataset.team, n: Number(b.dataset.n) });
   });
-  // A click outside the box closes it.
-  dialog.addEventListener('click', e => {
-    const r = dialog.getBoundingClientRect();
-    if (e.target === dialog && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) dialog.close();
-  });
+  closeOnClickOutside(dialog);
 }
 
 // "Option A: Pass to 12", "Option B: Kick", "Option C: Pass" (a pass with a loose end).
@@ -1722,7 +1706,7 @@ function phaseAction(action, index) {
   }
 }
 
-async function fileAction(action) {
+function fileAction(action) {
   $('file-menu').open = false;
   if (busy()) return;
   if (action === 'about') {
@@ -1860,6 +1844,13 @@ function initGuideLinks() {
 // --- Export ---
 
 const legendItems = () => Object.entries(ROUTE_TYPES).map(([type, st]) => [type, st.label]);
+// The pitch's shape as drawn now (its viewBox size), for sizing pictures of it.
+const viewBoxSize = () => {
+  const [, , w, h] = svg.getAttribute('viewBox').split(' ').map(Number);
+  return { w, h };
+};
+// The play's name on pictures and PDFs.
+const playTitle = play => play.name.trim() || 'Untitled play';
 
 // Every export works from a copy of the play taken when it starts, and editing is locked until the picture is
 // made, so nothing changed meanwhile (another tab's play, say) can end up half in it. make(play) returns
@@ -1933,7 +1924,7 @@ function savePng() {
 // name at the top, and one route key under the grid (if the Legend layer is on). Tiles are drawn as the
 // single PNG is, so there's no ghost and nothing selected.
 function saveAllPng() {
-  const [, , vbW, vbH] = svg.getAttribute('viewBox').split(' ').map(Number);
+  const { w: vbW, h: vbH } = viewBoxSize();
   return exportFile(async play => {
     const tileW = SHEET_TILE_W[play.orientation];
     const tileH = Math.round(tileW * vbH / vbW);
@@ -1945,7 +1936,7 @@ function saveAllPng() {
       note: ph.note.trim(),
     }));
     const sheet = allPhasesSvg({
-      title: play.name.trim() || 'Untitled play',
+      title: playTitle(play),
       tiles,
       tileW,
       tileH,
@@ -1964,13 +1955,13 @@ function saveAllPng() {
 // "Phase n of N" with the route key beside it, and the phase's note. Horizontal plays get landscape pages,
 // vertical ones portrait. jsPDF is only loaded the first time this runs.
 function savePdf() {
-  const [, , vbW, vbH] = svg.getAttribute('viewBox').split(' ').map(Number);
+  const { w: vbW, h: vbH } = viewBoxSize();
   if (!ui.exporting) showToast('Making the PDF…', 'ok');
   return exportFile(async play => {
     const orientation = play.orientation === 'vertical' ? 'portrait' : 'landscape';
     const n = play.phases.length;
     const css = pageCss();
-    const title = play.name.trim() || 'Untitled play';
+    const title = playTitle(play);
     const meta = [CATEGORY_LABELS[play.category] ?? play.category, play.tags.join(', ')].filter(Boolean).join(' · ');
     // The route key sits right of the phase line under the pitch, in as many columns as fit beside it.
     let size = pageFit(orientation, vbW / vbH);
@@ -2000,36 +1991,46 @@ function savePdf() {
 let animationJob = null; // { cancelled } while an animation is being made
 function saveAnimation({ format, speed, size, who = '' }) {
   if (who && state.players.some(p => p.id === who)) return savePositionAnimation({ format, speed, who });
-  const dialog = $('animation-dialog');
-  const [, , vbW, vbH] = svg.getAttribute('viewBox').split(' ').map(Number);
+  const { w: vbW, h: vbH } = viewBoxSize();
   const width = ANIMATION_SIZES[size] ?? ANIMATION_SIZES.medium;
   const height = Math.round(width * vbH / vbW);
+  return exportAnimation(format, async (play, cancelled) => {
+    const css = pageCss();
+    const logo = await exportLogo(teamLogo);
+    const title = playTitle(play);
+    const notes = play.phases.map(ph => ph.note.trim());
+    let layout = null;
+    const blob = await makeAnimation({
+      play, format, speed,
+      picture: ({ phase: i, sched, t }) => {
+        const picture = phasePicture(play, i, { width, height, scale: 1, css, at: { sched, t } });
+        layout ??= captionLayout({ width, pictureH: Number(picture.getAttribute('height')), notes, logo });
+        return captionedSvg(picture, layout, { title, label: `Phase ${i + 1} of ${play.phases.length}`, note: notes[i], logo });
+      },
+      progress: showAnimationProgress,
+      cancelled,
+    });
+    return { blob, name: play.name };
+  });
+}
+
+// Makes an animation, with its progress in the box, whose Cancel stops it. make(play, cancelled) makes it
+// from the copy of the play and returns { blob, name }: blob is null if it was cancelled, and the file is
+// called `name` with the format's extension.
+function exportAnimation(format, make) {
+  const dialog = $('animation-dialog');
   const job = { cancelled: false };
   animationJob = job;
   showAnimationProgress(0);
   return exportFile(async play => {
     try {
-      const css = pageCss();
-      const logo = await exportLogo(teamLogo);
-      const title = play.name.trim() || 'Untitled play';
-      const notes = play.phases.map(ph => ph.note.trim());
-      let layout = null;
-      const blob = await makeAnimation({
-        play, format, speed,
-        picture: ({ phase: i, sched, t }) => {
-          const picture = phasePicture(play, i, { width, height, scale: 1, css, at: { sched, t } });
-          layout ??= captionLayout({ width, pictureH: Number(picture.getAttribute('height')), notes, logo });
-          return captionedSvg(picture, layout, { title, label: `Phase ${i + 1} of ${play.phases.length}`, note: notes[i], logo });
-        },
-        progress: showAnimationProgress,
-        cancelled: () => job.cancelled,
-      });
+      const { blob, name } = await make(play, () => job.cancelled);
       if (!blob) {
         showToast('Animation cancelled', 'ok');
         return null;
       }
       const ext = format === 'gif' ? '.gif' : videoExtension(blob.type);
-      return new File([blob], safeFileName(play.name, ext), { type: blob.type });
+      return new File([blob], safeFileName(name, ext), { type: blob.type });
     } finally {
       animationJob = null;
       if (dialog.open) dialog.close();
@@ -2042,37 +2043,23 @@ function saveAnimation({ format, speed, size, who = '' }) {
 // while one is new), in a phone-shaped frame (POSITION_SIZES) with the header, their job for each phase at
 // the bottom (jobs.js) and the cue bubbles next to them. Named "<play name> - Attack 10.gif" (or video).
 function savePositionAnimation({ format, speed, who }) {
-  const dialog = $('animation-dialog');
   const { width, height } = POSITION_SIZES[format] ?? POSITION_SIZES.gif;
-  const job = { cancelled: false };
-  animationJob = job;
-  showAnimationProgress(0);
-  return exportFile(async live => {
-    try {
-      const play = { ...live, view: 'full', orientation: 'vertical' };
-      const css = pageCss();
-      const logo = await exportLogo(teamLogo);
-      const layout = focusLayout({ width, height, logo });
-      const player = play.players.find(p => p.id === who);
-      const title = play.name.trim() || 'Untitled play';
-      const jobs = play.phases.map((_, i) => jobLine(play, i, who));
-      const frames = focusFrames(play, who, { fps: format === 'gif' ? GIF_FPS : VIDEO_FPS, speed, aspect: width / layout.pitchH });
-      const blob = await makeAnimation({
-        play, format, speed, frames,
-        picture: frame => focusPicture(play, frame, { who, layout, css, logo, title, label: `Phase ${frame.phase + 1} of ${play.phases.length} · ${positionName(player)}`, job: jobs[frame.phase] }),
-        progress: showAnimationProgress,
-        cancelled: () => job.cancelled,
-      });
-      if (!blob) {
-        showToast('Animation cancelled', 'ok');
-        return null;
-      }
-      const ext = format === 'gif' ? '.gif' : videoExtension(blob.type);
-      return new File([blob], safeFileName(`${play.name} - ${positionName(player)}`, ext), { type: blob.type });
-    } finally {
-      animationJob = null;
-      if (dialog.open) dialog.close();
-    }
+  return exportAnimation(format, async (live, cancelled) => {
+    const play = { ...live, view: 'full', orientation: 'vertical' };
+    const css = pageCss();
+    const logo = await exportLogo(teamLogo);
+    const layout = focusLayout({ width, height, logo });
+    const player = play.players.find(p => p.id === who);
+    const title = playTitle(play);
+    const jobs = play.phases.map((_, i) => jobLine(play, i, who));
+    const frames = focusFrames(play, who, { fps: format === 'gif' ? GIF_FPS : VIDEO_FPS, speed, aspect: width / layout.pitchH });
+    const blob = await makeAnimation({
+      play, format, speed, frames,
+      picture: frame => focusPicture(play, frame, { who, layout, css, logo, title, label: `Phase ${frame.phase + 1} of ${play.phases.length} · ${positionName(player)}`, job: jobs[frame.phase] }),
+      progress: showAnimationProgress,
+      cancelled,
+    });
+    return { blob, name: `${play.name} - ${positionName(player)}` };
   });
 }
 
@@ -2288,23 +2275,6 @@ function redo() {
 
 // --- Setup ---
 
-function buildArrowMarkers(defs) {
-  for (const [type, st] of Object.entries(ROUTE_TYPES)) {
-    const size = Math.max(1.4, st.width * 4);
-    const marker = svgEl('marker', {
-      id: `arrow-${type}`,
-      viewBox: '0 0 10 10',
-      refX: 7,
-      refY: 5,
-      markerWidth: size,
-      markerHeight: size,
-      markerUnits: 'userSpaceOnUse',
-      orient: 'auto',
-    }, defs);
-    svgEl('path', { d: 'M0 0L10 5L0 10z', fill: st.color, class: 'arrowhead' }, marker);
-  }
-}
-
 // Small sample line for a route type (used on the buttons and in the legend).
 function routeSample(type) {
   const s = svgEl('svg', { viewBox: '0 -1 8 2', class: 'route-sample', 'aria-hidden': 'true' });
@@ -2496,7 +2466,7 @@ function initTemplatesDialog() {
     }));
   }
 
-  grid.addEventListener('click', async e => {
+  grid.addEventListener('click', e => {
     const card = e.target.closest('[data-template]');
     if (!card) return;
     const t = templates[Number(card.dataset.template)];
@@ -2522,10 +2492,7 @@ function openAbout() {
 function initAboutDialog() {
   const dialog = $('about-dialog');
   $('about-button').addEventListener('click', openAbout);
-  dialog.addEventListener('click', e => {
-    const r = dialog.getBoundingClientRect();
-    if (e.target === dialog && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) dialog.close();
-  });
+  closeOnClickOutside(dialog);
   $('about-example').addEventListener('click', () => tryExample(dialog));
 }
 
@@ -2559,10 +2526,7 @@ function initWelcomeDialog(openTemplates, linked) {
   dialog.addEventListener('close', () => {
     try { localStorage.setItem(WELCOME_KEY, '1'); } catch { /* storage blocked: nothing to do */ }
   });
-  dialog.addEventListener('click', e => {
-    const r = dialog.getBoundingClientRect();
-    if (e.target === dialog && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) dialog.close();
-  });
+  closeOnClickOutside(dialog);
   $('welcome-example').addEventListener('click', () => tryExample(dialog));
   $('welcome-template').addEventListener('click', () => { dialog.close(); openTemplates(); });
   $('welcome-about').addEventListener('click', () => { dialog.close(); openAbout(); });
@@ -2671,10 +2635,7 @@ function initLogoDialog() {
   const keepName = () => { if (nameChanged) { nameChanged = false; keepLogo(''); } };
   name.addEventListener('change', keepName);
   dialog.addEventListener('close', keepName);
-  dialog.addEventListener('click', e => {
-    const r = dialog.getBoundingClientRect();
-    if (e.target === dialog && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) dialog.close();
-  });
+  closeOnClickOutside(dialog);
   // A logo that can't be shown (the default file missing, say) is hidden rather than drawn broken.
   for (const img of [$('topbar-logo'), $('present-logo'), $('welcome-logo'), $('logo-preview')]) {
     img.addEventListener('error', () => { img.hidden = true; });
@@ -2868,7 +2829,7 @@ const playActions = {
     if (id === currentId) flushAutosave();
     const rec = library.get(id);
     if (!rec) return;
-    const blank = isEmptyPlay(rec.play) && rec.play.name === 'Untitled play';
+    const blank = isBlank(rec.play);
     // The limit applies in memory straight away (the writes follow), so the list is right at once.
     if (blank) library.remove(id).catch(storageFailed);
     else Promise.all([library.trash(id), library.prune()]).catch(storageFailed);
