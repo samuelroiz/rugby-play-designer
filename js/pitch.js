@@ -21,10 +21,12 @@ export const ROUTE_TYPES = {
 
 // Length of pitch each view shows. The full width (y 0..70) is always shown, and nothing outside it.
 // 'half' is the half attack plays into (halfway to the dead ball line at x=110), 'half-own' the other one.
+// Each half also shows HALF_MARGIN metres past halfway, so players on or near it (a kick-off) are in view.
+export const HALF_MARGIN = 3;
 export const VIEWS = {
   full: { minX: -10, maxX: 110 },
-  half: { minX: 50, maxX: 110 },
-  'half-own': { minX: -10, maxX: 50 },
+  half: { minX: 50 - HALF_MARGIN, maxX: 110 },
+  'half-own': { minX: -10, maxX: 50 + HALF_MARGIN },
 };
 export const isHalf = view => view === 'half' || view === 'half-own';
 export const viewRange = view => VIEWS[view] ?? VIEWS.full;
@@ -128,8 +130,8 @@ export function drawPitch(layer, { view, orientation, distances, grid, direction
   // so they are drawn twice as thick to look the same as the other lines.
   svgEl('rect', { x: -10, y: 0, width: 120, height: 70, class: 'line edge' }, layer);
 
-  // Try lines, 22s, halfway (also an edge in the half views)
-  for (const x of [0, 22, 50, 78, 100]) line(x, 0, x, 70, x === 50 && isHalf(view) ? 'line edge' : 'line');
+  // Try lines, 22s, halfway
+  for (const x of [0, 22, 50, 78, 100]) line(x, 0, x, 70);
   // Dashed 10 m and 5 m lines
   for (const x of [40, 60, 5, 95]) line(x, 0, x, 70, 'line dash');
   // Short dashed lines 5 m and 15 m in from each touchline
@@ -142,7 +144,7 @@ export function drawPitch(layer, { view, orientation, distances, grid, direction
     svgEl('circle', { cx: x, cy: 37.8, r: 0.4, class: 'post' }, layer);
   }
 
-  if (distances) drawDistances(layer, orientation);
+  if (distances) drawDistances(layer, orientation, view);
   if (direction) drawDirection(layer, view, orientation);
 }
 
@@ -153,19 +155,51 @@ const DIRECTION_LEN = 6;
 const directionAt = (view, orientation) => (orientation === 'vertical' ? [viewRange(view).minX + 2.5, 37] : [viewCentre(view).x + 1, 67.6]);
 
 // The ground the direction arrow and its "Attack" word cover, in pitch metres, so new players can keep off it.
-export function directionBox(view, orientation) {
-  const [x, y] = directionAt(view, orientation);
+// `at` is where it's drawn (placeDirection), its usual spot if not given.
+export function directionBox(view, orientation, at = directionAt(view, orientation)) {
+  const [x, y] = at;
   return orientation === 'vertical'
     ? { minX: x - 0.4, maxX: x + DIRECTION_LEN, minY: y - 1.2 - 6.6, maxY: y + 1.1 }
     : { minX: x - 0.8 - 6.6, maxX: x + DIRECTION_LEN, minY: y - 1.1, maxY: y + 1.1 };
 }
 
-function drawDirection(layer, view, orientation) {
+// Where the direction arrow goes so it covers none of `discs` ({ x, y, r } in pitch metres, e.g. the players):
+// its usual spot, or the nearest clear one along the same edge of the view (along the bottom touchline when
+// horizontal, along the bottom of the screen when vertical). If the whole edge is taken, the usual spot.
+export function placeDirection(view, orientation, discs = []) {
+  const home = directionAt(view, orientation);
+  const clear = at => {
+    const b = directionBox(view, orientation, at);
+    return discs.every(d => {
+      const nx = Math.min(Math.max(d.x, b.minX), b.maxX);
+      const ny = Math.min(Math.max(d.y, b.minY), b.maxY);
+      return Math.hypot(d.x - nx, d.y - ny) >= d.r + 0.2;
+    });
+  };
+  if (clear(home)) return home;
+  const vertical = orientation === 'vertical';
+  const { minX, maxX } = viewRange(view);
+  // The range the arrow's anchor can move along, keeping the whole box on the pitch.
+  const [lo, hi] = vertical ? [1 + 6.6 + 1.2, 70 - 1.1 - 1] : [minX + 0.8 + 6.6 + 0.5, maxX - DIRECTION_LEN - 0.5];
+  const along = vertical ? home[1] : home[0];
+  for (let step = 1; step * 0.5 <= hi - lo; step++) {
+    for (const s of [1, -1]) {
+      const v = along + s * step * 0.5;
+      if (v < lo || v > hi) continue;
+      const at = vertical ? [home[0], v] : [v, home[1]];
+      if (clear(at)) return at;
+    }
+  }
+  return home;
+}
+
+export function drawDirection(layer, view, orientation, at = directionAt(view, orientation)) {
   const vertical = orientation === 'vertical';
   const len = DIRECTION_LEN;
   // Horizontal: between the 5 m line and the near touchline, centred on the view. Vertical: in the in-goal
-  // (or just inside halfway in the half view), at the bottom of the screen, left of centre.
-  const [x, y] = directionAt(view, orientation);
+  // (or just inside halfway in the half view), at the bottom of the screen, left of centre. `at` moves it
+  // along that edge (see placeDirection).
+  const [x, y] = at;
   const g = svgEl('g', { class: 'direction', 'aria-hidden': 'true' }, layer);
   const shaft = { x1: x, y1: y, x2: x + len - 0.9, y2: y };
   svgEl('line', { ...shaft, class: 'direction-casing' }, g);
@@ -181,13 +215,13 @@ function drawDirection(layer, view, orientation) {
   }, g).textContent = 'Attack';
 }
 
-// Each label sits just beside its line on the halfway side (the 50 on the +x side, so it stays
-// inside the half view), between the 5 m and 15 m lines from each touchline (the 10 m labels 20 m in),
-// and stays upright.
-function drawDistances(layer, orientation) {
+// Each label sits just beside its line on the halfway side (the 50 on the side of the half shown, so it
+// stays well inside the half view), between the 5 m and 15 m lines from each touchline (the 10 m labels
+// 20 m in), and stays upright.
+function drawDistances(layer, orientation, view) {
   const vertical = orientation === 'vertical';
   for (const [x, text, inFrom] of DISTANCE_LABELS) {
-    const side = x <= 50 ? 1 : -1;
+    const side = x === 50 && view === 'half-own' ? -1 : x <= 50 ? 1 : -1;
     for (const y of [inFrom, 70 - inFrom]) {
       // Horizontal: the label sits to the left/right of the line. Vertical: +x is up the screen, so above/below it.
       const at = vertical ? x + side * 1.5 : x + side * 0.6;

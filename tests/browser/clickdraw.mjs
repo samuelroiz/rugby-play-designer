@@ -53,16 +53,20 @@ async function setup(page, { touch = false } = {}) {
   check('one click makes a run from the player', rs.length === 1 && rs[0].type === 'run' && rs[0].from === 'a2' && eq(rs[0].points, [[50, 15], [60, 10]]) && rs[0].order === 1, JSON.stringify(rs));
   check('player stays selected, tool stays on', (await sel(page)) === 'a2' && (await toolOn(page)) === 'run');
 
-  // Chaining: two more runs.
+  // Chaining: two more runs. Each carries on from the end of the one before, as the next step.
+  check('with a run drawn, the hint says the next one continues it', (await hint(page)) === "Continues 12's run: click where it ends. Click again for another, Esc to stop.", await hint(page));
+  await hover(page, 62, 18);
+  check('…and the preview starts where the run ends', (await preview(page))?.startsWith('M60 10'), await preview(page));
   await tap(page, 62, 18);
   await tap(page, 55, 22);
   rs = await routes(page);
-  check('chaining: three runs from 12, all step 1 (a run moves with the latest step)', rs.length === 3 && rs.every(r => r.from === 'a2' && r.type === 'run') && eq(rs.map(r => r.order), [1, 1, 1]));
+  check('chaining: three runs from 12, each from the end of the last, steps 1, 2, 3', rs.length === 3 && rs.every(r => r.from === 'a2' && r.type === 'run')
+    && eq(rs.map(r => r.order), [1, 2, 3]) && eq(rs[1].points, [[60, 10], [62, 18]]) && eq(rs[2].points, [[62, 18], [55, 22]]), JSON.stringify(rs));
 
   // Undo: one step per route, mode kept.
   await click(page, '[data-action="undo"]');
   rs = await routes(page);
-  check('undo removes just the last route', rs.length === 2 && eq(rs.map(r => r.order), [1, 1]));
+  check('undo removes just the last route', rs.length === 2 && eq(rs.map(r => r.order), [1, 2]));
   check('after undo the player is still selected and the tool on', (await sel(page)) === 'a2' && (await toolOn(page)) === 'run' && (await hint(page)) !== null);
   await click(page, '[data-action="undo"]');
   await click(page, '[data-action="undo"]');
@@ -75,7 +79,10 @@ async function setup(page, { touch = false } = {}) {
   const types = ['run', 'pass', 'kick', 'decoy', 'drift', 'blitz'];
   for (const [i, t] of types.entries()) {
     if ((await toolOn(page)) !== t) await click(page, `[data-route="${t}"]`);
-    check(`${t}: hint`, (await hint(page))?.includes(t === 'pass' ? "12's pass ends, or on a team-mate. Click again" : `12's ${t} ends. Click again`), await hint(page));
+    // A decoy, drift or blitz after a moving route continues the one before it.
+    const prev = { decoy: 'run', drift: 'decoy', blitz: 'drift' }[t];
+    const expected = t === 'pass' ? "12's pass ends, or on a team-mate. Click again" : prev ? `Continues 12's ${prev}: click where it ends. Click again` : `12's ${t} ends. Click again`;
+    check(`${t}: hint`, (await hint(page))?.includes(expected), await hint(page));
     await tap(page, 40 + i * 3, 40);
     rs = await routes(page);
     const r = rs.at(-1);
@@ -150,7 +157,7 @@ async function setup(page, { touch = false } = {}) {
   await page.keyboard.press('Escape');
   await click(page, '[data-route="drift"]');
   await tapPlayer(page, 'a1');
-  check('tapping a player with a tool on selects them and starts click-to-draw', (await sel(page)) === 'a1' && (await hint(page)) === "Click where attacker 1's drift ends. Click again for another, Esc to stop." && (await routes(page)).length === 6);
+  check('tapping a player with a tool on selects them and starts click-to-draw', (await sel(page)) === 'a1' && (await hint(page)) === "Continues attacker 1's run: click where it ends. Click again for another, Esc to stop." && (await routes(page)).length === 6, await hint(page));
   await page.mouse.move(5, 5); // off the pitch
   check('preview hidden when the pointer leaves the pitch', (await preview(page)) === null);
   await page.screenshot({ path: path.join(OUT, 'desktop.png') });

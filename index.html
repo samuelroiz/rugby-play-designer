@@ -16,12 +16,29 @@
 <body>
   <header class="topbar">
     <img class="team-logo" id="topbar-logo" alt="" hidden>
-    <label class="title-edit" title="Rename the play">
+    <label class="title-edit">
       <span class="title-size" id="title-size" data-value="Untitled play">
         <input id="play-name" type="text" size="1" value="Untitled play" aria-label="Play name" spellcheck="false" maxlength="60">
       </span>
-      <svg class="icon title-pencil" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>
     </label>
+    <!-- The pencil opens Play details: the play's category and tags. -->
+    <button type="button" class="title-pencil-button" id="details-button" popovertarget="play-details" aria-label="Play details" title="Play details: category and tags">
+      <svg class="icon title-pencil" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>
+    </button>
+    <div class="details-pop" id="play-details" popover role="dialog" aria-labelledby="play-details-title">
+      <h2 id="play-details-title">Play details</h2>
+      <label>Category
+        <select id="play-category">
+          <option value="attack">Attack</option>
+          <option value="defense">Defense</option>
+          <option value="lineout">Lineout</option>
+          <option value="scrum">Scrum</option>
+        </select>
+      </label>
+      <label>Tags
+        <input id="play-tags" type="text" placeholder="e.g. backs, set move" spellcheck="false">
+      </label>
+    </div>
     <div class="segmented" role="group" aria-label="History">
       <button type="button" data-action="undo" aria-label="Undo" title="Undo (Ctrl/Cmd+Z)">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7H4V2"/><path d="M4.5 7A8 8 0 1 1 4 13"/></svg>
@@ -33,17 +50,6 @@
     <details class="menu" id="file-menu">
       <summary>File</summary>
       <div class="menu-panel file-panel">
-        <label>Category
-          <select id="play-category">
-            <option value="attack">Attack</option>
-            <option value="defense">Defense</option>
-            <option value="lineout">Lineout</option>
-            <option value="scrum">Scrum</option>
-          </select>
-        </label>
-        <label>Tags
-          <input id="play-tags" type="text" placeholder="e.g. backs, set move" spellcheck="false">
-        </label>
         <!-- On a phone the top bar wraps, so Plays lives here instead. -->
         <div class="menu-actions plays-in-menu">
           <button type="button" data-file="plays" aria-haspopup="dialog">Plays…</button>
@@ -164,11 +170,13 @@
       <defs id="defs"></defs>
       <g id="world">
         <g id="pitch-layer"></g>
+        <g id="direction-layer" pointer-events="none"></g>
         <g id="ghost-layer" pointer-events="none"></g>
         <g id="objects-layer"></g>
         <g id="routes-layer"></g>
         <g id="players-layer"></g>
         <g id="ball-routes-layer" pointer-events="none"></g>
+        <g id="labels-layer" pointer-events="none"></g>
         <g id="ball-layer"></g>
         <g id="badges-layer"></g>
         <g id="cue-layer" pointer-events="none"></g>

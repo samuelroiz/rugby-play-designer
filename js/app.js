@@ -4,9 +4,10 @@
 // Redraws that only show hover feedback pass { record: false } and record nothing.
 
 import {
-  drawPitch, setView, viewCentre, viewRange, isHalf, startSpot, directionBox, svgEl, uprightTurn, PLAYER_R, BOUNDS, ROUTE_TYPES,
+  drawPitch, setView, viewCentre, viewRange, isHalf, startSpot, directionBox, placeDirection, drawDirection, svgEl, uprightTurn,
+  PLAYER_R, BOUNDS, ROUTE_TYPES,
 } from './pitch.js';
-import { initEditor, routeGeometry, isAttached, drawingFrom } from './editor.js';
+import { initEditor, routeGeometry, isAttached, drawingFrom, continuation } from './editor.js';
 import { placeScrum, moveScrum, placeLineout, moveLineout } from './setpiece.js';
 import { appendPhase, insertPhaseAfter, movePhase } from './phases.js';
 import { createHistory } from './history.js';
@@ -21,13 +22,13 @@ import {
 } from './export.js';
 import { loadTemplates, loadExample, thumbnail, isEmptyPlay } from './templates.js';
 import { syncOptions, makeMainOption, optionGroup, optionLetters, OPTION_LABEL_MAX } from './options.js';
-import { nextId, nextOrder, round1, round2, curvePoint, playedRoutes, BALL_ROUTES } from './model.js';
+import { nextId, nextOrder, round1, round2, curvePoint, playedRoutes, positionsAfter, BALL_ROUTES, MOVING_ROUTES } from './model.js';
 import { createPlayback, paintFrame } from './playback.js';
 import { makeAnimation, videoType, videoExtension, ANIMATION_SIZES, POSITION_SIZES, GIF_FPS, VIDEO_FPS } from './animation.js';
 import { focusFrames, strength } from './follow.js';
 import { autoJob, jobLine } from './jobs.js';
 import { CUE_MAX, defaultCueStep, placeBubble } from './cues.js';
-import { frameAt } from './animate.js';
+import { frameAt, flightEnds, shownRoute } from './animate.js';
 import { initPresent } from './present.js';
 import { encodeShare, shareUrl, SHARE_URL, LONG_LINK } from './share.js';
 import {
@@ -124,11 +125,13 @@ const world = $('world');
 const legend = $('legend');
 const layers = {
   pitch: $('pitch-layer'),
+  direction: $('direction-layer'),
   ghost: $('ghost-layer'),
   objects: $('objects-layer'),
   routes: $('routes-layer'),
   players: $('players-layer'),
   ballRoutes: $('ball-routes-layer'),
+  labels: $('labels-layer'),
   balls: $('ball-layer'),
   badges: $('badges-layer'),
   cues: $('cue-layer'),
@@ -137,6 +140,8 @@ const layers = {
   pen: $('pen-layer'),
 };
 const inputs = { name: $('play-name'), category: $('play-category'), tags: $('play-tags'), note: $('phase-note'), instruction: $('player-instruction') };
+// Boxes that are typed in (or picked from, for the details): focusing one stops the play (see initTopbar).
+const TEXT_FIELDS = 'textarea, select, input:not([type]), input[type="text"], input[type="search"], input[type="number"]';
 
 const phase = () => state.phases[ui.phase];
 // Editing is off while the play is playing or a picture is being made (the toolbar, undo, phase editing and
@@ -303,7 +308,7 @@ function showToast(message, kind = 'error') {
   toast.textContent = message;
   toast.hidden = false;
   clearTimeout(showToast.timer);
-  showToast.timer = setTimeout(() => { toast.hidden = true; }, 5000);
+  showToast.timer = setTimeout(() => { toast.hidden = true; fitHint(); }, 5000);
 }
 
 function strokeAttrs(type) {
@@ -363,11 +368,25 @@ function updateEndOfPlay() {
 }
 
 // A run, decoy, drift or blitz moves with the latest step: say so when it shares that step with other routes.
+// One from a player who already had one carries it on, as the next step: say that instead.
 let drawnNote = null;
 function drew(route) {
   if (BALL_ROUTES.has(route.type) || !Number.isFinite(route.order)) return;
+  const before = route.from && phase().routes.find(r => r !== route && r.from === route.from && MOVING_ROUTES.has(r.type));
+  if (before) {
+    drawnNote = `Continues ${playerName(route.from)}'s ${ROUTE_TYPES[before.type].label.toLowerCase()} as step ${route.order}.`;
+    return;
+  }
   if (!phase().routes.some(r => r !== route && r.order === route.order)) return;
   drawnNote = `Runs with step ${route.order}. Change the number to run before or after.`;
+}
+
+// "12", or "defender 1" when both teams have a 1.
+function playerName(id) {
+  const player = state.players.find(p => p.id === id);
+  if (!player) return '';
+  const shared = state.players.some(p => p !== player && p.label === player.label);
+  return shared ? `${player.team === 'attack' ? 'attacker' : 'defender'} ${player.label}` : player.label;
 }
 
 // "pass 9 to 10", "run 12", "kick" (from open grass).
@@ -399,7 +418,7 @@ function drawScene() {
   if (key !== pitchKey) {
     pitchKey = key;
     setView(svg, world, state.view, state.orientation);
-    drawPitch(layers.pitch, { view: state.view, orientation: state.orientation, ...ui.layers });
+    drawPitch(layers.pitch, { view: state.view, orientation: state.orientation, ...ui.layers, direction: false });
   }
   if (ui.phase >= state.phases.length) ui.phase = state.phases.length - 1;
   dropMissingSelection();
@@ -408,12 +427,32 @@ function drawScene() {
   svg.classList.toggle('focus-player', !!ui.focusPlayer);
   // An animation frame may have faded the routes out; a fresh drawing starts with them shown.
   for (const l of [layers.routes, layers.ballRoutes, layers.badges]) l.style.opacity = '';
+  renderDirection();
   renderGhost();
   renderObjects();
   renderRoutes();
   renderPlayers();
   renderCueMarks();
   renderEdgeArrows();
+}
+
+// Layers → Direction: "Attack" and its arrow by the bottom edge, moved along it so it covers no player.
+let directionAt = null; // where it's drawn now, so a new player's usual spot keeps off it
+function renderDirection() {
+  const layer = layers.direction;
+  layer.replaceChildren();
+  directionAt = null;
+  if (!ui.layers.direction) return;
+  const discs = state.players.filter(p => phase().positions[p.id]).map(p => ({ ...phase().positions[p.id], r: playerR() }));
+  directionAt = placeDirection(state.view, state.orientation, discs);
+  drawDirection(layer, state.view, state.orientation, directionAt);
+}
+
+// The routes of phase i as they're drawn: a pass or kick from where its passer is at its step, a pass to where
+// the receiver is when the ball gets there (animate.js flightEnds). Other routes as they are.
+function shownRoutes(i) {
+  const ends = flightEnds(state, i);
+  return r => shownRoute(r, ends.get(r.id));
 }
 
 // The selected player's cues for this phase, as small bubbles stacked over them (each "2 JUMP!": its step
@@ -599,6 +638,7 @@ function renderRoutes() {
   svg.classList.toggle('route-hovering', !!hovered && phase().routes.some(r => r.id === hovered));
   const taken = badgeObstacles();
   const routes = phase().routes;
+  const shown = shownRoutes(ui.phase);
   // Of each player's options, the one that plays draws as the main plan: A, or the one chosen in Present mode.
   const played = new Set(playedRoutes(routes, playback.option));
   // Option badges are placed first, so the start-of-route badges make way for them.
@@ -608,8 +648,8 @@ function renderRoutes() {
   for (const r of ordered) {
     if (!badged.has(r)) continue;
     const b = r.option
-      ? optionBadgePosition(r, optionGroup(routes, r.from).filter(o => o !== r), taken)
-      : badgePosition(r, routeGeometry(r), taken);
+      ? optionBadgePosition(shown(r), optionGroup(routes, r.from).filter(o => o !== r).map(shown), taken)
+      : badgePosition(shown(r), routeGeometry(shown(r)), taken);
     taken.push({ ...b, r: badgeR() });
     badgeAt.set(r.id, b);
   }
@@ -621,8 +661,9 @@ function renderRoutes() {
     const extra = `${r.option && !played.has(r) ? ' option-alt' : ''}${focus ? ' option-focus' : ''}${hover ? ' hover-focus' : ''}${dim}`;
     const cls = `route${selected ? ' selected' : ''}${isAttached(r) ? '' : ' loose'}${extra}`;
     const g = svgEl('g', { class: cls, 'data-kind': 'route', 'data-id': r.id }, layer);
-    const geometry = routeGeometry(r);
-    const { d } = drawnGeometry(r);
+    const drawn = shown(r);
+    const geometry = routeGeometry(drawn);
+    const { d } = drawnGeometry(drawn);
     svgEl('path', { d, class: 'route-hit', 'stroke-width': lineHit }, g);
     // Passes and kicks are seen above the players; their touch area stays under them, so a press on the
     // passer still picks up the passer.
@@ -643,10 +684,10 @@ function renderRoutes() {
       const size = [1.1, 0.85, 0.7][Math.min(text.length, 3) - 1] * sizeScale();
       svgEl('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': round2(size) }, badge).textContent = text;
     }
-    optionLabel(layers.badges, r, dim);
+    optionLabel(layers.badges, drawn, dim);
 
     // While a route tool is active the handles are hidden, so pressing on a player always starts a new route.
-    if (selected && !ui.tool) renderHandles(r, geometry, ppm);
+    if (selected && !ui.tool) renderHandles(drawn, geometry, ppm);
   }
   renderPreview(layer);
 }
@@ -679,7 +720,9 @@ function optionLabel(parent, r, extraClass = '') {
 function renderPreview(layer) {
   const from = drawingFrom(ui, phase());
   if (!from || !ui.preview) return;
-  const start = phase().positions[from];
+  // Where the new route will be drawn from: the end of their runs (a new run carries on from there, and a new
+  // pass, the next step, leaves from there).
+  const start = positionsAfter(phase().routes, phase().positions)[from];
   const end = ui.snapTo ? phase().positions[ui.snapTo] : ui.preview;
   if (Math.hypot(end.x - start.x, end.y - start.y) < 0.5) return;
   const r = { points: [[start.x, start.y], [end.x, end.y]], curve: 0, to: ui.snapTo };
@@ -707,21 +750,26 @@ function faded(id) {
   return !!id && team(id) === team(ui.focusPlayer);
 }
 
+// The discs go under the passes and kicks; the numbers go in their own layer above every route line, so a
+// line can cross a disc but never its number.
 function renderPlayers() {
   const layer = layers.players;
   layer.replaceChildren();
+  layers.labels.replaceChildren();
   for (const p of state.players) {
     const pos = phase().positions[p.id];
     if (!pos) continue;
     const me = ui.focusPlayer === p.id;
-    const cls = `player ${p.team}${isSelected('player', p.id) ? ' selected' : ''}${faded(p.id) ? ' dim' : ''}`;
-    const g = svgEl('g', { class: cls, 'data-kind': 'player', 'data-id': p.id, transform: `translate(${pos.x} ${pos.y})${turn()}` }, layer);
+    const dim = faded(p.id) ? ' dim' : '';
+    const cls = `player ${p.team}${isSelected('player', p.id) ? ' selected' : ''}${dim}`;
+    const transform = `translate(${pos.x} ${pos.y})${turn()}`;
+    const g = svgEl('g', { class: cls, 'data-kind': 'player', 'data-id': p.id, transform }, layer);
     const R = playerR();
     svgEl('circle', { r: Math.max(R, PLAYER_R) * 1.6, class: 'hit' }, g); // bigger touch target
     if (ui.snap === p.id || ui.snapTo === p.id) svgEl('circle', { r: R + 0.55, class: 'snap-ring' }, g);
     if (me) svgEl('circle', { r: R + 0.75, class: 'me-ring' }, g);
     svgEl('circle', { r: R, class: 'body' }, g);
-    playerText(g, p.label);
+    playerText(svgEl('g', { class: `player-label ${p.team}${dim}`, 'data-id': p.id, transform }, layers.labels), p.label);
   }
 }
 
@@ -743,10 +791,11 @@ function renderGhost() {
   // Not while playing or presenting: it's an editing aid.
   if (!ui.layers.ghost || !prev || ui.presenting || playback.playing) return;
   const routes = svgEl('g', { class: 'ghost-routes' }, layer);
+  const shown = shownRoutes(ui.phase - 1);
   for (const r of prev.routes) {
     if (r.option && r.option !== 'A') continue;
-    routePaths(routes, 'path', { d: drawnGeometry(r).d }, r.type);
-    optionLabel(routes, r);
+    routePaths(routes, 'path', { d: drawnGeometry(shown(r)).d }, r.type);
+    optionLabel(routes, shown(r));
   }
   for (const p of state.players) {
     const pos = prev.positions[p.id];
@@ -776,8 +825,9 @@ function groupActive(o) {
 // Markers go under the routes and players; balls go in their own layer above the players, so a player
 // holding the ball never hides it.
 // The drag block of a scrum or lineout, at (x, y) from its mark. Pressing it drags the whole set piece.
-function groupTab(g, x, y, letter, selected) {
-  const tab = svgEl('g', { transform: `translate(${x} ${y})`, class: 'group-tab' }, g);
+function groupTab(g, x, y, letter, selected, name) {
+  const tab = svgEl('g', { transform: `translate(${x} ${y})`, class: 'group-tab', 'aria-label': name }, g);
+  svgEl('title', {}, tab).textContent = name;
   svgEl('circle', { r: 1.9, class: 'hit' }, tab);
   if (selected) svgEl('circle', { r: 1.9, class: 'select-ring' }, tab);
   svgEl('rect', { x: -1.2, y: -1.2, width: 2.4, height: 2.4, rx: 0.4, class: 'outline' }, tab);
@@ -798,7 +848,7 @@ function renderObjects() {
       svgEl('line', { x1: 0, y1: -3.8, x2: 0, y2: 3.8, class: 'scrum-mark' }, g);
       if (!groupActive(o)) continue;
       const side = o.putIn === 'defense' ? 1 : -1; // the ball's side; the block goes on the other
-      groupTab(g, 0, -side * 6.5, 'S', selected);
+      groupTab(g, 0, -side * 6.5, 'S', selected, 'Drag to move the scrum');
       continue;
     }
 
@@ -809,7 +859,7 @@ function renderObjects() {
       if (selected) svgEl('circle', { r: 2.4, class: 'select-ring' }, g);
       svgEl('line', { x1: -0.7, y1: -2, x2: -0.7, y2: 2, class: 'outline' }, g);
       svgEl('line', { x1: 0.7, y1: -2, x2: 0.7, y2: 2, class: 'outline' }, g);
-      if (groupActive(o)) groupTab(g, 5, (o.y <= 35 ? 1 : -1) * 5, 'L', selected);
+      if (groupActive(o)) groupTab(g, 5, (o.y <= 35 ? 1 : -1) * 5, 'L', selected, 'Drag to move the lineout');
       continue;
     }
 
@@ -844,17 +894,20 @@ function updateToolbar() {
   $('templates-button').disabled = busy();
   $('plays-button').disabled = busy();
   $('present-button').disabled = ui.exporting;
-  // The play's details can't be reached by mouse or keyboard either: the File menu is inert and closed.
+  // The File menu is inert and closed. The play's name and details stay usable while playing (focusing one
+  // stops the play, see initTopbar), but not while a picture is being made.
   const fileMenu = $('file-menu');
   fileMenu.inert = busy();
   if (busy()) fileMenu.open = false;
-  for (const el of [inputs.name, inputs.category, inputs.tags]) el.disabled = busy();
+  for (const el of [inputs.name, inputs.category, inputs.tags, $('details-button')]) el.disabled = ui.exporting;
+  if (ui.exporting && $('play-details').matches(':popover-open')) $('play-details').hidePopover();
   for (const b of document.querySelectorAll('[data-view]')) b.setAttribute('aria-pressed', b.dataset.view === 'half' ? isHalf(state.view) : state.view === b.dataset.view);
   for (const b of document.querySelectorAll('[data-orientation]')) b.setAttribute('aria-pressed', b.dataset.orientation === state.orientation);
   for (const b of document.querySelectorAll('[data-route]')) b.setAttribute('aria-pressed', b.dataset.route === ui.tool);
   for (const c of document.querySelectorAll('[data-layer]')) c.checked = ui.layers[c.dataset.layer];
   svg.classList.toggle('drawing', !!ui.tool || !!ui.placing);
   for (const r of document.querySelectorAll('[name="player-size"]')) r.checked = r.value === ui.playerSize;
+  // The other half: it keeps its slot in the top bar when hidden (see styles.css), so nothing beside it shifts.
   const flip = $('flip-half');
   flip.hidden = !isHalf(state.view);
   flip.disabled = busy();
@@ -873,29 +926,69 @@ function updateDrawHint() {
   const verb = touch ? 'Tap' : 'Click';
   const type = ROUTE_TYPES[ui.tool]?.label.toLowerCase() ?? 'route';
   const from = drawingFrom(ui, phase());
+  // "Continues 8's run": a new run (decoy, drift, blitz) from a player who has one carries on from its end.
+  const continues = id => {
+    const prev = continuation(phase(), ui.tool, id);
+    return prev ? `Continues ${playerName(id)}'s ${ROUTE_TYPES[prev.type].label.toLowerCase()}` : null;
+  };
+  // Each hint has a shorter form, used when even two lines can't hold the full one (see fitHint).
   let text;
+  let short;
   if (ui.placing?.kind === 'player') {
     const { team, n } = ui.placing;
     // "12", or "defender 12" when the other team has a 12.
     const shared = state.players.some(p => p.team !== team && p.label === String(n));
     const who = shared ? `${team === 'attack' ? 'attacker' : 'defender'} ${n}` : n;
-    text = `${verb} where ${who} stands.${touch ? '' : ' Esc puts them at the usual spot.'}`;
+    short = `${verb} where ${who} stands.`;
+    text = `${short}${touch ? '' : ' Esc puts them at the usual spot.'}`;
   } else if (ui.placing) {
-    text = `${verb} where the mark goes.${touch ? '' : ' Esc cancels.'}`;
+    short = `${verb} where the mark goes.`;
+    text = `${short}${touch ? '' : ' Esc cancels.'}`;
   } else if (!from) {
-    text = `Drag from a player to draw a ${type}, or ${verb.toLowerCase()} a player first.`;
+    const snapped = ui.snap && continues(ui.snap);
+    text = snapped ? `${snapped}: drag to where it ends.` : `Drag from a player to draw a ${type}, or ${verb.toLowerCase()} a player first.`;
+    short = snapped ? `${snapped}: drag to its end.` : `Drag from a player, or ${verb.toLowerCase()} one first.`;
   } else {
-    const player = state.players.find(p => p.id === from);
-    // "12", or "defender 1" when both teams have a 1.
-    const shared = state.players.some(p => p !== player && p.label === player.label);
-    const who = shared ? `${player.team === 'attack' ? 'attacker' : 'defender'} ${player.label}` : player.label;
-    const where = ui.tool === 'pass' ? `${who}'s pass ends, or on a team-mate` : `${who}'s ${type} ends`;
-    text = `${verb} where ${where}. ${verb} again for another, ${touch ? 'tap the tool again' : 'Esc'} to stop.`;
+    const who = playerName(from);
+    const stop = `${verb} again for another, ${touch ? 'tap the tool again' : 'Esc'} to stop.`;
+    const more = continues(from);
+    if (more) {
+      short = `${more}: ${verb.toLowerCase()} where it ends.`;
+    } else {
+      short = `${verb} where ${ui.tool === 'pass' ? `${who}'s pass ends, or on a team-mate` : `${who}'s ${type} ends`}.`;
+    }
+    text = `${short} ${stop}`;
   }
   // A new hint is what the user needs now, so it replaces an older "Saved …" message in the status line.
-  if (hint.textContent !== text || wasHidden) {
-    hint.textContent = text;
+  if (hint.dataset.text !== text || hint.dataset.short !== short || wasHidden) {
+    Object.assign(hint.dataset, { text, short });
     $('toast').hidden = true;
+  }
+  fitHint();
+}
+
+// The hint is never cut off: on one line if it fits, else on two in smaller type (the status line keeps its
+// height), else its shorter form. The full text is its tooltip.
+let hintFit = '';
+function fitHint() {
+  const hint = $('draw-hint');
+  if (hint.hidden) return;
+  const { text, short } = hint.dataset;
+  const key = [text, short, hint.parentElement.clientWidth, ui.layers.legend].join('|');
+  if (key === hintFit && hint.textContent) return;
+  hintFit = key;
+  hint.title = text;
+  // Hidden behind a message in the status line: it's fitted when the message goes.
+  if (!hint.offsetWidth) {
+    hint.textContent = text;
+    hintFit = '';
+    return;
+  }
+  const cut = () => hint.scrollWidth > hint.clientWidth + 1 || hint.scrollHeight > hint.clientHeight + 1;
+  for (const [value, wrap] of [[text, false], [text, true], [short, true]]) {
+    hint.textContent = value;
+    hint.classList.toggle('wrap', wrap);
+    if (!cut()) return;
   }
 }
 
@@ -936,7 +1029,8 @@ function updatePhaseBar() {
   btn('insert').disabled = false;
   // While playing (or exporting) only moving between phases works; the phases can't be changed.
   if (busy()) for (const name of ['add', 'left', 'right', 'insert', 'delete']) btn(name).disabled = true;
-  inputs.note.readOnly = busy();
+  // While playing the note can still be typed in: focusing it stops the play (see initTopbar).
+  inputs.note.disabled = ui.exporting;
 }
 
 // Play/Pause, speed and Loop. Tooltips only outside Present mode, so nothing pops up on a recording.
@@ -1000,12 +1094,11 @@ function syncInputs() {
   const set = (el, value, always) => { if ((always || document.activeElement !== el) && el.value !== value) el.value = value; };
   set(inputs.name, state.name, force);
   $('title-size').dataset.value = inputs.name.value;
+  // A long name is shortened with "…" in the top bar; the tooltip has all of it.
+  inputs.name.title = inputs.name.value;
   set(inputs.category, state.category, force);
   set(inputs.tags, state.tags.join(', '), force);
-  if (inputs.note.value !== phase().note || forceNote) {
-    set(inputs.note, phase().note, forceNote);
-    fitNote();
-  }
+  if (inputs.note.value !== phase().note || forceNote) set(inputs.note, phase().note, forceNote);
   // One player selected (and editing on): their job for this phase, in the side panel, with the one made
   // from their routes as the placeholder (what the phone viewer shows when the box is empty), and their cues.
   const sel = ui.selected?.kind === 'player' && !locked() ? state.players.find(p => p.id === ui.selected.id) : null;
@@ -1125,13 +1218,6 @@ function initCues() {
   });
 }
 
-// The note box grows with its text up to a few lines (then scrolls), so a long note wraps in view.
-function fitNote() {
-  const t = inputs.note;
-  t.style.height = 'auto';
-  t.style.height = `${t.scrollHeight + t.offsetHeight - t.clientHeight}px`;
-}
-
 // --- Actions ---
 
 // Free numbers (1-15) for a team, lowest first.
@@ -1158,7 +1244,7 @@ function defaultSpot(team, n) {
   const start = startSpot(team, n, state.view);
   const R = playerR();
   const { minX, maxX } = viewRange(state.view);
-  const arrow = ui.layers.direction ? directionBox(state.view, state.orientation) : null;
+  const arrow = ui.layers.direction ? directionBox(state.view, state.orientation, directionAt ?? undefined) : null;
   const others = Object.values(phase().positions);
   const clear = p => p.x >= Math.max(minX, BOUNDS.minX) + R && p.x <= Math.min(maxX, BOUNDS.maxX) - R
     && p.y >= R && p.y <= 70 - R
@@ -1961,7 +2047,7 @@ function focusPicture(play, { phase: i, sched, t, cam, bubbles }, { who, layout,
   const f = frameAt(sched, t);
   const on = strength(play.players, f, who);
   const from = new Map(play.phases[i].routes.map(r => [r.id, r.from]));
-  for (const g of pitch.querySelectorAll('.player[data-id]')) {
+  for (const g of pitch.querySelectorAll('.player[data-id], .player-label[data-id]')) {
     if (on[g.dataset.id] < 1) g.setAttribute('opacity', on[g.dataset.id]);
     if (g.dataset.id === who) g.querySelector('.body')?.before(svgEl('circle', { r: playerR() + 0.75, class: 'me-ring' }));
   }
@@ -2195,7 +2281,7 @@ function initTopbar() {
     state.tags = inputs.tags.value.split(',').map(t => t.trim()).filter(Boolean);
     render('tags');
   });
-  inputs.note.addEventListener('input', () => { phase().note = inputs.note.value; fitNote(); render(`note-${ui.phase}`); });
+  inputs.note.addEventListener('input', () => { phase().note = inputs.note.value; render(`note-${ui.phase}`); });
   // A phase keeps instructions only for players who have one, and none at all when nobody has.
   inputs.instruction.addEventListener('input', () => {
     if (ui.selected?.kind !== 'player') return;
@@ -2209,8 +2295,26 @@ function initTopbar() {
     }
     render(`instruction-${ui.phase}-${id}`);
   });
-  addEventListener('resize', fitNote);
-  // Clicking the name or its pencil selects the whole name, so typing replaces it. A press on the box
+  addEventListener('resize', fitHint);
+  // Typing is never lost: focusing a text box (the note, the play's name or details) while the play is playing
+  // or paused stops it and drops the paused frame, so the box can be typed in and what's typed is kept.
+  document.addEventListener('focusin', e => {
+    const el = e.target;
+    if (!(el instanceof Element) || !el.matches(TEXT_FIELDS) || el.closest('#play-controls')) return;
+    if (!playback.playing && !playback.paused) return;
+    playback.stop();
+    render(null, { record: false });
+  });
+  // The pencil by the name opens Play details (category and tags), just under it.
+  const details = $('play-details');
+  details.addEventListener('beforetoggle', e => {
+    if (e.newState !== 'open') return;
+    const b = $('details-button').getBoundingClientRect();
+    details.style.top = `${b.bottom + 6}px`;
+    const w = Math.min(256, innerWidth - 16); // its width (16rem) before it opens
+    details.style.left = `${Math.max(8, Math.min(b.left - 8, innerWidth - w - 8))}px`;
+  });
+  // Clicking the name selects all of it, so typing replaces it. A press on the box
   // itself would otherwise put the cursor where it landed, so the first press focuses it by hand; once it
   // has the focus, clicks place the cursor as usual.
   inputs.name.addEventListener('focus', () => inputs.name.select());
@@ -2547,6 +2651,14 @@ function initTips() {
 function initKeys() {
   document.addEventListener('keydown', e => {
     const mod = e.metaKey || e.ctrlKey;
+    // Escape closes an open menu (File, Layers), even from a box inside it, and does nothing else.
+    const menu = document.querySelector('details.menu[open]');
+    if (e.key === 'Escape' && menu && !e.target.closest('dialog')) {
+      e.preventDefault();
+      menu.open = false;
+      menu.querySelector('summary').focus();
+      return;
+    }
     const typing = e.target.closest('input, textarea, select, dialog');
     // A player or set piece waiting to be placed: Escape settles it (see settlePlacing) and does nothing
     // else; any other key (undo too) settles it first.
@@ -2855,7 +2967,7 @@ async function init() {
   // No editing while playing, presenting or exporting. A press on the pitch drops a paused frame.
   initEditor(svg, world, {
     state, ui, phase, render, renderSoon, hint: renderHint, editLabel, editOrder, moveObject, locked,
-    pressed: () => playback.dropFrame(), place, drew,
+    pressed: () => playback.dropFrame(), place, drew, shown: r => shownRoutes(ui.phase)(r),
   });
   // A press anywhere off the pitch (a button, a menu) while a player or set piece waits to be placed settles
   // it first, so the button then acts on the play as it will be.

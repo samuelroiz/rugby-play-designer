@@ -155,7 +155,8 @@ async function dragHold(page, from, to, during) {
   check('pass start (and run) follow the passer', eq(pass.points[0], [44, 6]) && eq(run.points[0], [44, 6]), JSON.stringify([pass, run]));
 
   // End handle: select the pass, drag its end away (> 2 m) -> detach; back near a3 -> attach to a3.
-  await tap(page, 48, 11.5);
+  // The pass is step 2, after 1's run, so it's drawn from where that run ends (48, 2) to 2 (52, 17).
+  await tap(page, 50, 9.5);
   check('pass selected by clicking its line', eq((await page.evaluate(() => 1)), 1) && (await page.$$('#handles-layer .handle')).length === 3);
   await drag(page, [52, 17], [56, 22]);
   s = await state(page);
@@ -165,12 +166,13 @@ async function dragHold(page, from, to, during) {
   s = await state(page);
   pass = s.phases[0].routes.find(r => r.type === 'pass');
   check('end handle dropped near a team-mate attaches (ringed while dragging)', pass.to === 'a3' && eq(pass.points[1], [50, 25]) && ringDuring.includes('a3'), `${JSON.stringify(pass)} ${ringDuring}`);
-  // Attached at both ends: can't be dragged by the line.
+  // Attached at both ends: can't be dragged by the line (drawn from (48, 2) to 3 at (50, 25); pressed a
+  // third of the way along, clear of its bend handle in the middle).
   const before = JSON.stringify((await state(page)).phases[0].routes);
-  await drag(page, [45.5, 10.75], [45.5, 30]);
-  check('attached pass cannot be shifted by its line', JSON.stringify((await state(page)).phases[0].routes) === before);
+  await drag(page, [48.6, 8.9], [48.6, 30]);
+  check('attached pass cannot be shifted by its line', JSON.stringify((await state(page)).phases[0].routes) === before, `${before} ${JSON.stringify((await state(page)).phases[0].routes)}`);
   // Back to a2 for the rest.
-  await tap(page, 45.5, 10.75);
+  await tap(page, 48.6, 8.9);
   await drag(page, [50, 25], [51, 16]);
   s = await state(page);
   pass = s.phases[0].routes.find(r => r.type === 'pass');
@@ -765,7 +767,7 @@ async function dragHold(page, from, to, during) {
   // --- 5. Attack direction ---
   check('Direction layer on by default', await page.$eval('[data-layer="direction"]', c => c.checked));
   const dir = async () => page.evaluate(() => {
-    const g = document.querySelector('#pitch-layer .direction');
+    const g = document.querySelector('#direction-layer .direction');
     if (!g) return null;
     const shaft = g.querySelector('.direction-shaft');
     const m = shaft.getScreenCTM();
@@ -822,7 +824,15 @@ async function dragHold(page, from, to, during) {
   const pencil = await rect('.title-pencil');
   check('a pencil sits right after the play name', pencil.w > 8 && pencil.x - title.right >= 0 && pencil.x - title.right < 12 && Math.abs(pencil.cy - title.cy) < 6, JSON.stringify([title, pencil]));
   await page.mouse.click(pencil.cx, pencil.cy);
-  check('clicking the pencil puts the cursor in the name', await page.evaluate(() => document.activeElement?.id === 'play-name'));
+  check('clicking the pencil opens Play details, with the category and tags', await page.evaluate(() => {
+    const pop = document.getElementById('play-details');
+    return pop.matches(':popover-open') && pop.contains(document.getElementById('play-category')) && pop.contains(document.getElementById('play-tags'));
+  }));
+  await page.keyboard.press('Escape');
+  check('…Escape closes it', await page.evaluate(() => !document.getElementById('play-details').matches(':popover-open')));
+  const title2 = await rect('#title-size');
+  await page.mouse.click(title2.cx, title2.cy);
+  check('clicking the name puts the cursor in it', await page.evaluate(() => document.activeElement?.id === 'play-name'));
   await page.$eval('#play-name', i => i.blur());
   const labels = await page.$$eval('#pitch-layer .distance', ts => ts.map(t => ({ text: t.textContent, at: t.getAttribute('transform').match(/translate\(([-\d.]+) ([-\d.]+)\)/).slice(1).map(Number) })));
   const fifties = labels.filter(l => l.text === '50');
@@ -1273,10 +1283,14 @@ async function dragHold(page, from, to, during) {
   await page.keyboard.type('Blindside');
   check('clicking the title selects it all: typing replaces the name', (await state(page)).name === 'Blindside', (await state(page)).name);
   await page.$eval('#play-name', i => i.blur());
+  // The pencil opens Play details (category and tags) and leaves the name as it is.
   const pencil = await rect('.title-pencil');
   await page.mouse.click(pencil.cx, pencil.cy);
+  check('clicking the pencil opens Play details and leaves the name alone', (await page.$eval('#play-details', p => p.matches(':popover-open'))) && (await state(page)).name === 'Blindside');
+  await page.keyboard.press('Escape');
+  await page.mouse.click(nameBox.cx, nameBox.cy);
   await page.keyboard.type('Wide');
-  check('clicking the pencil selects it all too', (await state(page)).name === 'Wide', (await state(page)).name);
+  check('…and clicking the name again selects it all', (await state(page)).name === 'Wide', (await state(page)).name);
   await page.$eval('#play-name', i => i.blur());
 
   // --- 6. Nothing covers the pitch ---
@@ -1326,10 +1340,13 @@ async function dragHold(page, from, to, during) {
     return { phases: tabs.children.length, noteW: note.width, noteRight: note.right, scrolls: tabs.scrollWidth > tabs.clientWidth, curShown: cur.left >= t.left - 1 && cur.right <= t.right + 1, vw: innerWidth };
   });
   check('30 phases: the note keeps a usable width, tabs scroll sideways', bar7.phases === 30 && bar7.noteW >= 250 && bar7.noteRight <= bar7.vw && bar7.scrolls && bar7.curShown, JSON.stringify(bar7));
+  // The note box keeps one height: a long note wraps (two lines show) and scrolls inside, so the pitch never moves.
   const longNote = 'Twelve hits the line hard, thirteen loops round the back and fifteen comes in at pace on the short side. ';
-  await page.$eval('#phase-note', (t, v) => { t.focus(); t.value = v; t.dispatchEvent(new Event('input')); }, longNote.repeat(2));
-  const fit = await page.$eval('#phase-note', t => ({ sh: t.scrollHeight, ch: t.clientHeight, sw: t.scrollWidth, cw: t.clientWidth }));
-  check('a long note wraps and shows in full (up to four lines)', fit.ch > 40 && fit.sh <= fit.ch + 2 && fit.sw <= fit.cw, JSON.stringify(fit));
+  const noteBefore = { note: await rect('#phase-note'), pitch: await rect('#pitch') };
+  await page.$eval('#phase-note', (t, v) => { t.focus(); t.value = v; t.dispatchEvent(new Event('input')); }, longNote.repeat(4));
+  const fit = await page.$eval('#phase-note', t => ({ sh: t.scrollHeight, ch: t.clientHeight, sw: t.scrollWidth, cw: t.clientWidth, line: parseFloat(getComputedStyle(t).lineHeight), overflow: getComputedStyle(t).overflowY }));
+  check('a long note wraps (two lines show) and scrolls inside the box', fit.sw <= fit.cw && fit.sh > fit.ch && fit.ch >= 2 * fit.line - 1 && fit.overflow === 'auto', JSON.stringify(fit));
+  check('…and the note box and the pitch keep their size', eq(await rect('#phase-note'), noteBefore.note) && eq(await rect('#pitch'), noteBefore.pitch), JSON.stringify([noteBefore, await rect('#phase-note')]));
   await page.$eval('#phase-note', t => t.blur());
 
   check('second fixes: no console errors or native dialogs', errors.length === 0, errors.join(' | '));

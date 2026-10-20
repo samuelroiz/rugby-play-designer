@@ -2,7 +2,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSchedule, frameAt, TIMING } from '../js/animate.js';
+import { buildSchedule, frameAt, flightEnds, TIMING } from '../js/animate.js';
+import { curvePoint } from '../js/model.js';
 import { routeGeometry } from '../js/editor.js';
 import { animPlay } from './anim-play.mjs';
 
@@ -92,4 +93,75 @@ test('a player with two runs does them one after the other and ends where the la
   const [m6, m7] = ['r6', 'r7'].map(id => s.moves.find(m => m.route.id === id));
   assert.equal(m7.start, m6.end);
   assert.deepEqual(frameAt(s, s.routesEnd).players.a13, { x: 46, y: 15 });
+});
+
+// 10 at (40, 30) with the ball, 12 at (38, 40). `routes` for phase 1.
+function passPlay(routes) {
+  return {
+    schemaVersion: 1, name: 'Pass', category: 'attack', tags: [], view: 'full', orientation: 'horizontal',
+    players: [{ id: 'a10', team: 'attack', label: '10' }, { id: 'a12', team: 'attack', label: '12' }],
+    phases: [{ note: '', positions: { a10: { x: 40, y: 30 }, a12: { x: 38, y: 40 } }, objects: [{ id: 'o1', type: 'ball', x: 41.1, y: 30.9 }], routes }],
+  };
+}
+const R = (id, type, from, points, order, extra = {}) => ({ id, type, from, to: null, points, curve: 0, order, option: null, ...extra });
+
+test('a pass at a later step leaves from where the passer is then, and is drawn from there', () => {
+  const play = passPlay([
+    R('r1', 'run', 'a10', [[40, 30], [46, 28]], 1),
+    R('r2', 'run', 'a12', [[38, 40], [43, 41]], 1),
+    R('r3', 'pass', 'a10', [[40, 30], [38, 40]], 2, { to: 'a12' }),
+  ]);
+  const f = buildSchedule(play, 0).flights[0];
+  assert.deepEqual([f.release, f.catchAt], [{ x: 46, y: 28 }, { x: 43, y: 41 }]);
+  const ends = flightEnds(play, 0);
+  assert.deepEqual(ends.get('r3'), [[46, 28], [43, 41]]);
+  assert.equal(ends.has('r1'), false, 'runs are drawn as they are');
+});
+
+test('a pop pass meets the runner on his curved run, and the flight takes the pass\'s time to get there', () => {
+  const play = passPlay([
+    R('r1', 'run', 'a12', [[38, 40], [56, 44]], 1, { curve: -2 }),
+    R('r2', 'pass', 'a10', [[40, 30], [38, 40]], 1, { to: 'a12' }),
+  ]);
+  const s = buildSchedule(play, 0);
+  const [f] = s.flights;
+  const [m] = s.moves;
+  assert.ok(f.end > m.start && f.end < m.end, 'caught while still running');
+  const at = frameAt(s, f.end);
+  assert.ok(near(at.players.a12, f.catchAt, 1e-9), 'the catch point is where 12 is when the ball arrives');
+  assert.ok(near(at.objects.o1, { x: f.catchAt.x + 1.1, y: f.catchAt.y + 0.9 }, 1e-9), 'in his hands');
+  const run = play.phases[0].routes[0];
+  const onRun = Math.min(...Array.from({ length: 2001 }, (_, i) => Math.hypot(curvePoint(run, i / 2000).x - f.catchAt.x, curvePoint(run, i / 2000).y - f.catchAt.y)));
+  assert.ok(onRun < 0.02, `on his run: ${onRun}`);
+  const dist = Math.hypot(f.catchAt.x - f.release.x, f.catchAt.y - f.release.y);
+  assert.ok(Math.abs(f.end - f.start - Math.max(900, (dist / 9) * 1000)) < 1, 'the time a pass takes over that distance');
+  // Mid-flight the ball heads straight for the meeting point: it doesn't chase him.
+  const mid = frameAt(s, (f.start + f.end) / 2).objects.o1;
+  const from = { x: 41.1, y: 30.9 };
+  const to = { x: f.catchAt.x + 1.1, y: f.catchAt.y + 0.9 };
+  const across = Math.abs((to.x - from.x) * (mid.y - from.y) - (to.y - from.y) * (mid.x - from.x)) / Math.hypot(to.x - from.x, to.y - from.y);
+  assert.ok(across < 1e-6, `on the line to the catch: ${across}`);
+  assert.deepEqual(flightEnds(play, 0).get('r2').map(([x, y]) => Math.hypot(x - f.catchAt.x, y - f.catchAt.y) < 0.01), [false, true]);
+  // He carries on with it.
+  assert.ok(near(frameAt(s, s.routesEnd).objects.o1, { x: 57.1, y: 44.9 }, 1e-9));
+});
+
+test('a pass to a receiver who has finished his run goes to where he finishes', () => {
+  const play = passPlay([
+    R('r1', 'run', 'a12', [[38, 40], [39, 43]], 1),
+    R('r2', 'run', 'a10', [[40, 30], [44, 30]], 1),
+    R('r3', 'pass', 'a10', [[40, 30], [38, 40]], 1, { to: 'a12' }),
+  ]);
+  assert.deepEqual(flightEnds(play, 0).get('r3'), [[44, 30], [39, 43]]);
+});
+
+test('each option is drawn from its own schedule; a kick keeps its end', () => {
+  const play = passPlay([
+    R('r1', 'run', 'a10', [[40, 30], [46, 28]], 1),
+    R('r2', 'pass', 'a10', [[40, 30], [38, 40]], 2, { to: 'a12', option: 'A' }),
+    R('r3', 'kick', 'a10', [[40, 30], [70, 20]], 2, { option: 'B' }),
+  ]);
+  const ends = flightEnds(play, 0);
+  assert.deepEqual(ends.get('r2'), [[46, 28], [38, 40]]);
+  assert.deepEqual(ends.get('r3'), [[46, 28], [70, 20]]);
 });

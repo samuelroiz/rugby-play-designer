@@ -3,7 +3,7 @@
 
 import { BOUNDS, toMetres } from './pitch.js';
 import { syncOptions } from './options.js';
-import { nextId, newRouteOrder, round1 as round, round3, curveControl, curvePoint } from './model.js';
+import { nextId, newRouteOrder, nextOrder, lastMove, round1 as round, round3, curveControl, curvePoint, MOVING_ROUTES } from './model.js';
 
 const DOUBLE_TAP_MS = 400;
 const MIN_ROUTE_LENGTH = 1; // metres; shorter drags are treated as a mis-tap
@@ -15,14 +15,33 @@ const clampX = x => Math.min(BOUNDS.maxX, Math.max(BOUNDS.minX, x));
 const clampY = y => Math.min(BOUNDS.maxY, Math.max(BOUNDS.minY, y));
 
 // Moves a player (clamped to the pitch), the start of every route that belongs to them and the end of
-// every pass to them.
+// every pass to them. A run that carries on from the end of their earlier one (see continuation) keeps its
+// start there.
 export function movePlayer(phase, id, x, y) {
+  const old = phase.positions[id];
   const pos = { x: round(clampX(x)), y: round(clampY(y)) };
   phase.positions[id] = pos;
+  const onOld = ([px, py]) => !old || Math.hypot(px - old.x, py - old.y) < 0.05;
   for (const r of phase.routes) {
-    if (r.from === id) r.points[0] = [pos.x, pos.y];
+    if (r.from === id && (!MOVING_ROUTES.has(r.type) || onOld(r.points[0]))) r.points[0] = [pos.x, pos.y];
     if (r.to === id) r.points[r.points.length - 1] = [pos.x, pos.y];
   }
+}
+
+// A new run, decoy, drift or blitz from a player who already has one in this phase continues it: it starts
+// where their last one ends and is the next step. Returns that last route, or null (the route starts on them).
+export function continuation(phase, type, from) {
+  return from && MOVING_ROUTES.has(type) ? lastMove(phase.routes, from) : null;
+}
+
+// Where a route of `type` drawn from player `from` starts, and its order number.
+export function newRouteStart(phase, type, from) {
+  const prev = continuation(phase, type, from);
+  if (prev) {
+    const [x, y] = prev.points[prev.points.length - 1];
+    return { start: { x, y }, order: nextOrder(phase.routes) };
+  }
+  return { start: phase.positions[from], order: newRouteOrder(type, phase.routes) };
 }
 
 // A route that follows a player at either end can't be dragged by its line.
@@ -80,8 +99,9 @@ export function drawingFrom(ui, phase) {
 // pressed(): a press on the pitch is about to edit, so a paused animation frame gives way to the real positions.
 // place(p): while ui.placing is set (a player or set piece waiting for "click where it goes"), a press puts it at p.
 // drew(route): a new route has just been drawn. ui.hoverRoute is the route whose badge the mouse is over.
+// shown(route): the route as it's drawn (a pass from where its passer is at its step), for bending it.
 export function initEditor(svg, space, {
-  state, ui, phase, render, renderSoon, hint, editLabel, editOrder, moveObject, locked, pressed, place, drew,
+  state, ui, phase, render, renderSoon, hint, editLabel, editOrder, moveObject, locked, pressed, place, drew, shown = r => r,
 }) {
   let drag = null;
   let lastTap = { id: null, time: 0 };
@@ -114,15 +134,18 @@ export function initEditor(svg, space, {
     r.points[r.points.length - 1] = [round(pos.x), round(pos.y)];
   };
 
-  // A new route of the current tool's type, with both ends at `start`, to be dragged out.
+  // A new route of the current tool's type, with both ends at `start`, to be dragged out. From a player who
+  // already has a run (decoy, drift, blitz) this phase, a new one starts at its end, as the next step.
   const startRoute = (from, start) => {
+    let order = newRouteOrder(ui.tool, phase().routes);
+    if (from) ({ start, order } = newRouteStart(phase(), ui.tool, from));
     const route = {
       id: nextId('r', phase().routes),
       type: ui.tool,
       from,
       points: [[round(start.x), round(start.y)], [round(start.x), round(start.y)]],
       curve: 0,
-      order: newRouteOrder(ui.tool, phase().routes),
+      order,
       option: null,
     };
     if (ui.tool === 'pass') route.to = null;
@@ -149,7 +172,7 @@ export function initEditor(svg, space, {
       ui.selected = { kind: 'player', id: onPlayer };
       return;
     }
-    const start = phase().positions[from];
+    const { start } = newRouteStart(phase(), ui.tool, from);
     const end = to ? phase().positions[to] : { x: clampX(p.x), y: clampY(p.y) };
     if (Math.hypot(end.x - start.x, end.y - start.y) < MIN_ROUTE_LENGTH) return;
     const route = startRoute(from, start);
@@ -274,7 +297,7 @@ export function initEditor(svg, space, {
       if (r.to && onto && teamOf(onto) !== teamOf(r.to)) r.to = null;
       r.points[0] = [round(pos.x), round(pos.y)];
     } else if (drag.mode === 'bend') {
-      const g = routeGeometry(r);
+      const g = routeGeometry(shown(r));
       r.curve = round((p.x - g.mid.x) * g.normal.x + (p.y - g.mid.y) * g.normal.y);
     } else if (drag.mode === 'shift') {
       if (!drag.moved && Math.hypot(p.x - drag.start.x, p.y - drag.start.y) <= MOVE_THRESHOLD) return;

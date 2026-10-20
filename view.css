@@ -196,7 +196,8 @@ button[aria-pressed="true"] { background: var(--accent); border-color: var(--acc
 .player .body { stroke: #fff; stroke-width: .15; }
 .player.attack .body { fill: #d32f2f; }
 .player.defense .body { fill: #1565c0; }
-.player text, .marker text { fill: #fff; font-family: system-ui, sans-serif; font-weight: 700; }
+.player-label { transition: opacity .3s; }
+.player text, .player-label text, .marker text { fill: #fff; font-family: system-ui, sans-serif; font-weight: 700; }
 .me-ring { fill: none; stroke: #ffeb3b; stroke-width: .45; display: none; }
 .player.me .me-ring { display: inline; }
 .marker .outline { fill: rgba(0, 0, 0, .15); stroke: #fff; stroke-width: .25; }

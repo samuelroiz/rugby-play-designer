@@ -10,10 +10,12 @@ import { svgEl } from './pitch.js';
 // Longest step between two frames, so a tab that was hidden for a while doesn't jump through the play.
 const MAX_FRAME_MS = 100;
 
-// The drawn players, markers and badges of the shown phase, by id.
+// The drawn players (and their numbers, in a layer of their own above the routes), markers and badges of
+// the shown phase, by id.
 function findElements(layers) {
-  const els = { players: new Map(), objects: new Map(), badges: new Map(), extraBall: null };
+  const els = { players: new Map(), labels: new Map(), objects: new Map(), badges: new Map(), extraBall: null };
   for (const g of layers.players.querySelectorAll(':scope > [data-id]')) els.players.set(g.dataset.id, g);
+  for (const g of layers.labels?.querySelectorAll(':scope > [data-id]') ?? []) els.labels.set(g.dataset.id, g);
   for (const g of [...layers.objects.children, ...layers.balls.children]) if (g.dataset.id) els.objects.set(g.dataset.id, g);
   for (const g of layers.badges.querySelectorAll('.badge[data-id]')) els.badges.set(g.dataset.id, g);
   return els;
@@ -27,7 +29,7 @@ const setOpacity = (el, o) => { const v = o >= 1 ? '' : String(Math.max(0, o)); 
 // up: the transform that keeps numbers upright. Only what has changed is touched.
 function paint(els, layers, sched, t, up) {
   const f = frameAt(sched, t);
-  for (const [id, g] of els.players) {
+  for (const [id, g] of [...els.players, ...els.labels]) {
     const p = f.players[id];
     if (p) setTransform(g, `translate(${p.x} ${p.y})${up}`);
   }

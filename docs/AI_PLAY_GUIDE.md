@@ -55,7 +55,7 @@ Turning the pitch (vertical view) only changes how it is drawn. The data never c
 | `name` | text, up to 60 characters | `"Untitled play"` |
 | `category` | `"attack"`, `"defense"`, `"lineout"`, `"scrum"` | `"attack"` |
 | `tags` | list of short texts | `[]` |
-| `view` | `"full"`, `"half"` (x 50 to 110, the half attack plays into), `"half-own"` (x −10 to 50) | `"full"` |
+| `view` | `"full"`, `"half"` (x 50 to 110, the half attack plays into), `"half-own"` (x −10 to 50). Each half also shows 3 m past halfway (from x 47, or to x 53). | `"full"` |
 | `orientation` | `"horizontal"`, `"vertical"` | `"horizontal"` |
 
 ### Players
@@ -97,7 +97,7 @@ Use drift and blitz for defenders: drift slides across, blitz rushes up.
 | `id` | `r1`, `r2` … unique within the phase. |
 | `from` | The player the route belongs to. `null` means it was drawn on open grass, and then it moves nobody. |
 | `to` | Pass only: the receiver's id (a team-mate), or `null` for a loose pass. Do not put `to` on other types. |
-| `points` | Exactly two points, `[[x1, y1], [x2, y2]]`. The first is where `from` stands at the start of the phase. For a pass, the second is where the receiver stands at the start of the phase. |
+| `points` | Exactly two points, `[[x1, y1], [x2, y2]]`. The first is where `from` stands at the start of the phase, except for a player's second (third …) run, decoy, drift or blitz in the phase, which starts where the one before it ends. For a pass, the second is where the receiver stands at the start of the phase. (The picture draws a pass or kick from where the passer is at its step, and a pass to where it's caught; see *Catch on the run*. The stored points don't change.) |
 | `curve` | Metres the middle of the route is pushed sideways (0 is straight). For a route heading towards +x, positive bends towards bigger y. In general the middle moves `curve` metres along (−dy, dx) divided by the route's length. Keep it small, under a quarter of the length. |
 | `order` | A whole number, 1 to 99. Sets when the route runs (see section 3). |
 | `option` | Passes and kicks only: `"A"`, `"B"`, `"C"` … when the player has two or more passes or kicks in the phase. Otherwise `null`. |
@@ -138,10 +138,17 @@ A player can have several cues in a phase. Use them sparingly, for the moment th
 
 - Routes run in `order`: everything with the same number starts together, and order 2 starts once everything in order 1 has finished.
 - A pass or kick leaves once its passer has finished their own run in that same order step. So "10 runs and passes" is a run and a pass from `a10`, both order 1.
-- A player with two moving routes does them one after the other. The second one's first point should be where the first one ends.
+- A player with two moving routes does them one after the other. The second one's first point should be where the first one ends, and its `order` should be later. (Drawing a second run from a player in the app does exactly this: it starts at the end of their last one and gets the next step number.)
 - There is one ball, so passes and kicks happen one after another.
 - At the start of a phase, the ball moves with the first passer if it is within 3 m of them. With no pass in the phase, it moves with the nearest player within 3 m. Put the ball 1.1 m in x and 0.9 m in y from the holder: holder at (x, y), ball at (x + 1.1, y + 0.9).
-- A pass with a `to` ends in that player's hands, even if they are running.
+- A pass with a `to` ends in that player's hands, even if they are running (see *Catch on the run*).
+- A pass or kick leaves from where its passer is at that moment, after their runs in earlier orders and in its own order. The picture draws it from there too, so a pass at order 2 after a run at order 1 is drawn from the end of that run.
+
+### Catch on the run (pop pass)
+
+A pass with `to` whose receiver is still running at the pass's step is caught on the run. The ball leaves from where the passer is, and goes to the spot on the receiver's run where he is when it gets there: the app works out where the two meet along his curved run, with the ball at pass speed (9 m/s at 1×, at least 0.9 s in the air). It doesn't chase him. The arrow on the pitch, and in pictures, ends at that catch point. He then carries on to the end of his run with the ball, so the next phase starts with the ball in his hands there (his new position plus (1.1, 0.9)), as usual. If he has already finished his run when the ball arrives, it goes to where he finishes.
+
+To write one: give the runner's run and the pass the same `order` (the pass still leaves once the passer has finished their own run in that order), and store the pass's second point on the receiver's start, as for any pass. A pass at a later order than his run is caught where his run ends.
 
 ### Options
 
@@ -167,7 +174,7 @@ When playing, the animation runs the phase's routes, then slides everyone to the
 
 ### Rugby rules the file should respect
 
-- **Passes go flat or backwards.** For attack, the receiver's x must be no bigger than the passer's x, both as drawn and where the two stand when the ball leaves (after their runs in earlier orders and in the pass's own order). For defense the opposite: the receiver's x no smaller. Kicks may go any way.
+- **Passes go flat or backwards.** For attack, the receiver's x must be no bigger than the passer's x, both as drawn and where the two stand when the ball leaves (after their runs in earlier orders and in the pass's own order). For a pass caught on the run, also at the catch point: its x no bigger than where the passer let it go. For defense the opposite: the receiver's x no smaller. Kicks may go any way.
 - **Space players at least 2.5 m apart**, centre to centre, at the start of every phase and at the ends of runs. Discs are 2.4 m across, wider than a real body. The one exception is the lineout preset, whose two lines stand 2.4 m apart.
 - Keep runners clear of other players' discs along the way where you can.
 
@@ -249,7 +256,8 @@ Keep plays short: 2 to 5 phases, each with one clear idea in its note.
 - [ ] Every player has a position in every phase, inside the pitch.
 - [ ] Players are at least 2.5 m apart (the lineout's two lines may be 2.4 m).
 - [ ] Every route has two points, an id unique in its phase, a known `type`, an `order` from 1 to 99, and a `from` that is in the play. Its first point is on its player.
-- [ ] Every pass has `to` naming a team-mate, ends where that team-mate stands, and goes flat or backwards.
+- [ ] Every pass has `to` naming a team-mate, ends where that team-mate stands, and goes flat or backwards (for a pass caught on the run, to the catch point too).
+- [ ] A player's second run (decoy, drift, blitz) in a phase starts where their first ends, with a later `order`.
 - [ ] A player with two or more passes or kicks in a phase has them lettered A, B … with one shared order. Everyone else's passes and kicks have `option: null`. `optionLabel` only on options.
 - [ ] The ball starts within 3 m of the first passer (at their x + 1.1, y + 0.9).
 - [ ] Each phase after the first matches what section 3 builds from the one before: positions, and every marker's id and place.

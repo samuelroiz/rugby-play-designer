@@ -344,25 +344,24 @@ async function throughEverything(page, dir, seen, label) {
   check('playing: Ctrl+Z and Ctrl+Shift+Z do nothing', eq(await state(page), edited));
   const keyboard = await page.evaluate(() => {
     const tryFocus = el => { el.focus(); return document.activeElement === el; };
-    return {
-      menuInert: document.getElementById('file-menu').inert,
-      summary: tryFocus(document.querySelector('#file-menu summary')),
-      name: tryFocus(document.getElementById('play-name')),
-      category: tryFocus(document.getElementById('play-category')),
-      tags: tryFocus(document.getElementById('play-tags')),
-    };
+    return { menuInert: document.getElementById('file-menu').inert, summary: tryFocus(document.querySelector('#file-menu summary')) };
   });
-  check('playing: the File menu is inert; name, category and tags can\'t take the focus', keyboard.menuInert && !keyboard.summary && !keyboard.name && !keyboard.category && !keyboard.tags, JSON.stringify(keyboard));
-  const reached = new Set();
-  for (let i = 0; i < 40; i++) {
+  check('playing: the File menu is inert and can\'t take the focus', keyboard.menuInert && !keyboard.summary, JSON.stringify(keyboard));
+  check('playing: the name, category and tags are not disabled', await page.evaluate(() => ['play-name', 'play-category', 'play-tags'].every(id => !document.getElementById(id).disabled)));
+  // Tab goes through the page; the first text box it reaches stops the play, so typing there is kept.
+  await page.evaluate(() => document.activeElement?.blur());
+  const reached = [];
+  let stoppedOnName = null;
+  for (let i = 0; i < 40 && stoppedOnName == null; i++) {
     await page.keyboard.press('Tab');
-    reached.add(await page.evaluate(() => (document.activeElement.closest('#file-menu') ? 'file' : document.activeElement.id || document.activeElement.tagName)));
+    const at = await page.evaluate(() => ({ id: document.activeElement.closest('#file-menu') ? 'file' : document.activeElement.id || document.activeElement.tagName, playing: rugbyPlayback.playing, paused: rugbyPlayback.paused }));
+    reached.push(at.id);
+    if (at.id === 'play-name') stoppedOnName = !at.playing && !at.paused;
   }
-  check('playing: Tab never reaches the File menu or the play name', !reached.has('file') && !reached.has('play-name'), [...reached].join());
+  check('playing: Tab never reaches the File menu; reaching the play name stops the play', !reached.includes('file') && stoppedOnName === true, reached.join());
   await page.keyboard.type('XYZ');
-  check('playing: typing changes nothing', eq(await state(page), edited));
-  await page.evaluate(() => rugbyPlayback.pause());
-  check('paused: the details are usable again', await page.evaluate(() => !document.getElementById('file-menu').inert && !document.getElementById('play-name').disabled));
+  check('…and typing there renames the play (nothing is lost)', (await state(page)).name === 'XYZ' && eq({ ...(await state(page)), name: edited.name }, edited), (await state(page)).name);
+  check('stopped: the File menu is usable again', await page.evaluate(() => !document.getElementById('file-menu').inert));
   await page.evaluate(() => rugbyPlayback.jump(0));
 
   check('no console errors', errors.length === 0, errors.join(' | '));
@@ -481,7 +480,7 @@ async function throughEverything(page, dir, seen, label) {
       undo: document.querySelector('[data-action="undo"]').disabled,
       tools: document.querySelector('[data-action="add-attack"]').disabled,
       menu: document.getElementById('file-menu').inert,
-      note: document.getElementById('phase-note').readOnly,
+      note: document.getElementById('phase-note').disabled,
     };
     // A change from outside (another tab, say) while the PDF is being made.
     window.playState.name = 'Changed';

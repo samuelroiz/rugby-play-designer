@@ -81,6 +81,10 @@ export function positionsAfter(routes, positions, upTo = Infinity) {
   return out;
 }
 
+// A player's last run, decoy, drift or blitz in play order (the one they end the phase at the end of), or null.
+// A new one drawn from them carries on from its end, as the next step.
+export const lastMove = (routes, id) => byOrder(routes).filter(r => r.from === id && MOVING_ROUTES.has(r.type)).at(-1) ?? null;
+
 // The ball a phase's play moves: the one nearest the start of its first pass or kick. null if there's no
 // pass or kick, or no ball.
 export function movingBall(objects, firstFlight) {

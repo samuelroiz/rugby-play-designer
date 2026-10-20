@@ -9,7 +9,7 @@
 // then offers Watch again, Another position and Share. "Watch the whole play" goes straight to that view.
 
 import { drawPitch, svgEl, fitBox, uprightTurn, ROUTE_TYPES, PLAYER_R } from './pitch.js';
-import { buildSchedule, frameAt } from './animate.js';
+import { buildSchedule, frameAt, flightEnds, shownRoute } from './animate.js';
 import { playedRoutes, curveControl, playPoints, BALL_ROUTES } from './model.js';
 import { decodeShare, hashData } from './share.js';
 import { DEFAULT_LOGO_URL } from './logo.js';
@@ -30,7 +30,7 @@ const $ = id => document.getElementById(id);
 const svg = $('pitch');
 const layers = {
   pitch: $('pitch-layer'), objects: $('objects-layer'), routes: $('routes-layer'), players: $('players-layer'),
-  ballRoutes: $('ball-routes-layer'), balls: $('ball-layer'),
+  ballRoutes: $('ball-routes-layer'), labels: $('labels-layer'), balls: $('ball-layer'),
 };
 
 let play = null;
@@ -51,7 +51,7 @@ const v = {
   bubbles: [], // the cues up now: [{ text, age }] (age in ms)
   timeScale: 1, // for tests: 4 runs the clock (and the camera) 4 times faster
 };
-let els = { players: new Map(), objects: new Map(), routes: [], extraBall: null };
+let els = { players: new Map(), labels: new Map(), objects: new Map(), routes: [], extraBall: null };
 let raf = 0;
 let last = 0;
 let frameHook = null;
@@ -137,15 +137,20 @@ function buildArrows() {
   }
 }
 
+// The discs, and their numbers in a layer above every route line (a line can cross a disc, never its number).
 function buildPlayers() {
   layers.players.replaceChildren();
+  layers.labels.replaceChildren();
   els.players = new Map();
+  els.labels = new Map();
   for (const p of play.players) {
     const g = svgEl('g', { class: `player ${p.team}`, 'data-id': p.id }, layers.players);
     svgEl('circle', { r: PLAYER_R + 0.75, class: 'me-ring' }, g);
     svgEl('circle', { r: PLAYER_R, class: 'body' }, g);
-    svgEl('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': p.label.length > 2 ? 0.85 : 1.2 }, g).textContent = p.label;
+    const label = svgEl('g', { class: `player-label ${p.team}`, 'data-id': p.id }, layers.labels);
+    svgEl('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': p.label.length > 2 ? 0.85 : 1.2 }, label).textContent = p.label;
     els.players.set(p.id, g);
+    els.labels.set(p.id, label);
   }
 }
 
@@ -169,7 +174,10 @@ function buildPhase(i) {
     els.objects.set(o.id, g);
   }
   els.routes = [];
-  for (const r of playedRoutes(ph.routes, 'A')) {
+  // A pass or kick is drawn from where its passer is at its step to where the ball is caught (animate.js).
+  const ends = flightEnds(play, i);
+  for (const route of playedRoutes(ph.routes, 'A')) {
+    const r = shownRoute(route, ends.get(route.id));
     const st = ROUTE_TYPES[r.type] ?? ROUTE_TYPES.run;
     const [x1, y1] = r.points[0];
     const [x2, y2] = r.points[r.points.length - 1];
@@ -250,10 +258,14 @@ function paint(dt) {
   const k = Math.min(1.6, Math.max(1, (v.cam?.w ?? 40) / 45));
   for (const [id, g] of els.players) {
     const p = f.players[id];
-    g.style.display = p ? '' : 'none';
+    const label = els.labels.get(id);
+    g.style.display = label.style.display = p ? '' : 'none';
     if (!p) continue;
-    setAttr(g, 'transform', `translate(${p.x} ${p.y})${UP} scale(${Math.round(k * 100) / 100})`);
+    const transform = `translate(${p.x} ${p.y})${UP} scale(${Math.round(k * 100) / 100})`;
+    setAttr(g, 'transform', transform);
+    setAttr(label, 'transform', transform);
     setOpacity(g, on[id]);
+    setOpacity(label, on[id]);
     g.classList.toggle('me', v.mode === 'focus' && id === v.focus);
   }
   for (const [id, g] of els.objects) {

@@ -120,9 +120,10 @@ const pitchArea = page => page.$eval('#pitch', el => { const r = el.getBoundingC
     add: document.querySelector('[data-phase="add"]').disabled,
     insert: document.querySelector('[data-phase="insert"]').disabled,
     del: document.querySelector('[data-phase="delete"]').disabled,
-    note: document.getElementById('phase-note').readOnly,
   }));
-  check('playing: tools, undo and phase editing are disabled, the note is read-only', Object.values(disabled).every(Boolean), JSON.stringify(disabled));
+  check('playing: tools, undo and phase editing are disabled', Object.values(disabled).every(Boolean), JSON.stringify(disabled));
+  // The note isn't locked: focusing it stops the play, so what's typed is kept (see tests/browser/session.mjs).
+  check('playing: the note box can still be typed in', await page.$eval('#phase-note', t => !t.readOnly && !t.disabled));
   await click(page, '[data-route="run"]');
   await drag(page, [47, 25], [55, 20]);
   await page.keyboard.press('Delete');
@@ -496,7 +497,7 @@ const pitchArea = page => page.$eval('#pitch', el => { const r = el.getBoundingC
   await click(page, '[data-play="exit"]');
   check('Exit stops playback, drops the paused frame and unlocks editing', await page.evaluate(() =>
     !rugbyPlayback.playing && !rugbyPlayback.paused && !document.body.classList.contains('presenting')
-    && !document.querySelector('[data-action="add-attack"]').disabled && !document.getElementById('phase-note').readOnly));
+    && !document.querySelector('[data-action="add-attack"]').disabled && !document.getElementById('phase-note').disabled));
   check('after Exit, players are drawn where they stand in the phase', eq((await drawn(page)).a10, play.phases[0].positions.a10));
   await drag(page, [45, 20], [47, 23]);
   check('after Exit, a player can be dragged', eq((await state(page)).phases[0].positions.a13, { x: 47, y: 23 }));

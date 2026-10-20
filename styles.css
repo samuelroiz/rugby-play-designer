@@ -37,13 +37,40 @@ body {
 .team-logo { flex: none; height: 28px; width: auto; max-width: 84px; object-fit: contain; margin-right: -.4rem; }
 .team-logo[hidden] { display: none; }
 
-/* Play name: the box is as wide as its text (sized by a hidden copy of it), with a pencil after it. */
-.title-edit { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: .15rem; margin-right: auto; cursor: text; color: var(--muted); }
+/* Play name: the box is as wide as its text (sized by a hidden copy of it), shortened with "…" when there
+   isn't room, with a pencil after it that opens Play details. */
+.title-edit { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; cursor: text; color: var(--muted); }
 .title-size { display: inline-grid; min-width: 0; max-width: 100%; }
 .title-size::after { content: attr(data-value) " "; visibility: hidden; white-space: pre; grid-area: 1 / 1; font-size: 1.05rem; font-weight: 600; padding: .35rem .5rem; border: 1px solid transparent; overflow: hidden; }
 .title-size > input { grid-area: 1 / 1; width: 100%; }
 .title-pencil { flex: none; width: 1rem; height: 1rem; }
-.title-edit:hover .title-pencil { color: var(--ink); }
+.title-pencil-button { flex: none; margin: 0 auto 0 -.5rem; padding: .35rem; border: 0; background: transparent; color: var(--muted); }
+.title-pencil-button:hover:not(:disabled) { background: #eef3ee; color: var(--ink); }
+/* Play details (the pencil): category and tags, in a small popup under the name (placed by initTopbar) */
+.details-pop {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: 16rem;
+  max-width: calc(100vw - 1rem);
+  padding: .6rem .75rem .75rem;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .2);
+}
+.details-pop:popover-open { display: flex; flex-direction: column; gap: .5rem; }
+.details-pop h2 { margin: 0; font-size: .95rem; }
+.details-pop label { display: flex; flex-direction: column; gap: .2rem; font-size: .8rem; color: var(--muted); }
+.details-pop select, .details-pop input {
+  font: inherit;
+  font-size: .95rem;
+  color: var(--ink);
+  padding: .35rem .45rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+}
 #play-name {
   min-width: 3rem;
   font: inherit;
@@ -54,6 +81,7 @@ body {
   border-radius: 6px;
   background: transparent;
   color: inherit;
+  text-overflow: ellipsis;
 }
 #play-name:hover, #play-name:focus { border-color: var(--border); outline: none; background: #fff; }
 
@@ -62,9 +90,12 @@ body {
 .segmented button + button { border-left: 1px solid var(--border); }
 .orient-icon, .icon { width: 1.2rem; height: 1.2rem; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .icon { stroke-linecap: round; stroke-linejoin: round; }
-.view-controls { display: flex; align-items: center; gap: .75rem; }
+.view-controls { display: flex; flex: none; align-items: center; gap: .75rem; }
+/* Only the play's name gives way when the top bar is short of room: the buttons keep their size and place. */
+.topbar > button { flex: none; }
 .flip-half { gap: 0; }
-.flip-half[hidden] { display: none; }
+/* Hidden in the full view, but it keeps its slot, so the buttons beside it never shift. */
+.flip-half[hidden] { display: flex; visibility: hidden; }
 
 /* Drop-down menus (Layers, File): a <details> that opens a panel under its button */
 .menu { position: relative; flex: none; }
@@ -94,23 +125,19 @@ body {
   border-radius: 8px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, .15);
   white-space: nowrap;
+  /* Never taller than the window: a long menu scrolls inside itself, and the page behind doesn't. */
+  max-height: calc(100dvh - 4rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .menu-panel label { display: flex; align-items: center; gap: .45rem; cursor: pointer; }
 /* Layers → Player size */
 .player-size { display: flex; flex-direction: column; gap: .3rem; margin: .2rem 0 0; padding: .45rem 0 0; border: 0; border-top: 1px solid var(--border); }
 .player-size legend { float: left; margin-bottom: .1rem; padding: 0; font-size: .8rem; color: var(--muted); }
 .file-panel { gap: .6rem; min-width: 14rem; }
-.file-panel label { flex-direction: column; align-items: stretch; gap: .2rem; font-size: .8rem; color: var(--muted); cursor: default; }
-.file-panel select, .file-panel input[type="text"] {
-  font: inherit;
-  font-size: .95rem;
-  color: var(--ink);
-  padding: .35rem .45rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: #fff;
-}
-.menu-actions { display: flex; flex-direction: column; gap: .35rem; padding-top: .5rem; border-top: 1px solid var(--border); }
+.menu-actions { display: flex; flex: none; flex-direction: column; gap: .35rem; padding-top: .5rem; border-top: 1px solid var(--border); }
+/* No rule above the first group shown (Plays… is only there on a phone). */
+.file-panel > .menu-actions:first-child, .file-panel > .plays-in-menu + .menu-actions { padding-top: 0; border-top: 0; }
 
 /* Buttons */
 button {
@@ -324,8 +351,9 @@ button.danger { color: #b71c1c; }
   color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
+/* Too long for one line: two lines in smaller type, still inside the status line (see fitHint). */
+.draw-hint.wrap { white-space: normal; font-size: .75rem; line-height: 1.15; max-height: 2.3em; }
 .draw-hint[hidden] { display: none; }
 
 /* The bar of actions beside a selected route (placed by updateRouteBar) */
@@ -377,8 +405,13 @@ button.danger { color: #b71c1c; }
   border: 1px solid var(--border);
   border-radius: 6px;
   resize: none;
-  min-height: 2.1rem;
-  max-height: 5.6rem; /* grows with the text to about four lines (fitNote), then scrolls */
+  /* A fixed height, as tall as the buttons beside it, showing two lines: a longer note scrolls inside it, so
+     typing never moves the pitch. */
+  height: 2.05rem;
+  font-size: .8rem;
+  line-height: 1.1;
+  padding: .08rem .5rem;
+  overflow-y: auto;
   overflow-wrap: anywhere;
 }
 /* Play controls in the phase bar: Play/Pause, speed and Loop (and, in Present mode, more) */
@@ -396,9 +429,10 @@ button.danger { color: #b71c1c; }
 body.playing #file-menu { pointer-events: none; opacity: .45; }
 body.playing #pitch .player, body.playing #pitch .marker, body.playing #pitch .badge, body.playing #pitch .route-hit { cursor: default; }
 
-/* Narrower screens: shorter button labels and a narrower note, so the phase bar takes two rows, not three. */
+/* Narrower screens: shorter button labels and a narrower note, so the phase bar takes two rows, not three,
+   and the top bar keeps room for the play's name (Full / Half, and just ⇄ for the other half, with its tooltip). */
 @media (max-width: 1100px) {
-  .phasebar .long { display: none; }
+  .phasebar .long, .topbar .long { display: none; }
   #phase-note { flex-basis: 10rem; min-width: 10rem; }
 }
 
@@ -584,7 +618,7 @@ dialog .field input { font: inherit; font-size: .95rem; color: var(--ink); paddi
 .player.selected .body { stroke: #ffeb3b; stroke-width: .45; }
 /* The player a route being drawn will start from */
 .snap-ring { fill: rgba(255, 255, 255, .25); stroke: #fff; stroke-width: .25; }
-.player text, .marker text {
+.player text, .player-label text, .marker text {
   fill: #fff;
   font-family: system-ui, sans-serif;
   font-weight: 700;
@@ -779,14 +813,13 @@ body.presenting {
   #cue-text { width: 9rem; }
   .statusbar { flex-wrap: wrap; column-gap: .5rem; height: auto; min-height: 2.7rem; padding: .25rem .5rem; font-size: .78rem; }
   .statusbar .legend { flex-basis: 100%; flex-wrap: wrap; margin-left: 0; font-size: .7rem; }
-  .draw-hint { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; line-height: 1.25; }
-  .draw-hint[hidden] { display: none; }
   .title-edit { flex: 1 1 auto; }
   .topbar { flex-wrap: wrap; gap: .4rem; padding: .4rem .5rem; }
   .view-controls { flex-basis: 100%; gap: .4rem; }
   .view-controls .menu { margin-left: auto; }
   #about-button, #plays-button { display: none; }
   .about-in-menu, .plays-in-menu { display: flex; }
+  .file-panel > .plays-in-menu + .menu-actions { padding-top: .5rem; border-top: 1px solid var(--border); }
   .play-row { flex-wrap: wrap; }
   .play-row .thumb { width: 5rem; }
   .play-actions { flex-basis: 100%; flex-wrap: wrap; }

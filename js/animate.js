@@ -6,7 +6,7 @@
 // pitch metres. Which ball moves and who catches it come from model.js, as when the next phase is built.
 
 import {
-  curvePoint, byOrder, playedRoutes, positionsAfter, movingBall, receiverOf,
+  curvePoint, byOrder, playedRoutes, positionsAfter, movingBall, receiverOf, round2,
   MOVING_ROUTES, BALL_ROUTES, BALL_OFFSET,
 } from './model.js';
 
@@ -46,6 +46,22 @@ function curveLength(r) {
 function duration(kind, r) {
   const { speed, min, max } = PACE[kind];
   return Math.min(max, Math.max(min, (curveLength(r) / speed) * 1000));
+}
+
+// How long the ball takes along route r (a pass or kick) from `from` to `to`, its curve kept.
+const flightTime = (r, from, to) => duration(r.type, { points: [[from.x, from.y], [to.x, to.y]], curve: r.curve });
+
+// Where player `id` (standing at `positions[id]` when the phase starts) is at time t, given the phase's
+// movements so far.
+function positionAt(moves, positions, id, t) {
+  let p = positions[id];
+  for (const m of moves) {
+    if (m.player !== id) continue;
+    if (t <= m.start) break;
+    const u = easeInOut(Math.min(1, (t - m.start) / (m.end - m.start)));
+    p = along(m.route, u, p, curvePoint(m.route, 1));
+  }
+  return p;
 }
 
 // The route's curve, bent so it starts at `from` and ends at `to` instead of its own ends. When nothing has
@@ -91,7 +107,21 @@ export function buildSchedule(play, i, { option = 'A', loop = false } = {}) {
     for (const r of step) {
       if (!BALL_ROUTES.has(r.type)) continue;
       const start = Math.max(t, movedUntil[r.from] ?? t, ballFree);
-      const f = { route: r, from: r.from, to: r.type === 'pass' && positions[r.to] ? r.to : null, start, end: start + duration(r.type, r), catcher: null };
+      const to = r.type === 'pass' && positions[r.to] ? r.to : null;
+      // The ball leaves from where the passer is now, and goes to where the receiver is when it arrives:
+      // a receiver still running (a pop pass) is met on his path, at the time the flight there takes.
+      const release = r.from && positions[r.from] ? positionAt(moves, positions, r.from, start) : curvePoint(r, 0);
+      let catchAt = to ? positionAt(moves, positions, to, start) : curvePoint(r, 1);
+      let flightEnd = start + flightTime(r, release, catchAt);
+      for (let k = 0; to && k < 40; k++) {
+        catchAt = positionAt(moves, positions, to, flightEnd);
+        const next = start + flightTime(r, release, catchAt);
+        const done = Math.abs(next - flightEnd) < 0.01;
+        flightEnd = next;
+        if (done) break;
+      }
+      if (to) catchAt = positionAt(moves, positions, to, flightEnd);
+      const f = { route: r, from: r.from, to, start, end: flightEnd, release, catchAt, catcher: null };
       flights.push(f);
       ballFree = f.end;
       end = Math.max(end, f.end);
@@ -127,16 +157,7 @@ export function buildSchedule(play, i, { option = 'A', loop = false } = {}) {
 }
 
 // Where player `id` is at time t (before the slide into the next phase).
-function playerAt(s, id, t) {
-  let p = s.positions[id];
-  for (const m of s.moves) {
-    if (m.player !== id) continue;
-    if (t <= m.start) break;
-    const u = easeInOut(Math.min(1, (t - m.start) / (m.end - m.start)));
-    p = along(m.route, u, p, curvePoint(m.route, 1));
-  }
-  return p;
-}
+const playerAt = (s, id, t) => positionAt(s.moves, s.positions, id, t);
 
 // Where the ball is at time t: with its holder, or in flight along a pass or kick. null before the first
 // flight of a phase that has no ball.
@@ -148,8 +169,8 @@ function ballAt(s, t) {
     if (t < f.start) break;
     const from = holder ? add(playerAt(s, holder, f.start), offset) : pos ?? curvePoint(f.route, 0);
     const u = Math.min(1, (t - f.start) / (f.end - f.start));
-    // A pass to a receiver chases them if they're running, and ends in their hands.
-    const to = f.to ? add(playerAt(s, f.to, f.start + u * (f.end - f.start)), BALL_OFFSET) : curvePoint(f.route, 1);
+    // A pass to a receiver ends in their hands, where they are when it arrives (on their run, if they're running).
+    const to = f.to ? add(f.catchAt, BALL_OFFSET) : curvePoint(f.route, 1);
     pos = along(f.route, u, from, to);
     if (u < 1) return pos;
     holder = f.catcher;
@@ -197,3 +218,24 @@ export function frameAt(s, t) {
   }
   return { players, objects, extraBall, routeOpacity };
 }
+
+// The passes and kicks of phase i as the still picture draws them, by route id: from where the passer is when
+// the ball leaves to where the receiver is when it arrives (or the route's own end, for a kick or a pass with
+// no receiver), the same spots the animation uses. Each option is taken from the schedule that plays it.
+// Runs and the other routes are drawn as they are.
+export function flightEnds(play, i) {
+  const ends = new Map();
+  const routes = play.phases[i]?.routes ?? [];
+  const letters = ['A', ...new Set(routes.filter(r => r.option && r.option !== 'A').map(r => r.option))];
+  for (const option of letters) {
+    for (const f of buildSchedule(play, i, { option }).flights) {
+      if (ends.has(f.route.id)) continue;
+      const to = f.to ? f.catchAt : curvePoint(f.route, 1);
+      ends.set(f.route.id, [[round2(f.release.x), round2(f.release.y)], [round2(to.x), round2(to.y)]]);
+    }
+  }
+  return ends;
+}
+
+// Route r drawn with `points` (from flightEnds) in place of its own, or r itself.
+export const shownRoute = (r, points) => (points ? { ...r, points } : r);
