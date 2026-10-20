@@ -9,23 +9,13 @@
 // 6. Restore from backup keeps a library copy that's newer than the backup's ("kept newer").
 import fs from 'node:fs';
 import path from 'node:path';
-import { open, click, state, check, failed, outDir, tap, toScreen, openId, plays, URL_ } from './lib.mjs';
+import { open, click, state, check, failed, outDir, tap, toScreen, openId, plays, URL_, sleep, eq, pastePlay as paste } from './lib.mjs';
 import { encodeShare } from '../../js/share.js';
 import { animPlay } from '../anim-play.mjs';
 
 const OUT = outDir('coach');
 console.log(`Downloads: ${OUT}`);
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-async function paste(page, p) {
-  await click(page, '#file-menu summary');
-  await click(page, '[data-file="paste"]');
-  await page.waitForSelector('#paste-dialog[open]');
-  await page.$eval('#paste-play-text', (t, text) => { t.value = text; }, JSON.stringify(p));
-  await click(page, '#paste-play-import');
-  await sleep(150);
-}
 const rect = (page, sel) => page.$eval(sel, el => { const r = el.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) }; });
 
 // The animation play: 10 runs and passes to 12 (phase 1), 12 kicks (phase 2). 10 has a written job in phase 1,

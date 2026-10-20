@@ -4,11 +4,8 @@
 // the start screen's positions, following 10 (always in view, team-mates faded, opponents near 10 in full,
 // 10's instruction or their made job as the job line), the zoom out and replay, the end screen and Share, swipes and
 // buttons, the remembered position, Watch the whole play, broken links, and what the page loads.
-import { open, click, state, check, failed, tap, URL_ } from './lib.mjs';
+import { open, click, state, check, failed, tap, URL_, sleep, eq, pastePlay } from './lib.mjs';
 import { animPlay } from '../anim-play.mjs';
-
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 // The animation play, with 10's instructions in phases 1 and 2 (in phase 3, 10's job is made from their
 // routes: they have none).
@@ -20,14 +17,6 @@ play.phases[2].note = 'Regroup at the ruck';
 const NOTES = play.phases.map(ph => ph.note);
 const FOR_10 = ['Flat, call for it early.', 'Chase the kick.', 'Hold your spot'];
 
-async function pastePlay(page, p) {
-  await click(page, '#file-menu summary');
-  await click(page, '[data-file="paste"]');
-  await page.waitForSelector('#paste-dialog[open]');
-  await page.$eval('#paste-play-text', (t, text) => { t.value = text; t.dispatchEvent(new Event('input', { bubbles: true })); }, JSON.stringify(p));
-  await click(page, '#paste-play-import');
-  await sleep(150);
-}
 // File → Share link…: waits for the link to be made, notes whether anything was copied before Copy was
 // pressed (window.__early), then presses Copy; resolves with what was copied (the clipboard is stubbed).
 async function shareLink(page) {

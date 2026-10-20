@@ -6,31 +6,15 @@
 // - Paste play → Replace the open play: same library id, the old version in Recently deleted, one undo step.
 import fs from 'node:fs';
 import path from 'node:path';
-import { open, click, state, check, failed, outDir, openId, plays, tap, stored } from './lib.mjs';
+import { open, click, state, check, failed, outDir, openId, plays, tap, stored, sleep, eq, openPaste, pastePlay } from './lib.mjs';
 
 const OUT = outDir('fixes');
 console.log(`Downloads: ${OUT}`);
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const STEPS_KEY = 'rugby-play-designer.step-numbers';
 const badges = page => page.$$eval('#badges-layer .badge', bs => bs.map(b => b.dataset.id).sort());
 const live = async page => (await plays(page)).filter(p => !p.deleted);
 const gone = async page => (await plays(page)).filter(p => p.deleted);
 const toast = page => page.$eval('#toast', t => (t.hidden ? '' : t.textContent));
-
-async function openPaste(page) {
-  await page.click('#file-menu summary');
-  await page.click('[data-file="paste"]');
-  await page.waitForSelector('#paste-dialog[open]');
-}
-// Pastes `play` and imports it, as a new play or replacing the open one.
-async function pastePlay(page, play, mode = null) {
-  await openPaste(page);
-  await page.$eval('#paste-play-text', (t, text) => { t.value = text; t.dispatchEvent(new Event('input', { bubbles: true })); }, JSON.stringify(play));
-  if (mode) await page.click(`[name="paste-mode"][value="${mode}"]`);
-  await click(page, '#paste-play-import');
-  await sleep(150);
-}
 
 const P = (id, x, y) => [id, { x, y }];
 const route = (id, type, from, points, order, extra = {}) => ({ id, type, from, to: null, points, curve: 0, order, option: null, ...extra });

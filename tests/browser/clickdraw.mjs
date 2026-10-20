@@ -1,11 +1,10 @@
 // Click-to-draw from a selected player. Desktop 1440x900 (mouse) + quick phone 390 touch check.
 import path from 'node:path';
 import fs from 'node:fs';
-import { open, drag, tap, click, state, check, failed, toScreen, outDir, addPlayer, loadFile } from './lib.mjs';
+import { open, drag, tap, click, state, check, failed, toScreen, outDir, addPlayer, loadFile, eq, sleep } from './lib.mjs';
 
 const OUT = outDir('clickdraw');
 console.log(`Screenshots: ${OUT}`);
-const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const routes = async page => (await state(page)).phases[0].routes;
 const sel = page => page.evaluate(() => document.querySelector('#players-layer .player.selected')?.dataset.id ?? null);
 const toolOn = page => page.evaluate(() => document.querySelector('[data-route][aria-pressed="true"]')?.dataset.route ?? null);
@@ -186,7 +185,6 @@ async function setup(page, { touch = false } = {}) {
     const orig = XMLSerializer.prototype.serializeToString;
     XMLSerializer.prototype.serializeToString = function (n) { const s = orig.call(this, n); window.__svgs.push(s); return s; };
   });
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
   const badges = () => page.$$eval('#badges-layer .badge', bs => bs.map(b => b.textContent));
   const tags = rs => rs.map(r => `${r.order}${r.option ?? ''}`);
   const fromP = async id => (await routes(page)).filter(r => r.from === id);

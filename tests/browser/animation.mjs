@@ -5,14 +5,12 @@
 // "Show logo on exports" is on, and the size of a Medium GIF of the 3-phase example. Desktop 1440x900.
 import fs from 'node:fs';
 import path from 'node:path';
-import { open, click, state, check, failed, outDir } from './lib.mjs';
+import { open, click, state, check, failed, outDir, sleep, eq, pastePlay } from './lib.mjs';
 import { animPlay } from '../anim-play.mjs';
 import { buildSchedule } from '../../js/animate.js';
 
 const OUT = outDir('animation');
 console.log(`Downloads: ${OUT}`);
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const toast = page => page.$eval('#toast', t => (t.hidden ? '' : t.textContent));
 const dialogOpen = page => page.$eval('#animation-dialog', d => d.open);
 const example = JSON.parse(fs.readFileSync(new URL('../../templates/example.json', import.meta.url)));
@@ -58,14 +56,6 @@ const watchPictures = page => page.evaluate(() => {
 });
 const pictures = page => page.evaluate(() => window.__pics.splice(0));
 
-async function pastePlay(page, play) {
-  await page.click('#file-menu summary');
-  await page.click('[data-file="paste"]');
-  await page.waitForSelector('#paste-dialog[open]');
-  await page.$eval('#paste-play-text', (t, text) => { t.value = text; t.dispatchEvent(new Event('input', { bubbles: true })); }, JSON.stringify(play));
-  await click(page, '#paste-play-import');
-  await sleep(150);
-}
 async function openAnimation(page) {
   await page.click('#file-menu summary');
   await page.click('[data-file="animation"]');

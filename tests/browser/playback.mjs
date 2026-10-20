@@ -2,26 +2,15 @@
 // The animation clock is stopped (timeScale 0) and moved on by hand with rugbyPlayback.advance(ms), so
 // nothing waits in real time; one run at 20x checks that it also plays by itself.
 import path from 'node:path';
-import { open, drag, click, state, shown, check, failed, toScreen, outDir, URL_ } from './lib.mjs';
+import { open, drag, click, state, shown, check, failed, toScreen, outDir, URL_, sleep, eq, visible, loadPlay } from './lib.mjs';
 import { buildSchedule, TIMING } from '../../js/animate.js';
 import { animPlay } from '../anim-play.mjs';
 
 const OUT = outDir('playback');
 console.log(`Screenshots: ${OUT}`);
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const near = (p, q, tol) => !!p && !!q && Math.hypot(p.x - q.x, p.y - q.y) <= tol;
 const moved = (p, q) => p.x !== q.x || p.y !== q.y;
 
-// Puts a play in the app (as Undo would) and redraws.
-async function loadPlay(page, play) {
-  await page.evaluate(p => {
-    const s = window.playState;
-    for (const k of Object.keys(s)) delete s[k];
-    Object.assign(s, structuredClone(p));
-  }, play);
-  await page.keyboard.press('Escape');
-}
 // Where every player and marker is drawn, from its transform.
 const drawn = page => page.evaluate(() => {
   const out = {};
@@ -34,7 +23,6 @@ const drawn = page => page.evaluate(() => {
 const pb = page => page.evaluate(() => ({ playing: rugbyPlayback.playing, time: rugbyPlayback.time, speed: rugbyPlayback.speed, loop: rugbyPlayback.loop }));
 const advance = (page, ms) => page.evaluate(ms => rugbyPlayback.advance(ms), ms);
 const playLabel = page => page.$eval('#play-button', b => b.getAttribute('aria-label'));
-const visible = (page, sel) => page.$eval(sel, el => { const r = el.getBoundingClientRect(); return getComputedStyle(el).display !== 'none' && r.width > 0 && r.height > 0; });
 const pitchArea = page => page.$eval('#pitch', el => { const r = el.getBoundingClientRect(); return r.width * r.height; });
 
 {

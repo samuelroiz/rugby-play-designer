@@ -1,23 +1,15 @@
 // For AI assistants: File → Paste play…, the AI play guide's links in About and the File menu, Copy guide,
 // and llms.txt and the guide served by the site. Desktop 1440x900, then a 390px phone.
 import fs from 'node:fs';
-import { open, addPlayer, click, state, check, failed, openId, plays, URL_ } from './lib.mjs';
+import { open, addPlayer, click, state, check, failed, openId, plays, URL_, sleep, eq, visible, openPaste } from './lib.mjs';
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const example = JSON.parse(fs.readFileSync(new URL('../../templates/example.json', import.meta.url)));
 const guide = fs.readFileSync(new URL('../../docs/AI_PLAY_GUIDE.md', import.meta.url), 'utf8');
 const GUIDE_HEADING = guide.split('\n')[0];
 const isOpen = page => page.$eval('#paste-dialog', d => d.open);
-const visible = (page, sel) => page.$eval(sel, el => { const r = el.getBoundingClientRect(); return getComputedStyle(el).display !== 'none' && r.width > 0 && r.height > 0; });
 const toast = page => page.$eval('#toast', t => (t.hidden ? '' : t.textContent));
 const errorText = page => page.$eval('#paste-play-error', p => (p.hidden ? '' : p.textContent));
 
-async function openPaste(page) {
-  await page.click('#file-menu summary');
-  await page.click('[data-file="paste"]');
-  await page.waitForSelector('#paste-dialog[open]');
-}
 // Puts `text` in the box as if pasted.
 const paste = (page, text) => page.$eval('#paste-play-text', (t, text) => {
   t.value = text;

@@ -1,9 +1,7 @@
 // The Welcome box on a first visit, and the Play / Pause labels. Desktop 1440x900, then a 390px phone.
 import fs from 'node:fs';
-import { open, URL_, WELCOME_KEY, addPlayer, click, state, shown, check, failed, openId, plays, stored } from './lib.mjs';
+import { open, URL_, WELCOME_KEY, addPlayer, click, state, shown, check, failed, openId, plays, stored, sleep, eq } from './lib.mjs';
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const example = JSON.parse(fs.readFileSync(new URL('../../templates/example.json', import.meta.url)));
 const isOpen = (page, id = 'welcome-dialog') => page.$eval(`#${id}`, d => d.open);
 const seen = page => page.evaluate(k => localStorage.getItem(k), WELCOME_KEY);

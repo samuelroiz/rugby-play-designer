@@ -1,12 +1,9 @@
 // The About box and its "Try an example". Desktop 1440x900, then a 390px phone.
 import fs from 'node:fs';
-import { open, addPlayer, click, state, shown, check, failed, openId, plays, stored } from './lib.mjs';
+import { open, addPlayer, click, state, shown, check, failed, openId, plays, stored, sleep, eq, visible } from './lib.mjs';
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const example = JSON.parse(fs.readFileSync(new URL('../../templates/example.json', import.meta.url)));
 const isOpen = page => page.$eval('#about-dialog', d => d.open);
-const visible = (page, sel) => page.$eval(sel, el => { const r = el.getBoundingClientRect(); return getComputedStyle(el).display !== 'none' && r.width > 0 && r.height > 0; });
 const undoDisabled = page => page.$eval('[data-action="undo"]', b => b.disabled);
 // Everything opening and closing the box must leave alone: the play, the phase, undo/redo and the autosave.
 const snapshot = async page => ({

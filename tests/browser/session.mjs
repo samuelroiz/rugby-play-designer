@@ -8,12 +8,10 @@
 //    Other half slot), the File menu (Escape, a short window), Play details, the L block's tooltip, the
 //    note's fixed height, hints never cut off.
 import fs from 'node:fs';
-import { open, click, state, check, failed, outDir, tap, drag, toScreen, placeSetPiece } from './lib.mjs';
+import { open, click, state, check, failed, outDir, tap, drag, toScreen, placeSetPiece, sleep, eq, pastePlay as paste } from './lib.mjs';
 
 const OUT = outDir('session');
 console.log(`Downloads: ${OUT}`);
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const near = (p, q, tol) => Math.hypot(p.x - q.x, p.y - q.y) <= tol;
 const P = (x, y) => ({ x, y });
 const players = ids => ids.map(id => ({ id, team: id[0] === 'a' ? 'attack' : 'defense', label: id.slice(1) }));
@@ -24,14 +22,6 @@ const play = (phases, extra = {}) => ({
 });
 const POS = { a8: P(30, 50), a10: P(40, 30), a12: P(38, 40), d10: P(60, 30) };
 
-async function paste(page, p) {
-  await page.click('#file-menu summary');
-  await page.click('[data-file="paste"]');
-  await page.waitForSelector('#paste-dialog[open]');
-  await page.$eval('#paste-play-text', (t, text) => { t.value = text; }, JSON.stringify(p));
-  await click(page, '#paste-play-import');
-  await sleep(150);
-}
 // The drawn line of a route: its path's d, and its first and last points.
 const line = (page, id) => page.evaluate(id => {
   const path = document.querySelector(`#ball-routes-layer [data-id="${id}"] path:last-child, #routes-layer [data-id="${id}"] path:last-child`);

@@ -5,11 +5,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  open, URL_, addPlayer, click, state, check, failed, outDir, answerConfirm, clearStorage, openId, plays, stored, loadFile,
+  open, URL_, addPlayer, click, state, check, failed, outDir, answerConfirm, clearStorage, openId, plays, stored, loadFile, sleep, eq,
 } from './lib.mjs';
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const toast = page => page.$eval('#toast', t => (t.hidden ? null : t.textContent));
 const live = async page => (await plays(page)).filter(p => !p.deleted);
 const undoOff = page => page.$eval('[data-action="undo"]', b => b.disabled);

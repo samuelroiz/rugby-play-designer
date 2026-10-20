@@ -5,26 +5,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { open, drag, tap, click, state, shown, check, failed, toScreen, outDir, addPlayer, placeSetPiece, nextFrame, URL_, openId, plays, stored, loadFile } from './lib.mjs';
+import { open, drag, tap, click, state, shown, check, failed, toScreen, outDir, addPlayer, placeSetPiece, nextFrame, URL_, openId, plays, stored, loadFile, sleep, eq, loadPlay } from './lib.mjs';
 import { TIMING } from '../../js/animate.js';
 import { animPlay } from '../anim-play.mjs';
 
 const OUT = outDir('stability');
 console.log(`Downloads: ${OUT}`);
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const AUTOSAVE = 'rugby-play-designer.autosave';
 const BACKUP = 'rugby-play-designer.autosave-backup';
 
-// Puts a play in the app (as Undo would) and redraws.
-async function loadPlay(page, play) {
-  await page.evaluate(p => {
-    const s = window.playState;
-    for (const k of Object.keys(s)) delete s[k];
-    Object.assign(s, structuredClone(p));
-  }, play);
-  await page.keyboard.press('Escape');
-}
 const toast = page => page.$eval('#toast', t => (t.hidden ? null : t.textContent));
 const disabled = (page, sel) => page.$eval(sel, b => b.disabled);
 const pb = page => page.evaluate(() => ({ playing: rugbyPlayback.playing, paused: rugbyPlayback.paused, time: rugbyPlayback.time }));

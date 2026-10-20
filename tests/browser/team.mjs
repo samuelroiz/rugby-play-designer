@@ -7,12 +7,10 @@
 //    plain "10" is the attack's).
 // 3. An attack play behaves as before: the attackers listed first, the switch on Attack.
 // 4. Present mode's I play and Save animation's Who list both teams, our team first, "Defense 10" / "Attack 10".
-import { open, click, check, failed, URL_ } from './lib.mjs';
+import { open, click, check, failed, URL_, sleep, eq, pastePlay as paste } from './lib.mjs';
 import { encodeShare } from '../../js/share.js';
 import { animPlay } from '../anim-play.mjs';
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const KEY = 'rugby-play-designer.viewer-position';
 
 // The animation play as a defense play: the defense's 10 drifts in phase 1 (made job "Drift across") with a cue,
@@ -42,15 +40,6 @@ const startScreen = page => page.evaluate(() => ({
   label: document.getElementById('positions').getAttribute('aria-label'),
 }));
 const remembered = page => page.evaluate(k => localStorage.getItem(k), KEY);
-
-async function paste(page, p) {
-  await click(page, '#file-menu summary');
-  await click(page, '[data-file="paste"]');
-  await page.waitForSelector('#paste-dialog[open]');
-  await page.$eval('#paste-play-text', (t, text) => { t.value = text; }, JSON.stringify(p));
-  await click(page, '#paste-play-import');
-  await sleep(150);
-}
 
 {
   console.log('\n== 1. Viewer: a defense play follows a defender ==');

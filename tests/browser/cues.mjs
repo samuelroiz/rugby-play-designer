@@ -7,14 +7,12 @@
 // and job drawn in its frames, its file name) and video (1080x1920).
 import fs from 'node:fs';
 import path from 'node:path';
-import { open, click, state, check, failed, tap, outDir, URL_ } from './lib.mjs';
+import { open, click, state, check, failed, tap, outDir, URL_, sleep, eq, pastePlay } from './lib.mjs';
 import { animPlay } from '../anim-play.mjs';
 import { buildSchedule, TIMING } from '../../js/animate.js';
 
 const OUT = outDir('cues');
 console.log(`Downloads: ${OUT}`);
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 // The animation play with cues for 12 in phases 1 and 2 and for 10 in phase 2, a written job for 12 in
 // phase 2 (phase 1's is made from 12's routes), and a long note on phase 1.
@@ -29,14 +27,6 @@ play.phases[1].cues = [{ player: 'a12', step: 1, text: 'Kick it' }, { player: 'a
 play.phases[1].instructions = { a12: 'Kick long.' };
 const JOB_12 = ['Run your line, then take the pass from 10', 'Kick long.', 'Hold your spot'];
 
-async function pastePlay(page, p) {
-  await click(page, '#file-menu summary');
-  await click(page, '[data-file="paste"]');
-  await page.waitForSelector('#paste-dialog[open]');
-  await page.$eval('#paste-play-text', (t, text) => { t.value = text; t.dispatchEvent(new Event('input', { bubbles: true })); }, JSON.stringify(p));
-  await click(page, '#paste-play-import');
-  await sleep(150);
-}
 const cues = async (page, i = 0) => (await state(page)).phases[i].cues;
 const panel = page => page.evaluate(() => ({
   hidden: document.getElementById('instruction-group').hidden,

@@ -5,12 +5,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { open, click, state, check, failed, outDir, addPlayer, stored as storedPlay } from './lib.mjs';
+import { open, click, state, check, failed, outDir, addPlayer, stored as storedPlay, sleep } from './lib.mjs';
 
 const OUT = outDir('logo');
 const FILES = outDir('logo-files');
 console.log(`Downloads: ${OUT}`);
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 const KEY = 'rugby-play-designer.team-logo';
 const DEFAULT_NAME = 'San Fernando Valley Rugby Club';
 

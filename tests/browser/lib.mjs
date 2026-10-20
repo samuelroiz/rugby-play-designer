@@ -10,6 +10,9 @@ export const URL_ = process.env.BASE_URL ?? 'http://localhost:8000/';
 // Fresh folder for downloads and screenshots, outside the repo.
 export const outDir = name => fs.mkdtempSync(path.join(os.tmpdir(), `rugby-${name}-`));
 
+export const sleep = ms => new Promise(r => setTimeout(r, ms));
+export const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
 // A fresh browser on the app with storage cleared. The Welcome box (first visit) is marked as seen, so it
 // doesn't open over the other suites; `welcome: true` leaves it a true first visit, and `hash` opens with
 // that address hash (e.g. '#phase=2').
@@ -74,7 +77,7 @@ export async function loadFile(page, file) {
   const before = await openId(page);
   await (await page.$('#load-input')).uploadFile(file);
   await page.waitForFunction(id => window.rugbyLibrary.openId() !== id, { timeout: 5000 }, before);
-  await new Promise(r => setTimeout(r, 50));
+  await sleep(50);
 }
 
 // Pitch metres -> client px.
@@ -132,7 +135,7 @@ export async function placeSetPiece(page, value, at = null) {
   await click(page, '[data-action="set-piece"]');
   await page.waitForSelector('#set-piece-dialog[open]');
   await page.click(`#set-piece-dialog button[value="${value}"]`);
-  await new Promise(r => setTimeout(r, 50)); // the box's close event, which starts placing
+  await sleep(50); // the box's close event, which starts placing
   at ??= await page.evaluate(kind => {
     const s = window.playState;
     const ph = s.phases[Number(document.querySelector('#phase-tabs [aria-current="step"]').dataset.index)];
@@ -150,9 +153,38 @@ export async function answerConfirm(page, ok = true) {
   const message = await page.$eval('#confirm-message', p => p.textContent);
   await page.click(ok ? '#confirm-ok' : '#confirm-dialog .cancel');
   await page.waitForFunction(() => !document.getElementById('confirm-dialog').open);
-  await new Promise(r => setTimeout(r, 50)); // the close event, then the change
+  await sleep(50); // the close event, then the change
   return message;
 }
+
+// File → Paste play…: opens the box.
+export async function openPaste(page) {
+  await page.click('#file-menu summary');
+  await page.click('[data-file="paste"]');
+  await page.waitForSelector('#paste-dialog[open]');
+}
+// Pastes `play` and imports it, as a new play or (with `mode`, e.g. 'replace') replacing the open one.
+export async function pastePlay(page, play, mode = null) {
+  await openPaste(page);
+  await page.$eval('#paste-play-text', (t, text) => { t.value = text; t.dispatchEvent(new Event('input', { bubbles: true })); }, JSON.stringify(play));
+  if (mode) await page.click(`[name="paste-mode"][value="${mode}"]`);
+  await click(page, '#paste-play-import');
+  await sleep(150);
+}
+
+// Puts a play in the app (as Undo would) and redraws.
+export async function loadPlay(page, play) {
+  await page.evaluate(p => {
+    const s = window.playState;
+    for (const k of Object.keys(s)) delete s[k];
+    Object.assign(s, structuredClone(p));
+  }, play);
+  await page.keyboard.press('Escape');
+}
+
+// Shown and taking up space on screen.
+export const visible = (page, sel) => page.$eval(sel, el => { const r = el.getBoundingClientRect(); return getComputedStyle(el).display !== 'none' && r.width > 0 && r.height > 0; });
+
 export const state = page => page.evaluate(() => JSON.parse(JSON.stringify(window.playState)));
 export const shown = page => page.evaluate(() => Number(document.querySelector('#phase-tabs [aria-current="step"]').dataset.index));
 

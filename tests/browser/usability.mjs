@@ -2,10 +2,8 @@
 // colours, set pieces and players placed by a click, the half views, badge hover, route order defaults,
 // "End of play", and the sidebar fitting. Desktop first (1080 and 1500 px wide), then a 390px phone.
 import fs from 'node:fs';
-import { open, addPlayer, placeSetPiece, tap, drag, click, state, shown, check, failed, outDir, stored } from './lib.mjs';
+import { open, addPlayer, placeSetPiece, tap, drag, click, state, shown, check, failed, outDir, stored, sleep, eq } from './lib.mjs';
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const rect = (page, sel) => page.$eval(sel, el => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height }; });
 const overlaps = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 const hint = page => page.$eval('#draw-hint', h => (h.hidden ? null : h.textContent));

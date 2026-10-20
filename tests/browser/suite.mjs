@@ -1,14 +1,12 @@
 // Headless Chrome checks: the four fixes plus regressions of earlier features. Desktop 1440x900 + phone 390 touch.
 import fs from 'node:fs';
 import path from 'node:path';
-import { open, drag, tap, click, state, shown, check, failed, toScreen, outDir, addPlayer, placeSetPiece, answerConfirm, nextFrame, openId, plays, loadFile } from './lib.mjs';
+import { open, drag, tap, click, state, shown, check, failed, toScreen, outDir, addPlayer, placeSetPiece, answerConfirm, nextFrame, openId, plays, loadFile, sleep, eq } from './lib.mjs';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 const OUT = outDir('suite');
 console.log(`Downloads and screenshots: ${OUT}`);
 
-const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function waitFile(dir, ext, ms = 15000) {
   const t = Date.now();
   while (Date.now() - t < ms) {
