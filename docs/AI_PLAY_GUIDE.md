@@ -38,6 +38,7 @@ Turning the pitch (vertical view) only changes how it is drawn. The data never c
   "phases": [{
     "note": "What happens in this phase.",
     "instructions": { "a10": "Flat, call for it early." },
+    "cues": [{ "player": "a10", "step": 1, "text": "Call it!" }],
     "positions": { "a10": { "x": 40, "y": 30 } },
     "objects": [{ "id": "o1", "type": "ball", "x": 41.1, "y": 30.9 }],
     "routes": [{ "id": "r1", "type": "run", "from": "a10", "points": [[40, 30], [46, 28]], "curve": 0, "order": 1, "option": null }]
@@ -106,7 +107,30 @@ Use drift and blitz for defenders: drift slides across, blitz rushes up.
 
 `phases` is in play order. Each phase has `note` (text, the coach's caption), `positions`, `objects` and `routes`.
 
-`instructions` is optional: what one player does in this phase, by player id, e.g. `{ "a10": "Flat, call for it early." }`. Up to 120 characters each; longer ones are cut, empty ones and ids not in the play are dropped. When a player follows the play on their phone (a share link, see the README), their instruction is the caption for that phase, and the phase's note when they have none. Leave it out of a phase where nobody needs one. A new phase built from the one before starts with none.
+Two optional fields are for players following the play on their phone (a share link, see the README) or in a position's animation (**Save animation → Who**). Neither changes how the play moves, and the PNG and PDF exports don't show them. A new phase built from the one before starts with neither. Leave them out of a phase where nobody needs them.
+
+`instructions`: each player's **job** in this phase, by player id, one short line. Up to 120 characters each; longer ones are cut, and empty ones and ids not in the play are dropped. It's shown large at the bottom of the phone, on at most two lines, so write a short command, not a paragraph (the `note` is for the coach's full explanation, which the phone shows on request). A player with no instruction gets one made from their routes in that phase, e.g. *Pass to 12*, *Take the pass from 10*, *Grubber*, *Chase the kick*, *Carry into contact*, *Drift across*, *Hold your spot*, or two of them joined (*Take the pass from 10, then carry into contact*). So only write one when it says more than that.
+
+```json
+"instructions": { "a10": "Flat, call for it early.", "a12": "Hit the gap between their 10 and 12." }
+```
+
+`cues`: short calls that pop up in a bubble next to the player as a step starts, e.g. `"JUMP!"`. Playback slows for a moment so they register. A list of `{ "player", "step", "text" }`:
+
+| Field | Meaning |
+|---|---|
+| `player` | The player's id. Must be in the play, or the cue is dropped. |
+| `step` | The route `order` number at which it pops up: when the first route with that order starts moving. A whole number from 1 to 99. Left out (or invalid), it is the order of the player's first route in this phase, or 1 if they have none. |
+| `text` | Up to 30 characters, shown in capitals. Empty ones are dropped. |
+
+A player can have several cues in a phase. Use them sparingly, for the moment that matters:
+
+```json
+"cues": [
+  { "player": "a4", "step": 1, "text": "Jump!" },
+  { "player": "a12", "step": 2, "text": "Hit it now" }
+]
+```
 
 ## 3. The rules the app uses
 
@@ -231,7 +255,8 @@ Keep plays short: 2 to 5 phases, each with one clear idea in its note.
 - [ ] Each phase after the first matches what section 3 builds from the one before: positions, and every marker's id and place.
 - [ ] Each marker keeps its id from phase to phase. Scrums and lineouts use the section 4 layouts, `y` values and `pack` lists.
 - [ ] Every phase has a note a coach can read out.
-- [ ] Any `instructions` name players in the play and are 120 characters or fewer.
+- [ ] Any `instructions` name players in the play and are 120 characters or fewer: one short job each.
+- [ ] Any `cues` name players in the play, have a `step` that is one of the phase's route orders, and text of 30 characters or fewer.
 - [ ] `name` is 60 characters or fewer and `category` is one of the four.
 
 ## 7. Worked example: Scrum 12 crash

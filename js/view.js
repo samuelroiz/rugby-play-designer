@@ -1,26 +1,26 @@
 // The phone viewer (view.html): a play opened from a share link (view.html#p=<data>, see share.js), read-only.
 // It loads only the pitch drawing, the animation and the play checks: no editor, library, autosave or Welcome
 // box. The start screen asks which position you play. Focus mode then plays the play on a vertical pitch
-// (attack playing up) with the view following that player, their team-mates faded and opponents within
-// OPPONENT_NEAR_M at full strength, and their instruction for each phase as the caption (or the phase note).
+// (attack playing up) with the view following that player (follow.js), their team-mates faded and opponents
+// near them at full strength, and their job for each phase at the bottom (jobs.js: the coach's instruction, or
+// one made from their routes), with the phase note a tap away in a sheet. Their cues (cues.js) pop up next to
+// them as each one's step starts, and playback eases to half speed for a moment so they register.
 // At the end it zooms out and replays the whole play once with everyone at full strength and the phase notes,
 // then offers Watch again, Another position and Share. "Watch the whole play" goes straight to that view.
 
-import { drawPitch, svgEl, fitBox, uprightTurn, ROUTE_TYPES, BOUNDS, PLAYER_R } from './pitch.js';
+import { drawPitch, svgEl, fitBox, uprightTurn, ROUTE_TYPES, PLAYER_R } from './pitch.js';
 import { buildSchedule, frameAt } from './animate.js';
 import { playedRoutes, curveControl, playPoints, BALL_ROUTES } from './model.js';
 import { decodeShare, hashData } from './share.js';
 import { DEFAULT_LOGO_URL } from './logo.js';
+import { shaped, screenBox, followTarget, glide, strength, ballIn } from './follow.js';
+import { phaseCues, firedBetween, cueSpeed, ageBubbles, placeBubble } from './cues.js';
+import { jobLine } from './jobs.js';
 
 // The last position picked in this browser (its number, e.g. "10"), preselected next time.
 export const POSITION_KEY = 'rugby-play-designer.viewer-position';
-const FOLLOW_M = 20; // focus mode: this many metres round the player stay in view
-const BALL_NEAR_M = 25; // and the ball too, when it's this close to them
-const BALL_MARGIN_M = 4;
-const KEEP_IN_M = 3; // the followed player is always at least this far inside the view
-const OPPONENT_NEAR_M = 15; // opponents this close to the player stay at full strength
-const FADED = { mate: 0.2, opponent: 0.35 };
-const CAMERA_MS = 300; // how quickly the view glides after its target
+const JOB_LINES = 2; // the job line is shrunk to fit this many lines
+const JOB_PX = { max: 24, min: 15 };
 const ZOOM_OUT_MS = 1400; // after the focus run: the last moment held while the view zooms out to the whole play
 const MAX_FRAME_MS = 100;
 const SWIPE_PX = 50;
@@ -47,6 +47,8 @@ const v = {
   ended: false,
   speed: 1,
   cam: null, // the view, in screen units (SVG user units after the pitch's quarter turn): { x, y, w, h }
+  cues: [], // the followed player's cues in this phase: [{ text, step, time }]
+  bubbles: [], // the cues up now: [{ text, age }] (age in ms)
   timeScale: 1, // for tests: 4 runs the clock (and the camera) 4 times faster
 };
 let els = { players: new Map(), objects: new Map(), routes: [], extraBall: null };
@@ -183,91 +185,67 @@ function buildPhase(i) {
 
 const setAttr = (el, name, value) => { if (el.getAttribute(name) !== value) el.setAttribute(name, value); };
 const setOpacity = (el, o) => { const s = o >= 1 ? '' : String(Math.max(0, Math.round(o * 100) / 100)); if (el.style.opacity !== s) el.style.opacity = s; };
-const dist = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
-
-// How strongly each player is drawn: in focus mode the followed player and opponents near them in full, the
-// rest faded; otherwise everyone in full.
-function strength(f) {
-  const out = {};
-  const me = v.mode === 'focus' ? f.players[v.focus] : null;
-  const myTeam = play.players.find(p => p.id === v.focus)?.team;
-  for (const p of play.players) {
-    const pos = f.players[p.id];
-    if (!me || !pos || p.id === v.focus) out[p.id] = 1;
-    else if (p.team === myTeam) out[p.id] = FADED.mate;
-    else out[p.id] = dist(pos, me) <= OPPONENT_NEAR_M ? 1 : FADED.opponent;
-  }
-  return out;
-}
 
 // --- The view ---
 
-// Screen box (the SVG's user units: pitch (x, y) is drawn at (y, -x)) of a box in pitch metres.
-const screenBox = b => ({ x: b.minY, y: -b.maxX, w: b.maxY - b.minY, h: b.maxX - b.minX });
-
-// Grows a screen box to the stage's shape about its centre, then moves it to stay on the pitch where it fits.
-function shaped(box) {
+const stageAspect = () => {
   const { clientWidth: sw, clientHeight: sh } = $('stage');
-  const aspect = sw && sh ? sw / sh : 0.6;
-  let { x, y, w, h } = box;
-  if (w / h < aspect) { x -= (h * aspect - w) / 2; w = h * aspect; } else { y -= (w / aspect - h) / 2; h = w / aspect; }
-  const lim = { x0: BOUNDS.minY, x1: BOUNDS.maxY, y0: -BOUNDS.maxX, y1: -BOUNDS.minX };
-  const fit = (start, size, lo, hi) => (size >= hi - lo ? (lo + hi) / 2 - size / 2 : Math.min(Math.max(start, lo), hi - size));
-  return { x: fit(x, w, lim.x0, lim.x1), y: fit(y, h, lim.y0, lim.y1), w, h };
-}
-
-const ballAt = f => {
-  const id = v.sched.ballId;
-  return id && f.objects[id] ? f.objects[id] : f.extraBall;
+  return sw && sh ? sw / sh : 0.6;
 };
+const ballAt = f => ballIn(v.sched, f);
 
 let wholeView = null; // the whole play's view, for the stage's size: { key, box }
 
 // Where the view should be: round the followed player (and the ball when it's near them), or the whole play.
 function target(f) {
+  const aspect = stageAspect();
   if (v.mode !== 'focus') {
     const { clientWidth: sw, clientHeight: sh } = $('stage');
     const key = [sw, sh].join();
-    if (wholeView?.key !== key) wholeView = { key, box: shaped(screenBox(fitBox(playPoints(play), 8, sw && sh ? sh / sw : 1.6))) };
+    if (wholeView?.key !== key) wholeView = { key, box: shaped(screenBox(fitBox(playPoints(play), 8, sw && sh ? sh / sw : 1.6)), aspect) };
     return { ...wholeView.box };
   }
-  const me = f.players[v.focus];
-  const b = { minX: me.x - FOLLOW_M, maxX: me.x + FOLLOW_M, minY: me.y - FOLLOW_M, maxY: me.y + FOLLOW_M };
-  const ball = ballAt(f);
-  if (ball && dist(ball, me) <= BALL_NEAR_M) {
-    b.minX = Math.min(b.minX, ball.x - BALL_MARGIN_M);
-    b.maxX = Math.max(b.maxX, ball.x + BALL_MARGIN_M);
-    b.minY = Math.min(b.minY, ball.y - BALL_MARGIN_M);
-    b.maxY = Math.max(b.maxY, ball.y + BALL_MARGIN_M);
-  }
-  return shaped(screenBox(b));
+  return followTarget(f.players[v.focus], ballAt(f), aspect);
 }
 
 // Glides the view towards the target; the followed player never leaves it, however fast they (or a phase
 // change) move.
 function moveCamera(f, dt) {
-  const to = target(f);
-  if (!v.cam) v.cam = to;
-  else {
-    const k = 1 - Math.exp(-dt / CAMERA_MS);
-    for (const key of ['x', 'y', 'w', 'h']) v.cam[key] += (to[key] - v.cam[key]) * k;
-  }
-  if (v.mode === 'focus') {
-    const me = f.players[v.focus];
-    const [px, py] = [me.y, -me.x];
-    const c = v.cam;
-    const m = Math.min(KEEP_IN_M, c.w / 4, c.h / 4);
-    c.x = Math.min(Math.max(c.x, px + m - c.w), px - m);
-    c.y = Math.min(Math.max(c.y, py + m - c.h), py - m);
-  }
+  v.cam = glide(v.cam, target(f), dt, v.mode === 'focus' ? f.players[v.focus] : null);
   const r = n => Math.round(n * 1000) / 1000;
   setAttr(svg, 'viewBox', `${r(v.cam.x)} ${r(v.cam.y)} ${r(v.cam.w)} ${r(v.cam.h)}`);
+}
+
+// The cue bubble: next to the followed player, inside the view and clear of their disc. Returns where it is
+// (stage px) for the test hook, or null when none is up.
+let bubbleText = '';
+function placeCueBubble(f, scale) {
+  const el = $('cue-bubble');
+  const text = v.mode === 'focus' ? v.bubbles.map(b => b.text.toUpperCase()).join('\n') : '';
+  el.hidden = !text;
+  if (!text) { bubbleText = ''; return null; }
+  if (text !== bubbleText) {
+    const fresh = v.bubbles.length > bubbleText.split('\n').filter(Boolean).length;
+    bubbleText = text;
+    el.firstElementChild.textContent = text;
+    if (fresh) el.firstElementChild.animate?.([{ transform: 'scale(.6)', opacity: 0.4 }, { transform: 'scale(1)', opacity: 1 }], { duration: 180, easing: 'ease-out' });
+  }
+  const { clientWidth: width, clientHeight: height } = $('stage');
+  const me = f.players[v.focus];
+  const c = v.cam;
+  const k = width / c.w;
+  const x = (me.y - c.x) * k;
+  const y = (-me.x - c.y) * k;
+  const r = (PLAYER_R + 0.75) * scale * k;
+  const at = placeBubble({ x, y, r, w: el.offsetWidth, h: el.offsetHeight, width, height });
+  el.style.transform = `translate(${Math.round(at.left)}px, ${Math.round(at.top)}px)`;
+  return { left: at.left, top: at.top, w: el.offsetWidth, h: el.offsetHeight, player: { x, y, r }, width, height, text };
 }
 
 function paint(dt) {
   if (!v.sched) return;
   const f = frameAt(v.sched, v.t);
-  const on = strength(f);
+  const on = strength(play.players, f, v.mode === 'focus' ? v.focus : null);
   // Discs grow a little when the view shows more of the pitch, so they stay easy to see.
   const k = Math.min(1.6, Math.max(1, (v.cam?.w ?? 40) / 45));
   for (const [id, g] of els.players) {
@@ -297,7 +275,11 @@ function paint(dt) {
   }
   for (const r of els.routes) setOpacity(r.g, f.routeOpacity * (r.from ? on[r.from] ?? 1 : 1));
   moveCamera(f, dt);
-  frameHook?.({ phase: v.phase, t: v.t, mode: v.mode, cam: { ...v.cam }, players: Object.fromEntries(Object.entries(f.players).map(([id, p]) => [id, { ...p, opacity: on[id] }])), ball: ballAt(f) });
+  const bubble = placeCueBubble(f, k);
+  frameHook?.({
+    phase: v.phase, t: v.t, mode: v.mode, cam: { ...v.cam }, wall: dt, factor: cueSpeed(v.bubbles), bubble,
+    players: Object.fromEntries(Object.entries(f.players).map(([id, p]) => [id, { ...p, opacity: on[id] }])), ball: ballAt(f),
+  });
 }
 
 // --- Playing ---
@@ -305,19 +287,43 @@ function paint(dt) {
 function setPhase(i) {
   v.phase = i;
   v.sched = buildSchedule(play, i);
+  v.cues = v.focus ? phaseCues(play, i, v.focus, v.sched) : [];
   v.t = 0;
   buildPhase(i);
+  $('caption').classList.remove('expanded');
   updateText();
+}
+
+// The job line is as large as fits on JOB_LINES lines (the whole of it is in the Coach's note sheet).
+function fitJob() {
+  const el = $('job');
+  const lineH = 1.2;
+  let px = JOB_PX.max;
+  el.style.fontSize = `${px}px`;
+  while (px > JOB_PX.min && el.scrollHeight > Math.ceil(JOB_LINES * lineH * px) + 1) el.style.fontSize = `${--px}px`;
 }
 
 function updateText() {
   const n = play.phases.length;
   $('watch-phase').textContent = `Phase ${v.phase + 1} of ${n}`;
   const me = play.players.find(p => p.id === v.focus);
-  $('watch-who').textContent = v.mode === 'focus' ? `Position ${me?.label ?? ''}` : 'Whole play';
+  const focus = v.mode === 'focus';
+  $('watch-who').textContent = focus ? `Position ${me?.label ?? ''}` : 'Whole play';
   const ph = play.phases[v.phase];
-  const text = v.mode === 'focus' ? ph.instructions?.[v.focus] || ph.note : ph.note;
-  $('caption').textContent = text.trim();
+  // Following a player: their job, with the phase note in the sheet. Otherwise the note, all of it.
+  $('job-box').hidden = !focus;
+  $('caption').hidden = focus;
+  const note = ph.note.trim();
+  if (focus) {
+    const job = jobLine(play, v.phase, v.focus);
+    if ($('job').textContent !== job) { $('job').textContent = job; fitJob(); }
+    $('note-button').hidden = !note;
+  } else if ($('caption').textContent !== note) {
+    $('caption').textContent = note;
+  }
+  // A note longer than the caption's box scrolls, and a tap shows all of it.
+  const cap = $('caption');
+  cap.classList.toggle('more', !focus && !cap.classList.contains('expanded') && cap.scrollHeight > cap.clientHeight + 1);
   const toggle = $('toggle');
   toggle.textContent = v.playing ? '❚❚' : '▶︎';
   toggle.setAttribute('aria-label', v.playing ? 'Pause' : 'Play');
@@ -327,24 +333,32 @@ function updateText() {
 
 // Starts watching from phase 1 at 1x: following `focus` (mode 'focus') or the whole play ('whole').
 function watch(mode, focus = null) {
-  Object.assign(v, { mode, focus, speed: 1, playing: true, ended: false, hold: 0, cam: null });
+  Object.assign(v, { mode, focus, speed: 1, playing: true, ended: false, hold: 0, cam: null, bubbles: [] });
   setPhase(0);
   show('watch');
+  updateText(); // now the screen is shown, the caption's size can be measured
 }
 
-function advance(ms) {
+// ms: how far the play moves on (at 1x, after the speed and any cue's slowdown); wall: the time that passed,
+// which the cue bubbles age by.
+function advance(ms, wall = ms) {
   if (!v.playing) return;
   if (v.hold > 0) {
     v.hold -= ms;
     if (v.hold <= 0) { v.hold = 0; setPhase(0); }
     return;
   }
+  v.bubbles = ageBubbles(v.bubbles, wall);
+  const from = v.t;
   v.t += ms;
+  const fire = (a, b) => { if (v.mode === 'focus') v.bubbles.push(...firedBetween(v.cues, a, b).map(c => ({ text: c.text, age: 0 }))); };
+  fire(from, Math.min(v.t, v.sched.total));
   while (v.t >= v.sched.total) {
     const rest = v.t - v.sched.total;
     if (v.phase < play.phases.length - 1) {
       setPhase(v.phase + 1);
       v.t = rest;
+      fire(0, rest);
     } else {
       v.t = v.sched.total;
       finish();
@@ -356,6 +370,7 @@ function advance(ms) {
 // The end of a run through the play: after following a player, zoom out and replay it whole; after that
 // (or after watching it whole), the end screen.
 function finish() {
+  v.bubbles = [];
   if (v.mode === 'focus') {
     v.mode = 'replay';
     v.hold = ZOOM_OUT_MS;
@@ -373,6 +388,7 @@ function jump(delta) {
   const i = v.phase + delta;
   if (i >= play.phases.length) { v.hold = 0; v.t = v.sched.total; finish(); return; }
   v.hold = 0;
+  v.bubbles = [];
   setPhase(Math.max(0, i));
 }
 
@@ -404,7 +420,7 @@ function loop(now) {
   raf = requestAnimationFrame(loop);
   const dt = Math.min(MAX_FRAME_MS, now - last) * v.timeScale;
   last = now;
-  advance(dt * v.speed);
+  advance(dt * v.speed * cueSpeed(v.bubbles), dt);
   paint(dt);
 }
 function startLoop() {
@@ -431,6 +447,32 @@ function initControls() {
   $('watch-again').addEventListener('click', watchAgain);
   $('another').addEventListener('click', () => { v.playing = false; buildStart(); show('start'); });
   $('share').addEventListener('click', share);
+  // The Coach's note sheet (the job line opens it too): the phase note in full. Playing pauses while it's open.
+  const sheet = $('note-sheet');
+  let resume = false;
+  const openSheet = () => {
+    const ph = play.phases[v.phase];
+    $('sheet-phase').textContent = `Phase ${v.phase + 1} of ${play.phases.length}`;
+    $('sheet-job').textContent = jobLine(play, v.phase, v.focus);
+    $('sheet-note').textContent = ph.note.trim();
+    $('sheet-note-box').hidden = !ph.note.trim();
+    resume = v.playing;
+    v.playing = false;
+    updateText();
+    sheet.showModal();
+  };
+  $('note-button').addEventListener('click', openSheet);
+  $('job').addEventListener('click', openSheet);
+  sheet.addEventListener('close', () => {
+    if (resume && v.screen === 'watch' && !v.ended) v.playing = true;
+    resume = false;
+    updateText();
+  });
+  sheet.addEventListener('click', e => { if (e.target === sheet) sheet.close(); }); // a tap outside the sheet
+  $('caption').addEventListener('click', () => {
+    $('caption').classList.toggle('expanded');
+    updateText();
+  });
 
   // Swipe left for the next phase, right for the one before.
   let down = null;
@@ -446,7 +488,7 @@ function initControls() {
   stage.addEventListener('pointercancel', () => { down = null; });
   addEventListener('hashchange', load);
   addEventListener('keydown', e => {
-    if (v.screen !== 'watch' || e.target.closest?.('button') && e.key === ' ') return;
+    if (v.screen !== 'watch' || $('note-sheet').open || e.target.closest?.('button') && e.key === ' ') return;
     if (e.key === ' ') { e.preventDefault(); toggle(); } else if (e.key === 'ArrowRight') jump(1); else if (e.key === 'ArrowLeft') jump(-1);
   });
 }
@@ -455,7 +497,8 @@ function initControls() {
 window.rugbyViewer = {
   state: () => ({
     screen: v.screen, mode: v.mode, focus: v.focus, phase: v.phase, t: v.t, playing: v.playing, ended: v.ended,
-    speed: v.speed, hold: v.hold, caption: $('caption').textContent, cam: v.cam && { ...v.cam },
+    speed: v.speed, hold: v.hold, caption: $('caption').textContent, job: $('job-box').hidden ? null : $('job').textContent,
+    cam: v.cam && { ...v.cam }, bubbles: v.bubbles.map(b => ({ ...b })), factor: cueSpeed(v.bubbles),
   }),
   set timeScale(s) { v.timeScale = s; },
   get timeScale() { return v.timeScale; },

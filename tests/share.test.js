@@ -10,16 +10,18 @@ import { animPlay } from './anim-play.mjs';
 const play = () => {
   const p = parsePlay(animPlay());
   p.phases[0].instructions = { a10: 'Flat, call for it early.' };
+  p.phases[1].cues = [{ player: 'a12', step: 1, text: 'JUMP!' }, { player: 'a10', step: 2, text: 'Hold' }];
   return p;
 };
 const LOGO = 'data:image/png;base64,iVBORw0KGgo=';
 
-test('a play survives the round trip, instructions and all', async () => {
+test('a play survives the round trip, instructions and cues and all', async () => {
   const data = await encodeShare(play());
   assert.match(data, /^[A-Za-z0-9_-]+$/, 'base64url, no padding');
   const back = await decodeShare(data);
   assert.deepEqual(back.play, play());
   assert.equal(back.team, null);
+  assert.deepEqual(back.play.phases[1].cues, [{ player: 'a12', step: 1, text: 'JUMP!' }, { player: 'a10', step: 2, text: 'Hold' }]);
 });
 
 test('the team name and logo come along when included', async () => {

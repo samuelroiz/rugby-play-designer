@@ -16,12 +16,18 @@ import {
 } from './storage.js';
 import { openLibrary, newRecord, backupData, backupFileName, restoreRecords, restoreSummary } from './library.js';
 import { initPlaysPanel } from './plays.js';
-import { pictureSvg, allPhasesSvg, legendSvg, pageCss, svgToPng, pageFit, makePdf, PX_PER_MM, captionLayout, captionedSvg } from './export.js';
+import {
+  pictureSvg, allPhasesSvg, legendSvg, pageCss, svgToPng, pageFit, makePdf, PX_PER_MM, captionLayout, captionedSvg, focusLayout, focusFrameSvg, cueBubbleSize,
+} from './export.js';
 import { loadTemplates, loadExample, thumbnail, isEmptyPlay } from './templates.js';
 import { syncOptions, makeMainOption, optionGroup, optionLetters, OPTION_LABEL_MAX } from './options.js';
 import { nextId, nextOrder, round1, round2, curvePoint, playedRoutes, BALL_ROUTES } from './model.js';
 import { createPlayback, paintFrame } from './playback.js';
-import { makeAnimation, videoType, videoExtension, ANIMATION_SIZES } from './animation.js';
+import { makeAnimation, videoType, videoExtension, ANIMATION_SIZES, POSITION_SIZES, GIF_FPS, VIDEO_FPS } from './animation.js';
+import { focusFrames, strength } from './follow.js';
+import { autoJob, jobLine } from './jobs.js';
+import { CUE_MAX, defaultCueStep, placeBubble } from './cues.js';
+import { frameAt } from './animate.js';
 import { initPresent } from './present.js';
 import { encodeShare, shareUrl, SHARE_URL, LONG_LINK } from './share.js';
 import {
@@ -125,6 +131,7 @@ const layers = {
   ballRoutes: $('ball-routes-layer'),
   balls: $('ball-layer'),
   badges: $('badges-layer'),
+  cues: $('cue-layer'),
   handles: $('handles-layer'),
   edges: $('edge-layer'),
   pen: $('pen-layer'),
@@ -405,7 +412,30 @@ function drawScene() {
   renderObjects();
   renderRoutes();
   renderPlayers();
+  renderCueMarks();
   renderEdgeArrows();
+}
+
+// The selected player's cues for this phase, as small bubbles stacked over them (each "2 JUMP!": its step
+// and text), only while editing. Never in pictures, which are drawn with nothing selected.
+function renderCueMarks() {
+  const layer = layers.cues;
+  layer.replaceChildren();
+  const id = ui.selected?.kind === 'player' && !locked() ? ui.selected.id : null;
+  const pos = id && phase().positions[id];
+  const cues = (phase().cues ?? []).filter(c => c.player === id).sort((a, b) => a.step - b.step);
+  if (!pos || !cues.length) return;
+  const g = svgEl('g', { class: 'cue-marks', transform: `translate(${pos.x} ${pos.y})${turn()}` }, layer);
+  const [size, stepSize, h, gap] = [1.1, 0.8, 1.8, 0.35];
+  cues.forEach((c, i) => {
+    const text = c.text.toUpperCase();
+    const stepW = String(c.step).length * stepSize * 0.6 + 0.6;
+    const w = round2(stepW + text.length * size * 0.66 + 0.8);
+    const mark = svgEl('g', { class: 'cue-mark', transform: `translate(${round2(-w / 2)} ${round2(-(playerR() + 0.7 + h + i * (h + gap)))})` }, g);
+    svgEl('rect', { width: w, height: h, rx: 0.5 }, mark);
+    svgEl('text', { x: 0.45, y: h / 2, 'dominant-baseline': 'central', 'font-size': stepSize, class: 'cue-step-num' }, mark).textContent = c.step;
+    svgEl('text', { x: round2(stepW + 0.2), y: h / 2, 'dominant-baseline': 'central', 'font-size': size, class: 'cue-mark-text' }, mark).textContent = text;
+  });
 }
 
 // Half views: a player off the shown half gets a small arrow at the edge (halfway), in their team's colour
@@ -976,19 +1006,123 @@ function syncInputs() {
     set(inputs.note, phase().note, forceNote);
     fitNote();
   }
-  // One player selected (and editing on): their instruction for this phase, in the side panel.
+  // One player selected (and editing on): their job for this phase, in the side panel, with the one made
+  // from their routes as the placeholder (what the phone viewer shows when the box is empty), and their cues.
   const sel = ui.selected?.kind === 'player' && !locked() ? state.players.find(p => p.id === ui.selected.id) : null;
   $('instruction-group').hidden = !sel;
   if (sel) {
     const key = [sel.id, ui.phase].join();
-    $('instruction-title').textContent = `Instruction for ${sel.label} in this phase`;
-    inputs.instruction.setAttribute('aria-label', `Instruction for ${sel.label} in this phase`);
-    inputs.instruction.placeholder = `Instruction for ${sel.label} in this phase`;
+    $('instruction-title').textContent = 'Your job (this phase)';
+    inputs.instruction.setAttribute('aria-label', `${sel.label}'s job in this phase`);
+    inputs.instruction.placeholder = `${sel.label}: ${autoJob(state, ui.phase, sel.id)}`;
     set(inputs.instruction, phase().instructions?.[sel.id] ?? '', force || instructionKey !== key);
     instructionKey = key;
   } else {
     instructionKey = null;
   }
+  syncCues(sel);
+}
+
+// The selected player's cues for this phase: each its text, "step n", Edit and Delete, sorted by step. The
+// list is only rebuilt when it changes, so a focused button keeps the focus.
+let cueEdit = null; // the cue form: { player, phase, index } (index null for a new cue)
+let cueListKey = null;
+const playerCues = id => (phase().cues ?? []).map((c, index) => ({ ...c, index })).filter(c => c.player === id).sort((a, b) => a.step - b.step);
+function syncCues(sel) {
+  if (cueEdit && (!sel || cueEdit.player !== sel.id || cueEdit.phase !== ui.phase)) closeCueForm();
+  if (!sel) { cueListKey = null; return; }
+  const cues = playerCues(sel.id);
+  const key = JSON.stringify([sel.id, sel.label, ui.phase, cues, cueEdit?.index]);
+  if (key === cueListKey) return;
+  cueListKey = key;
+  $('cues-title').textContent = `Cues for ${sel.label}`;
+  $('cue-list').replaceChildren(...cues.filter(c => c.index !== cueEdit?.index).map(c => {
+    const li = document.createElement('li');
+    const text = document.createElement('span');
+    text.className = 'cue-text';
+    text.textContent = c.text.toUpperCase();
+    const at = document.createElement('span');
+    at.className = 'cue-at';
+    at.textContent = `step ${c.step}`;
+    const button = (label, action, aria) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      b.dataset.cueAction = action;
+      b.dataset.index = c.index;
+      b.setAttribute('aria-label', aria);
+      return b;
+    };
+    li.append(text, at, button('Edit', 'edit', `Edit cue ${c.text}`), button('Delete', 'delete', `Delete cue ${c.text}`));
+    return li;
+  }));
+  $('cue-add').hidden = !!cueEdit;
+}
+
+// The steps a cue can pop up at: the order numbers of the phase's routes (1 if it has none), and `keep`.
+function cueSteps(keep) {
+  const steps = new Set(phase().routes.map(r => r.order).filter(Number.isInteger));
+  if (!steps.size) steps.add(1);
+  if (keep != null) steps.add(keep);
+  return [...steps].sort((a, b) => a - b);
+}
+
+// Opens the cue form for a new cue (index null) or cue `index` of this phase.
+function openCueForm(index = null) {
+  const id = ui.selected?.kind === 'player' ? ui.selected.id : null;
+  if (!id || locked()) return;
+  const cue = index == null ? null : phase().cues?.[index];
+  const step = cue?.step ?? defaultCueStep(phase().routes, id);
+  cueEdit = { player: id, phase: ui.phase, index: cue ? index : null };
+  $('cue-step').replaceChildren(...cueSteps(step).map(n => new Option(String(n), String(n), false, n === step)));
+  $('cue-text').value = cue?.text ?? '';
+  $('cue-form').hidden = false;
+  cueListKey = null;
+  syncCues(state.players.find(p => p.id === id));
+  $('cue-text').focus();
+}
+function closeCueForm() {
+  cueEdit = null;
+  cueListKey = null;
+  $('cue-form').hidden = true;
+  $('cue-add').hidden = false;
+}
+// Saving or deleting a cue is one undo step. A phase keeps `cues` only while it has some.
+function saveCue() {
+  const edit = cueEdit;
+  const text = $('cue-text').value.trim().slice(0, CUE_MAX);
+  if (!edit || !text) { $('cue-text').focus(); return; }
+  const cue = { player: edit.player, step: Number($('cue-step').value) || 1, text };
+  const ph = state.phases[edit.phase];
+  if (edit.index != null && ph.cues?.[edit.index]) ph.cues[edit.index] = cue;
+  else (ph.cues ??= []).push(cue);
+  closeCueForm();
+  render();
+}
+function deleteCue(index) {
+  const ph = phase();
+  if (!ph.cues?.[index]) return;
+  ph.cues.splice(index, 1);
+  if (!ph.cues.length) delete ph.cues;
+  if (cueEdit) closeCueForm();
+  render();
+}
+function initCues() {
+  $('cue-add').addEventListener('click', () => openCueForm());
+  $('cue-form').addEventListener('submit', e => { e.preventDefault(); saveCue(); });
+  $('cue-cancel').addEventListener('click', () => { closeCueForm(); render(null, { record: false }); });
+  $('cue-form').addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    closeCueForm();
+    render(null, { record: false });
+  });
+  $('cue-list').addEventListener('click', e => {
+    const b = e.target.closest('[data-cue-action]');
+    if (!b || locked()) return;
+    if (b.dataset.cueAction === 'edit') openCueForm(Number(b.dataset.index));
+    else deleteCue(Number(b.dataset.index));
+  });
 }
 
 // The note box grows with its text up to a few lines (then scrolls), so a long note wraps in view.
@@ -1114,6 +1248,10 @@ function deleteSelected() {
       if (each.instructions) {
         delete each.instructions[sel.id];
         if (!Object.keys(each.instructions).length) delete each.instructions;
+      }
+      if (each.cues) {
+        each.cues = each.cues.filter(c => c.player !== sel.id);
+        if (!each.cues.length) delete each.cues;
       }
       for (const o of each.objects) if (o.pack) o.pack = o.pack.filter(id => id !== sel.id);
       // Passers who lose a pass to this player may be down to one option.
@@ -1734,7 +1872,8 @@ function savePdf() {
 // team logo, the play name and "Phase n of N", with the phase's note as a large caption under it (see
 // captionedSvg). The box shows the progress, and its Cancel (or Escape) stops it. Editing is locked meanwhile.
 let animationJob = null; // { cancelled } while an animation is being made
-function saveAnimation({ format, speed, size }) {
+function saveAnimation({ format, speed, size, who = '' }) {
+  if (who && state.players.some(p => p.id === who)) return savePositionAnimation({ format, speed, who });
   const dialog = $('animation-dialog');
   const [, , vbW, vbH] = svg.getAttribute('viewBox').split(' ').map(Number);
   const width = ANIMATION_SIZES[size] ?? ANIMATION_SIZES.medium;
@@ -1772,6 +1911,77 @@ function saveAnimation({ format, speed, size }) {
   });
 }
 
+// Save animation → Who: a position. The play follows that player on an upright pitch, as the phone viewer
+// does (follow.js, with the same timing: their cues pop up as each step starts, and it eases to half speed
+// while one is new), in a phone-shaped frame (POSITION_SIZES) with the header, their job for each phase at
+// the bottom (jobs.js) and the cue bubbles next to them. Named "<play name> - <position>.gif" (or video).
+function savePositionAnimation({ format, speed, who }) {
+  const dialog = $('animation-dialog');
+  const { width, height } = POSITION_SIZES[format] ?? POSITION_SIZES.gif;
+  const job = { cancelled: false };
+  animationJob = job;
+  showAnimationProgress(0);
+  return exportFile(async live => {
+    try {
+      const play = { ...live, view: 'full', orientation: 'vertical' };
+      const css = pageCss();
+      const logo = await exportLogo(teamLogo);
+      const layout = focusLayout({ width, height, logo });
+      const player = play.players.find(p => p.id === who);
+      const title = play.name.trim() || 'Untitled play';
+      const jobs = play.phases.map((_, i) => jobLine(play, i, who));
+      const frames = focusFrames(play, who, { fps: format === 'gif' ? GIF_FPS : VIDEO_FPS, speed, aspect: width / layout.pitchH });
+      const blob = await makeAnimation({
+        play, format, speed, frames,
+        picture: frame => focusPicture(play, frame, { who, layout, css, logo, title, label: `Phase ${frame.phase + 1} of ${play.phases.length} · Position ${player.label}`, job: jobs[frame.phase] }),
+        progress: showAnimationProgress,
+        cancelled: () => job.cancelled,
+      });
+      if (!blob) {
+        showToast('Animation cancelled', 'ok');
+        return null;
+      }
+      const ext = format === 'gif' ? '.gif' : videoExtension(blob.type);
+      return new File([blob], safeFileName(`${play.name} - ${player.label}`, ext), { type: blob.type });
+    } finally {
+      animationJob = null;
+      if (dialog.open) dialog.close();
+    }
+  });
+}
+
+// One frame of a position's animation: the phase drawn like the PNG at the frame's moment, framed on the
+// player (the frame's camera), their team-mates and far opponents faded as in the viewer, a yellow ring on
+// them, and the cue bubble next to them, clear of their disc.
+function focusPicture(play, { phase: i, sched, t, cam, bubbles }, { who, layout, css, logo, title, label, job }) {
+  const { width, pitchH } = layout;
+  const picture = phasePicture(play, i, { width, height: pitchH, scale: 1, css, legend: false, at: { sched, t } });
+  const pitch = picture.querySelector(':scope > svg');
+  pitch.setAttribute('viewBox', [cam.x, cam.y, cam.w, cam.h].map(round2).join(' '));
+  const f = frameAt(sched, t);
+  const on = strength(play.players, f, who);
+  const from = new Map(play.phases[i].routes.map(r => [r.id, r.from]));
+  for (const g of pitch.querySelectorAll('.player[data-id]')) {
+    if (on[g.dataset.id] < 1) g.setAttribute('opacity', on[g.dataset.id]);
+    if (g.dataset.id === who) g.querySelector('.body')?.before(svgEl('circle', { r: playerR() + 0.75, class: 'me-ring' }));
+  }
+  for (const g of pitch.querySelectorAll('[data-kind="route"][data-id], .route-line[data-id], .badge[data-id]')) {
+    const o = on[from.get(g.dataset.id)] ?? 1;
+    if (o < 1) g.setAttribute('opacity', o);
+  }
+  let bubble = null;
+  const me = f.players[who];
+  if (bubbles.length && me) {
+    const lines = bubbles.map(b => b.text.toUpperCase());
+    const size = cueBubbleSize(lines, layout);
+    const k = width / cam.w;
+    const at = placeBubble({ x: (me.y - cam.x) * k, y: (-me.x - cam.y) * k, r: (playerR() + 0.75) * k, w: size.w, h: size.h, width, height: pitchH, margin: layout.pad / 2, gap: layout.pad / 2 });
+    const youngest = Math.min(...bubbles.map(b => b.age));
+    bubble = { lines, ...at, scale: Math.min(1, 0.6 + 0.4 * youngest / 180) };
+  }
+  return focusFrameSvg(picture, layout, { title, label, job, logo, bubble });
+}
+
 function showAnimationProgress(done) {
   const busyNow = done != null && animationJob != null;
   $('animation-progress').value = done ?? 0;
@@ -1779,9 +1989,23 @@ function showAnimationProgress(done) {
   $('animation-busy').hidden = !busyNow;
   $('animation-save').hidden = busyNow;
   for (const el of $('animation-dialog').querySelectorAll('fieldset')) el.disabled = busyNow;
+  updateAnimationWho();
+}
+
+// Who: the whole team, or a position (the play's attacking numbers). A position has its own upright size.
+function updateAnimationWho() {
+  const position = !!$('animation-who').value;
+  $('animation-who-tip').hidden = !position;
+  if (position) $('animation-size-choice').disabled = true;
 }
 
 function openAnimationDialog() {
+  const select = $('animation-who');
+  const keep = select.value;
+  const attackers = state.players.filter(p => p.team === 'attack')
+    .sort((a, b) => (Number(a.label) || 99) - (Number(b.label) || 99) || a.label.localeCompare(b.label));
+  select.replaceChildren(new Option('Whole team', ''), ...attackers.map(p => new Option(`Position ${p.label}`, p.id)));
+  select.value = attackers.some(p => p.id === keep) ? keep : '';
   showAnimationProgress(null);
   $('animation-dialog').showModal();
   $('animation-save').focus();
@@ -1792,8 +2016,9 @@ function initAnimationDialog() {
   const pick = name => dialog.querySelector(`[name="${name}"]:checked`)?.value;
   $('animation-save').addEventListener('click', () => {
     if (busy()) return;
-    saveAnimation({ format: pick('animation-format'), speed: Number(pick('animation-speed')), size: pick('animation-size') });
+    saveAnimation({ format: pick('animation-format'), speed: Number(pick('animation-speed')), size: pick('animation-size'), who: $('animation-who').value });
   });
+  $('animation-who').addEventListener('change', () => showAnimationProgress(animationJob ? 0 : null));
   // Cancel, Escape: stop the animation being made (the box closes when it has stopped), or just close.
   const cancel = e => {
     if (!animationJob) return;
@@ -2593,6 +2818,7 @@ async function init() {
   initKeys();
   initImageDialog();
   initAnimationDialog();
+  initCues();
   initShareDialog();
   initOptionDialog();
   initNumberPicker();

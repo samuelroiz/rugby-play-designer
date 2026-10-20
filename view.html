@@ -51,6 +51,7 @@
           <g id="ball-layer"></g>
         </g>
       </svg>
+      <div class="cue-bubble" id="cue-bubble" role="status" aria-live="assertive" hidden><span></span></div>
       <div class="end" id="end" hidden>
         <h2 id="end-name"></h2>
         <button type="button" class="big" id="watch-again">Watch again</button>
@@ -59,7 +60,16 @@
         <p class="end-status" id="end-status" aria-live="polite"></p>
       </div>
     </div>
-    <p class="caption" id="caption" aria-live="polite"></p>
+    <div class="bottom">
+      <div class="job-box" id="job-box" hidden>
+        <div class="job-head">
+          <span class="job-label">Your job</span>
+          <button type="button" class="note-button" id="note-button" aria-haspopup="dialog">Coach's note</button>
+        </div>
+        <p class="job" id="job" aria-live="polite"></p>
+      </div>
+      <p class="caption" id="caption" aria-live="polite"></p>
+    </div>
     <nav class="controls" aria-label="Playback">
       <button type="button" id="home" aria-label="Positions">☰</button>
       <button type="button" id="back" aria-label="Previous phase">‹</button>
@@ -70,6 +80,18 @@
         <button type="button" data-speed="1" aria-pressed="true">1×</button>
       </div>
     </nav>
+    <dialog class="sheet" id="note-sheet" aria-labelledby="sheet-title">
+      <form method="dialog">
+        <p class="sheet-phase" id="sheet-phase"></p>
+        <h2 class="sheet-label">Your job</h2>
+        <p class="sheet-job" id="sheet-job"></p>
+        <div id="sheet-note-box">
+          <h2 class="sheet-label" id="sheet-title">Coach's note</h2>
+          <p class="sheet-note" id="sheet-note"></p>
+        </div>
+        <button class="big" id="note-close">Close</button>
+      </form>
+    </dialog>
   </section>
 </body>
 </html>

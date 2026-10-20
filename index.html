@@ -138,10 +138,24 @@
       <h2>Edit</h2>
       <button type="button" data-action="delete" class="danger">Delete</button>
     </div>
-    <!-- Shown while one player is selected: what that player should do in this phase (the phone viewer's caption). -->
+    <!-- Shown while one player is selected: their job in this phase (the phone viewer's job line; the placeholder
+         is the one made from their routes) and their cues, which pop up next to them in the viewer. -->
     <div class="group instruction-group" id="instruction-group" hidden>
-      <label for="player-instruction"><h2 id="instruction-title">Instruction</h2></label>
+      <label for="player-instruction"><h2 id="instruction-title">Your job (this phase)</h2></label>
       <textarea id="player-instruction" rows="3" maxlength="120" spellcheck="true"></textarea>
+      <div class="cues" id="cues">
+        <h2 id="cues-title">Cues</h2>
+        <ul class="cue-list" id="cue-list"></ul>
+        <form class="cue-form" id="cue-form" hidden>
+          <input id="cue-text" type="text" maxlength="30" autocomplete="off" spellcheck="false" aria-label="Cue text" placeholder="e.g. JUMP!">
+          <label class="cue-step">at step <select id="cue-step"></select></label>
+          <div class="cue-form-buttons">
+            <button type="submit" id="cue-save">Save</button>
+            <button type="button" id="cue-cancel">Cancel</button>
+          </div>
+        </form>
+        <button type="button" id="cue-add">Add cue</button>
+      </div>
     </div>
   </nav>
 
@@ -157,6 +171,7 @@
         <g id="ball-routes-layer" pointer-events="none"></g>
         <g id="ball-layer"></g>
         <g id="badges-layer"></g>
+        <g id="cue-layer" pointer-events="none"></g>
         <g id="handles-layer"></g>
         <g id="edge-layer" pointer-events="none"></g>
         <g id="pen-layer" pointer-events="none"></g>
@@ -316,6 +331,13 @@
   <dialog id="animation-dialog" aria-labelledby="animation-title">
     <form method="dialog">
       <h2 id="animation-title">Save animation</h2>
+      <fieldset class="animation-who">
+        <legend>Who</legend>
+        <select id="animation-who" aria-label="Who">
+          <option value="">Whole team</option>
+        </select>
+        <p class="tip" id="animation-who-tip" hidden>Follows that player on an upright pitch, with their job and cues, as in the phone viewer: GIF 720 × 1280, video 1080 × 1920.</p>
+      </fieldset>
       <fieldset>
         <legend>Format</legend>
         <label><input type="radio" name="animation-format" value="gif" checked> GIF: plays everywhere, loops</label>
@@ -328,7 +350,7 @@
         <label><input type="radio" name="animation-speed" value="1" checked> 1×</label>
         <label><input type="radio" name="animation-speed" value="2"> 2×</label>
       </fieldset>
-      <fieldset class="animation-row">
+      <fieldset class="animation-row" id="animation-size-choice">
         <legend>Size</legend>
         <label><input type="radio" name="animation-size" value="small"> Small (640 px)</label>
         <label><input type="radio" name="animation-size" value="medium" checked> Medium (960 px)</label>

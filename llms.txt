@@ -14,7 +14,7 @@ To make a play for someone:
 
 A saved `.json` file can also be opened with File → Load file….
 
-To send a play to players' phones, use File → Share link… in the app: it copies a link to https://playbook.samuelroiz.com/view.html with the play inside the link. Give a player an instruction per phase with `instructions` in the play (see the guide) and the viewer shows it when they pick their position.
+To send a play to players' phones, use File → Share link… in the app: it copies a link to https://playbook.samuelroiz.com/view.html with the play inside the link. Give a player a short job per phase with `instructions` (otherwise one is made from their routes), and short cues that pop up next to them as a step starts with `cues`, e.g. `"cues": [{ "player": "a13", "step": 2, "text": "JUMP!" }]` (see the guide): the viewer shows them when they pick their position, and so does a position's animation from File → Save animation….
 
 ## Docs
 

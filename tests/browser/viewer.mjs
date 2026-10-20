@@ -2,7 +2,7 @@
 // Editor (desktop 1440x900): the instruction box for a selected player (undoable, saved with the play), and
 // Share link copying a working link, with the long-link warning and Drop the logo. Viewer (390x844, touch):
 // the start screen's positions, following 10 (always in view, team-mates faded, opponents near 10 in full,
-// 10's instruction or the note as the caption), the zoom out and replay, the end screen and Share, swipes and
+// 10's instruction or their made job as the job line), the zoom out and replay, the end screen and Share, swipes and
 // buttons, the remembered position, Watch the whole play, broken links, and what the page loads.
 import { open, click, state, check, failed, tap, URL_ } from './lib.mjs';
 import { animPlay } from '../anim-play.mjs';
@@ -10,14 +10,15 @@ import { animPlay } from '../anim-play.mjs';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-// The animation play, with 10's instructions in phases 1 and 2 (phase 3 falls back to its note).
+// The animation play, with 10's instructions in phases 1 and 2 (in phase 3, 10's job is made from their
+// routes: they have none).
 const play = animPlay();
 play.name = 'Ten follows';
 play.phases[0].instructions = { a10: 'Flat, call for it early.' };
 play.phases[1].instructions = { a10: 'Chase the kick.', a12: 'Kick long.' };
 play.phases[2].note = 'Regroup at the ruck';
 const NOTES = play.phases.map(ph => ph.note);
-const FOR_10 = ['Flat, call for it early.', 'Chase the kick.', 'Regroup at the ruck'];
+const FOR_10 = ['Flat, call for it early.', 'Chase the kick.', 'Hold your spot'];
 
 async function pastePlay(page, p) {
   await click(page, '#file-menu summary');
@@ -47,7 +48,7 @@ const p10 = { x: 39.4, y: 29.6 };
 await tap(page, p10.x, p10.y);
 await sleep(100);
 const box = await page.evaluate(() => ({ hidden: document.getElementById('instruction-group').hidden, title: document.getElementById('instruction-title').textContent, value: document.getElementById('player-instruction').value, max: document.getElementById('player-instruction').maxLength }));
-check('selecting 10: "Instruction for 10 in this phase", empty, at most 120 characters', !box.hidden && box.title === 'Instruction for 10 in this phase' && box.value === '' && box.max === 120, JSON.stringify(box));
+check('selecting 10: "Your job (this phase)", empty, at most 120 characters', !box.hidden && box.title === 'Your job (this phase)' && box.value === '' && box.max === 120, JSON.stringify(box));
 await page.click('#player-instruction');
 await page.keyboard.type('Flat, call for it early.');
 await page.$eval('#player-instruction', t => t.blur());
@@ -154,7 +155,7 @@ console.log('\n== Viewer: following 10 ==');
 await page.evaluate(() => {
   window.__frames = [];
   window.rugbyViewer.timeScale = 4;
-  window.rugbyViewer.onFrame(f => window.__frames.push({ ...f, caption: document.getElementById('caption').textContent, head: document.getElementById('watch-phase').textContent, who: document.getElementById('watch-who').textContent, viewBox: document.getElementById('pitch').getAttribute('viewBox') }));
+  window.rugbyViewer.onFrame(f => window.__frames.push({ ...f, caption: document.getElementById('caption').textContent, job: document.getElementById('job-box').hidden ? null : document.getElementById('job').textContent, head: document.getElementById('watch-phase').textContent, who: document.getElementById('watch-who').textContent, viewBox: document.getElementById('pitch').getAttribute('viewBox') }));
 });
 await page.tap('#positions [data-id="a10"]');
 await sleep(100);
@@ -173,8 +174,8 @@ check('opponents within 15 m of 10 are at full strength, the others faded', opp.
 check('…10 in full, 10\'s team-mates faded', focus.every(f => f.players.a10.opacity === 1 && f.players.a12.opacity < 1 && f.players.a13.opacity < 1));
 const ballNear = focus.filter(f => f.ball && Math.hypot(f.ball.x - f.players.a10.x, f.ball.y - f.players.a10.y) <= 15);
 check('…and the ball in view whenever it is near 10', ballNear.length > 0 && ballNear.every(f => inView(f, f.ball)), String(ballNear.length));
-const captions = [0, 1, 2].map(i => [...new Set(focus.filter(f => f.phase === i).map(f => f.caption))]);
-check('the caption is 10\'s instruction for each phase, or the note where there is none', eq(captions, FOR_10.map(c => [c])), JSON.stringify(captions));
+const captions = [0, 1, 2].map(i => [...new Set(focus.filter(f => f.phase === i).map(f => f.job))]);
+check('the job line is 10\'s instruction for each phase, or the job made from their routes where there is none', eq(captions, FOR_10.map(c => [c])), JSON.stringify(captions));
 const heads = [...new Set(focus.map(f => `${f.head} / ${f.who}`))];
 check('the header: "Phase n of 3" and "Position 10"', eq(heads, ['Phase 1 of 3 / Position 10', 'Phase 2 of 3 / Position 10', 'Phase 3 of 3 / Position 10']), JSON.stringify(heads));
 
@@ -230,7 +231,7 @@ check('swiping left goes to the next phase', (await swipe(-150)) === 1);
 check('…and again', (await swipe(-150)) === 2);
 check('swiping right goes back', (await swipe(150)) === 1);
 check('a short drag changes nothing', (await swipe(-20)) === 1);
-check('the caption follows: 10\'s instruction for phase 2', (await page.$eval('#caption', c => c.textContent)) === FOR_10[1]);
+check('the job line follows: 10\'s instruction for phase 2', (await page.$eval('#job', c => c.textContent)) === FOR_10[1]);
 await page.tap('[data-speed="0.5"]');
 st = await page.evaluate(() => window.rugbyViewer.state());
 check('0.5x: half speed', st.speed === 0.5 && (await page.$eval('[data-speed="0.5"]', b => b.getAttribute('aria-pressed'))) === 'true');

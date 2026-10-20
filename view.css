@@ -83,17 +83,82 @@ button[aria-pressed="true"] { background: var(--accent); border-color: var(--acc
 #watch-who { color: var(--muted); font-weight: 600; }
 .stage { position: relative; flex: 1 1 auto; min-height: 0; border-radius: 10px; overflow: hidden; background: var(--surround); touch-action: none; user-select: none; -webkit-user-select: none; }
 #pitch { display: block; width: 100%; height: 100%; }
-/* The caption keeps its height, so the pitch doesn't change size between phases. */
+/* The bottom keeps its height (the job line, or the phase note), so the pitch doesn't change size between
+   phases or when the whole play replays. A tap on a long note lets it grow to show all of it. */
+.bottom { flex: none; display: flex; flex-direction: column; height: 6.75rem; }
+.bottom:has(.caption.expanded) { height: auto; }
 .caption {
-  flex: none;
-  height: calc(4 * 1.3em);
+  flex: 1 1 auto;
+  min-height: 0;
   margin: 0;
   padding: 0 .25rem;
   overflow-y: auto;
   font-size: clamp(1.15rem, 5vw, 1.5rem);
   line-height: 1.3;
   font-weight: 600;
+  cursor: pointer;
 }
+.caption.more { -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+.caption.expanded { flex: none; max-height: 50dvh; }
+.job-box { display: flex; flex-direction: column; gap: .2rem; min-height: 0; }
+.job-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding: 0 .25rem; }
+.job-label { color: var(--muted); font-size: .8rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.note-button { min-height: 36px; padding: 0 .75rem; font-size: .85rem; font-weight: 600; border-radius: 18px; }
+.job {
+  margin: 0;
+  padding: 0 .25rem;
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 800;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  cursor: pointer;
+}
+
+/* A cue: a bold bubble next to the followed player (placed by view.js), never over them */
+.cue-bubble { position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; }
+.cue-bubble span {
+  display: block;
+  max-width: 14rem;
+  padding: .35rem .7rem;
+  border: 2px solid #1d1d1d;
+  border-radius: 14px;
+  background: #ffeb3b;
+  color: #1d1d1d;
+  font-size: 1.5rem;
+  font-weight: 900;
+  line-height: 1.15;
+  letter-spacing: .02em;
+  text-align: center;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .45);
+}
+
+/* The Coach's note: a sheet from the bottom */
+.sheet {
+  width: 100%;
+  max-width: 40rem;
+  max-height: 80dvh;
+  margin: auto auto 0;
+  padding: 1rem max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  border: 0;
+  border-radius: 16px 16px 0 0;
+  background: var(--panel);
+  color: var(--ink);
+  overflow-y: auto;
+}
+.sheet::backdrop { background: rgba(0, 0, 0, .55); }
+.sheet form { display: flex; flex-direction: column; gap: .5rem; }
+.sheet-phase { margin: 0; color: var(--muted); font-weight: 600; }
+.sheet-label { margin: .3rem 0 0; color: var(--muted); font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; }
+.sheet-job { margin: 0; font-size: 1.3rem; font-weight: 800; line-height: 1.25; }
+.sheet-note { margin: .2rem 0 0; font-size: 1.15rem; line-height: 1.4; white-space: pre-line; }
+#note-close { margin-top: .5rem; }
 .controls { flex: none; display: flex; justify-content: center; align-items: center; gap: .5rem; }
 .controls > button { min-width: 52px; min-height: 52px; font-size: 1.4rem; }
 .controls .play { min-width: 72px; background: var(--accent); border-color: var(--accent); color: #fff; }

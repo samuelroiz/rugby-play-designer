@@ -190,6 +190,24 @@ button.danger { color: #b71c1c; }
 .instruction-group[hidden] { display: none; }
 .instruction-group h2 { text-transform: none; letter-spacing: 0; font-size: .75rem; }
 #player-instruction { box-sizing: border-box; width: 100%; min-width: 0; font: inherit; font-size: .85rem; padding: .35rem .45rem; border: 1px solid var(--border); border-radius: 6px; resize: vertical; }
+/* The selected player's cues: a list (text and step, Edit, Delete), and the form for adding or editing one */
+.cues { display: flex; flex-direction: column; gap: .25rem; }
+.toolbar #cue-add { padding: .25rem .55rem; }
+.cue-list { display: flex; flex-direction: column; gap: .25rem; margin: 0; padding: 0; list-style: none; }
+.cue-list li { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .3rem; font-size: .8rem; }
+.cue-list .cue-text { flex: 1 1 100%; min-width: 0; padding: .1rem .4rem; border-radius: 6px; background: #ffeb3b; color: #1d1d1d; font-weight: 800; overflow-wrap: anywhere; }
+.cue-list .cue-at { flex: 1 1 auto; color: var(--muted); white-space: nowrap; }
+.toolbar .cue-list button { padding: .15rem .35rem; font-size: .75rem; }
+.cue-form { display: flex; flex-direction: column; gap: .3rem; }
+.cue-form[hidden] { display: none; }
+#cue-text { box-sizing: border-box; width: 100%; min-width: 0; font: inherit; font-size: .85rem; font-weight: 700; text-transform: uppercase; padding: .3rem .45rem; border: 1px solid var(--border); border-radius: 6px; }
+.cue-step { display: flex; align-items: center; gap: .35rem; font-size: .8rem; }
+.cue-form-buttons { display: flex; gap: .3rem; }
+.cue-form-buttons button { flex: 1; }
+/* On the pitch while the player is selected: their cues as small bubbles over them */
+.cue-mark rect { fill: #ffeb3b; stroke: #1d1d1d; stroke-width: .12; }
+.cue-mark text { fill: #1d1d1d; font-family: system-ui, sans-serif; font-weight: 800; }
+.cue-mark .cue-step-num { fill: #555; font-weight: 700; }
 
 /* "? Tips" at the top of the sidebar, opening a small popup beside it (placed by initTips) */
 .help { gap: .4rem; font-size: .8rem; font-weight: 600; color: var(--muted); flex: none; }
@@ -753,6 +771,12 @@ body.presenting {
   .group h2, .toolbar .help, .long { display: none; }
   /* As tall as the buttons beside it, so selecting a player doesn't shrink the pitch; the placeholder says whose it is. */
   #player-instruction { min-width: 15rem; height: 2.3rem; min-height: 0; resize: none; padding: .3rem .45rem; }
+  .cues { flex-direction: row; align-items: center; margin-top: 0; }
+  .cue-list { flex-direction: row; }
+  .cue-list li { flex-wrap: nowrap; white-space: nowrap; }
+  .cue-list .cue-text { flex: none; }
+  .cue-form { flex-direction: row; align-items: center; }
+  #cue-text { width: 9rem; }
   .statusbar { flex-wrap: wrap; column-gap: .5rem; height: auto; min-height: 2.7rem; padding: .25rem .5rem; font-size: .78rem; }
   .statusbar .legend { flex-basis: 100%; flex-wrap: wrap; margin-left: 0; font-size: .7rem; }
   .draw-hint { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; line-height: 1.25; }

@@ -150,6 +150,87 @@ export function captionedSvg(picture, layout, { title, label, note, logo = null 
   return out;
 }
 
+// A position's animation frame (GIF 720 x 1280, video 1080 x 1920): a header with the team logo, the play
+// name and "Phase n of N · Position 10", the pitch following the player, and their job at the bottom in large
+// bold text, shrunk to fit at most FOCUS.jobLines lines (and cut with "…" past that). Sizes are shares of the
+// frame's width.
+const FOCUS = { titlePx: 0.045, labelPx: 0.032, pad: 0.03, jobLabelPx: 0.028, jobPx: 0.058, jobMinPx: 0.04, lineH: 1.2, jobLines: 2, logoMaxW: 0.22, cuePx: 0.06 };
+
+export function focusLayout({ width, height, logo = null }) {
+  const pad = Math.round(width * FOCUS.pad);
+  const titlePx = Math.round(width * FOCUS.titlePx);
+  const labelPx = Math.round(width * FOCUS.labelPx);
+  const headerH = Math.round(2 * pad + titlePx * 1.2 + labelPx * 1.3);
+  let mark = null;
+  if (logo) {
+    const h = headerH - 2 * pad;
+    const w = Math.min(width * FOCUS.logoMaxW, h * logo.w / logo.h);
+    mark = { w, h: w * logo.h / logo.w };
+  }
+  const jobLabelPx = Math.round(width * FOCUS.jobLabelPx);
+  const jobPx = Math.round(width * FOCUS.jobPx);
+  const jobH = Math.round(2 * pad + jobLabelPx * 1.5 + FOCUS.jobLines * jobPx * FOCUS.lineH);
+  return { width, height, pad, titlePx, labelPx, headerH, mark, jobLabelPx, jobPx, jobH, pitchH: height - headerH - jobH, textW: width - 2 * pad };
+}
+
+// The job line's size and lines: as large as fits FOCUS.jobLines lines, down to FOCUS.jobMinPx of the width.
+function fitJob(job, layout) {
+  const min = Math.round(layout.width * FOCUS.jobMinPx);
+  for (let px = layout.jobPx; px > min; px -= 2) {
+    const lines = wrapLines(job, layout.textW, `800 ${px}px ${FONT}`, 99);
+    if (lines.length <= FOCUS.jobLines) return { px, lines };
+  }
+  return { px: min, lines: wrapLines(job, layout.textW, `800 ${min}px ${FONT}`, FOCUS.jobLines) };
+}
+
+// The size of a cue bubble with these lines of text, for placing it (cues.js placeBubble) before drawing it.
+export function cueBubbleSize(lines, layout) {
+  const px = Math.round(layout.width * FOCUS.cuePx);
+  const ctx = document.createElement('canvas').getContext('2d');
+  ctx.font = `900 ${px}px ${FONT}`;
+  const padX = px * 0.5;
+  const padY = px * 0.3;
+  const w = Math.min(layout.width - 2 * layout.pad, Math.max(...lines.map(l => ctx.measureText(l).width)) + 2 * padX);
+  return { px, w, h: lines.length * px * 1.15 + 2 * padY, padY };
+}
+
+// One frame: `picture` (from pictureSvg, layout.width x layout.pitchH, already framed on the player) under
+// the header, the job under it, and bubble: { lines, left, top, scale } (top left in the pitch's px) or null.
+export function focusFrameSvg(picture, layout, { title, label, job, logo = null, bubble = null }) {
+  const { width, height, pad, titlePx, labelPx, headerH, mark, jobLabelPx, pitchH, textW } = layout;
+  const out = svgEl('svg', { xmlns: NS, width, height, viewBox: `0 0 ${width} ${height}` });
+  svgEl('rect', { width, height, fill: '#fff' }, out);
+  const text = (str, x, y, px, attrs) => {
+    svgEl('text', { x, y, 'font-size': px, 'font-family': FONT, fill: '#1d1d1d', 'dominant-baseline': 'hanging', ...attrs }, out).textContent = str;
+  };
+  const headW = textW - (mark ? mark.w + pad : 0);
+  text(wrapLines(title, headW, `700 ${titlePx}px ${FONT}`, 1)[0] ?? '', pad, pad, titlePx, { 'font-weight': 700, class: 'export-title' });
+  text(label, pad, pad + titlePx * 1.2, labelPx, { fill: '#444', 'font-weight': 600, class: 'export-caption' });
+  if (mark) logoImage(logo, { x: width - pad - mark.w, y: (headerH - mark.h) / 2, width: mark.w, height: mark.h }, out);
+  picture.setAttribute('x', 0);
+  picture.setAttribute('y', headerH);
+  out.appendChild(picture);
+  if (bubble) {
+    const size = cueBubbleSize(bubble.lines, layout);
+    const cx = bubble.left + size.w / 2;
+    const cy = headerH + bubble.top + size.h / 2;
+    const s = Math.round(bubble.scale * 100) / 100;
+    const g = svgEl('g', { class: 'export-cue-bubble', transform: `translate(${cx} ${cy}) scale(${s}) translate(${-size.w / 2} ${-size.h / 2})` }, out);
+    svgEl('rect', { width: size.w, height: size.h, rx: size.px * 0.4, fill: '#ffeb3b', stroke: '#1d1d1d', 'stroke-width': Math.max(2, size.px * 0.07) }, g);
+    bubble.lines.forEach((line, i) => {
+      svgEl('text', {
+        x: size.w / 2, y: size.padY + i * size.px * 1.15, 'font-size': size.px, 'font-weight': 900, 'font-family': FONT, fill: '#1d1d1d',
+        'text-anchor': 'middle', 'dominant-baseline': 'hanging', class: 'export-cue',
+      }, g).textContent = line;
+    });
+  }
+  const top = headerH + pitchH + pad;
+  text('YOUR JOB', pad, top, jobLabelPx, { fill: '#555', 'font-weight': 700, 'letter-spacing': jobLabelPx * 0.08 });
+  const { px, lines } = fitJob(job, layout);
+  lines.forEach((line, i) => text(line, pad, top + jobLabelPx * 1.5 + i * px * FOCUS.lineH, px, { 'font-weight': 800, class: 'export-job' }));
+  return out;
+}
+
 // The route key as SVG, laid out like the on-screen legend: `cols` type/label pairs per row.
 // Returns the group (top left at 0, 0) and its size.
 function legendBox({ items, sample, cols }) {

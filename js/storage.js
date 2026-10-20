@@ -1,5 +1,6 @@
 import { startSpot } from './pitch.js';
 import { OPTION_LABEL_MAX, OPTION_TYPES } from './options.js';
+import { CUE_MAX, defaultCueStep } from './cues.js';
 
 // The old single autosave (moved into the play library on first run, see library.js and app.js), and
 // saving/loading plays as .json files.
@@ -187,6 +188,18 @@ export function parsePlay(data) {
         if (ids.has(id) && typeof text === 'string' && text.trim()) instructions[id] = text.trim().slice(0, INSTRUCTION_MAX);
       }
       if (Object.keys(instructions).length) out.instructions = instructions;
+    }
+    // Optional: cues for players in the play, as trimmed text cut to CUE_MAX, each at a step from 1 to 99
+    // (missing or wrong: the step of the player's first route in the phase, else 1); empty ones dropped.
+    if (Array.isArray(ph.cues)) {
+      const cues = ph.cues
+        .filter(c => isObj(c) && ids.has(c.player) && typeof c.text === 'string' && c.text.trim())
+        .map(c => ({
+          player: c.player,
+          step: Number.isInteger(c.step) && c.step >= 1 && c.step <= 99 ? c.step : defaultCueStep(checkedRoutes, c.player),
+          text: c.text.trim().slice(0, CUE_MAX),
+        }));
+      if (cues.length) out.cues = cues;
     }
     return out;
   });
