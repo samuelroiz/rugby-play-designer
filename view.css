@@ -72,6 +72,10 @@ button[aria-pressed="true"] { background: var(--accent); border-color: var(--acc
 .start h1 { margin: .2rem 0 0; font-size: 1.7rem; line-height: 1.15; overflow-wrap: anywhere; }
 .start h2 { margin: .4rem 0 0; font-size: 1.15rem; }
 .meta { margin: 0; color: var(--muted); }
+/* Attack / Defense: which side's numbers are listed (only when both teams have players). */
+.team-switch { display: inline-flex; align-self: flex-start; border: 1px solid var(--accent); border-radius: 999px; overflow: hidden; }
+.team-switch[hidden] { display: none; }
+.team-switch button { min-height: 44px; padding: 0 1.1rem; border: 0; border-radius: 0; font-size: 1rem; font-weight: 600; }
 .positions { display: grid; grid-template-columns: repeat(auto-fill, minmax(4.2rem, 1fr)); gap: .55rem; }
 .positions button { min-height: 60px; font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .positions button[aria-pressed="true"] { box-shadow: 0 0 0 3px #ffeb3b; }

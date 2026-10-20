@@ -7,7 +7,7 @@
 // Editing is off while presenting, so there are no hover hints, handles or selection highlights.
 
 import { svgEl, toMetres } from './pitch.js';
-import { round2 } from './model.js';
+import { round2, playersOurFirst, positionName } from './model.js';
 import { jobLine } from './jobs.js';
 
 // The job line is shrunk (to no less than this share of the caption's size) to fit the caption's room (at least
@@ -76,11 +76,10 @@ export function initPresent({ state, ui, svg, world, penLayer, render, phase, pl
   }
   document.addEventListener('pointermove', () => { if (ui.presenting) wake(); });
 
-  // "I play": None, then the attack and the defense by number.
+  // "I play": None, then both teams by number, our team first (the defense for a defense play), e.g. "Defense 13".
   function fillPicker() {
-    const sorted = [...state.players].sort((a, b) => (a.team === b.team ? Number(a.id.slice(1)) - Number(b.id.slice(1)) : a.team === 'attack' ? -1 : 1));
     const none = new Option('None', '');
-    pick.replaceChildren(none, ...sorted.map(p => new Option(`${p.team === 'attack' ? 'Attack' : 'Defense'} ${p.label}`, p.id)));
+    pick.replaceChildren(none, ...playersOurFirst(state).map(p => new Option(positionName(p), p.id)));
     pick.value = ui.focusPlayer ?? '';
   }
   pick.addEventListener('change', () => {

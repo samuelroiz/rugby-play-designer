@@ -1,6 +1,7 @@
 // The phone viewer (view.html): a play opened from a share link (view.html#p=<data>, see share.js), read-only.
 // It loads only the pitch drawing, the animation and the play checks: no editor, library, autosave or Welcome
-// box. The start screen asks which position you play. Focus mode then plays the play on a vertical pitch
+// box. The start screen asks which position you play: our team's numbers (model.js ourTeam: the defense for a
+// defense play, else the attack), with an Attack / Defense switch for the other side. Focus mode then plays the play on a vertical pitch
 // (attack playing up) with the view following that player (follow.js), their team-mates faded and opponents
 // near them at full strength, and their job for each phase at the bottom (jobs.js: the coach's instruction, or
 // one made from their routes), with the phase note a tap away in a sheet. Their cues (cues.js) pop up next to
@@ -10,14 +11,15 @@
 
 import { drawPitch, svgEl, fitBox, uprightTurn, ROUTE_TYPES, PLAYER_R } from './pitch.js';
 import { buildSchedule, frameAt, flightEnds, shownRoute } from './animate.js';
-import { playedRoutes, curveControl, playPoints, BALL_ROUTES } from './model.js';
+import { playedRoutes, curveControl, playPoints, BALL_ROUTES, ourTeam, teamPlayers, positionName, TEAM_NAMES } from './model.js';
 import { decodeShare, hashData } from './share.js';
 import { DEFAULT_LOGO_URL } from './logo.js';
 import { shaped, screenBox, followTarget, glide, strength, ballIn } from './follow.js';
 import { phaseCues, firedBetween, cueSpeed, ageBubbles, placeBubble } from './cues.js';
 import { jobLine } from './jobs.js';
 
-// The last position picked in this browser (its number, e.g. "10"), preselected next time.
+// The last position picked in this browser, preselected next time: its team and number as JSON,
+// {"team":"defense","number":"10"} (an older plain "10" is the attack's 10).
 export const POSITION_KEY = 'rugby-play-designer.viewer-position';
 const JOB_LINES = 2; // the job line is shrunk to fit this many lines
 const JOB_PX = { max: 24, min: 15 };
@@ -35,6 +37,7 @@ const layers = {
 
 let play = null;
 let team = null;
+let listTeam = 'attack'; // the side the start screen lists: our team, until the switch picks the other
 const v = {
   screen: 'loading',
   mode: null, // 'focus' (following a player), 'replay' (the whole play after a focus run) or 'whole'
@@ -72,6 +75,7 @@ async function load() {
   }
   document.title = `${play.name} · Rugby play`;
   wholeView = null;
+  listTeam = ourTeam(play);
   buildStart();
   drawPitch(layers.pitch, { view: 'full', orientation: 'vertical', distances: true, grid: false, direction: false });
   buildArrows();
@@ -88,9 +92,19 @@ function show(screen) {
 
 // --- Start screen ---
 
-const attackers = () => play.players.filter(p => p.team === 'attack')
-  .sort((a, b) => (Number(a.label) || 99) - (Number(b.label) || 99) || a.label.localeCompare(b.label));
-const remembered = () => { try { return localStorage.getItem(POSITION_KEY); } catch { return null; } };
+function remembered() {
+  let raw = null;
+  try { raw = localStorage.getItem(POSITION_KEY); } catch { return null; }
+  if (!raw) return null;
+  try {
+    const r = JSON.parse(raw);
+    if (r && typeof r === 'object') return { team: r.team, number: String(r.number) };
+  } catch { /* an older plain number */ }
+  return { team: 'attack', number: raw };
+}
+const remember = p => {
+  try { localStorage.setItem(POSITION_KEY, JSON.stringify({ team: p.team, number: p.label })); } catch { /* storage blocked: not remembered */ }
+};
 
 function buildStart() {
   $('start-name').textContent = play.name;
@@ -101,18 +115,29 @@ function buildStart() {
   const logo = team?.logo === 'default' ? DEFAULT_LOGO_URL : team?.logo;
   $('start-logo').hidden = !logo;
   if (logo) $('start-logo').src = logo;
+  // Attack / Defense, when both teams have players.
+  const sides = ['attack', 'defense'].filter(t => teamPlayers(play, t).length);
+  if (!sides.includes(listTeam)) listTeam = sides[0] ?? ourTeam(play);
+  const switcher = $('team-switch');
+  switcher.hidden = sides.length < 2;
+  for (const b of switcher.querySelectorAll('[data-team]')) {
+    b.setAttribute('aria-pressed', String(b.dataset.team === listTeam));
+    b.onclick = () => { listTeam = b.dataset.team; buildStart(); };
+  }
   const box = $('positions');
   box.replaceChildren();
+  box.setAttribute('aria-label', `${TEAM_NAMES[listTeam]} positions`);
   const last = remembered();
-  for (const p of attackers()) {
+  for (const p of teamPlayers(play, listTeam)) {
     const b = document.createElement('button');
     b.type = 'button';
     b.dataset.id = p.id;
+    b.className = p.team;
     b.textContent = p.label;
-    b.setAttribute('aria-label', `I play ${p.label}`);
-    b.setAttribute('aria-pressed', String(p.label === last));
+    b.setAttribute('aria-label', `I play ${positionName(p)}`);
+    b.setAttribute('aria-pressed', String(!!last && last.team === p.team && last.number === p.label));
     b.addEventListener('click', () => {
-      try { localStorage.setItem(POSITION_KEY, p.label); } catch { /* storage blocked: not remembered */ }
+      remember(p);
       for (const other of box.children) other.setAttribute('aria-pressed', String(other === b));
       watch('focus', p.id, resumeAt());
     });
@@ -121,7 +146,7 @@ function buildStart() {
   if (!box.children.length) {
     const none = document.createElement('p');
     none.className = 'meta';
-    none.textContent = 'This play has no attacking players to follow.';
+    none.textContent = 'This play has no players to follow.';
     box.appendChild(none);
   }
 }
@@ -321,7 +346,7 @@ function updateText() {
   $('watch-phase').textContent = `Phase ${v.phase + 1} of ${n}`;
   const me = play.players.find(p => p.id === v.focus);
   const focus = v.mode === 'focus';
-  $('watch-who').textContent = focus ? `Position ${me?.label ?? ''}` : 'Whole play';
+  $('watch-who').textContent = focus && me ? positionName(me) : 'Whole play'; // "Defense 13": whose view it is
   const ph = play.phases[v.phase];
   // Following a player: their job, with the phase note in the sheet. Otherwise the note, all of it.
   $('job-box').hidden = !focus;
@@ -426,6 +451,8 @@ const resumeAt = () => resumePhase ?? 0;
 function backToPositions() {
   resumePhase = v.screen === 'watch' && !v.ended ? v.phase : null;
   v.playing = false;
+  const me = play.players.find(p => p.id === v.focus);
+  if (me) listTeam = me.team;
   buildStart();
   show('start');
 }

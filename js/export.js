@@ -151,7 +151,7 @@ export function captionedSvg(picture, layout, { title, label, note, logo = null 
 }
 
 // A position's animation frame (GIF 720 x 1280, video 1080 x 1920): a header with the team logo, the play
-// name and "Phase n of N · Position 10", the pitch following the player, and their job at the bottom in large
+// name and "Phase n of N · Attack 10" (or "Defense 13"), the pitch following the player, and their job at the bottom in large
 // bold text, shrunk to fit at most FOCUS.jobLines lines (and cut with "…" past that). Sizes are shares of the
 // frame's width.
 const FOCUS = { titlePx: 0.045, labelPx: 0.032, pad: 0.03, jobLabelPx: 0.028, jobPx: 0.058, jobMinPx: 0.04, lineH: 1.2, jobLines: 2, logoMaxW: 0.22, cuePx: 0.06 };

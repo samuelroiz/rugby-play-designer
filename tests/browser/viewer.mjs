@@ -195,7 +195,7 @@ await page.tap('#positions [data-id="a10"]');
 await sleep(100);
 let st = await page.evaluate(() => window.rugbyViewer.state());
 check('picking 10 starts playing at 1x from phase 1, following 10', st.screen === 'watch' && st.mode === 'focus' && st.focus === 'a10' && st.playing && st.speed === 1 && st.phase === 0, JSON.stringify(st));
-check('10 is remembered in this browser', (await page.evaluate(() => localStorage.getItem('rugby-play-designer.viewer-position'))) === '10');
+check('10 is remembered in this browser, with their team', (await page.evaluate(() => localStorage.getItem('rugby-play-designer.viewer-position'))) === JSON.stringify({ team: 'attack', number: '10' }));
 await page.waitForFunction(() => window.rugbyViewer.state().mode === 'replay', { timeout: 60000 }).catch(() => null);
 const focus = await page.evaluate(() => window.__frames.filter(f => f.mode === 'focus'));
 const inView = (f, p, m = 0) => p.y >= f.cam.x + m && p.y <= f.cam.x + f.cam.w - m && -p.x >= f.cam.y + m && -p.x <= f.cam.y + f.cam.h - m;
@@ -211,7 +211,7 @@ check('…and the ball in view whenever it is near 10', ballNear.length > 0 && b
 const captions = [0, 1, 2].map(i => [...new Set(focus.filter(f => f.phase === i).map(f => f.job))]);
 check('the job line is 10\'s instruction for each phase, or the job made from their routes where there is none', eq(captions, FOR_10.map(c => [c])), JSON.stringify(captions));
 const heads = [...new Set(focus.map(f => `${f.head} / ${f.who}`))];
-check('the header: "Phase n of 3" and "Position 10"', eq(heads, ['Phase 1 of 3 / Position 10', 'Phase 2 of 3 / Position 10', 'Phase 3 of 3 / Position 10']), JSON.stringify(heads));
+check('the header: "Phase n of 3" and "Attack 10"', eq(heads, ['Phase 1 of 3 / Attack 10', 'Phase 2 of 3 / Attack 10', 'Phase 3 of 3 / Attack 10']), JSON.stringify(heads));
 
 console.log('\n== Viewer: the end ==');
 await page.waitForFunction(() => window.rugbyViewer.state().ended, { timeout: 60000 }).catch(() => null);

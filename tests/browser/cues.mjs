@@ -273,7 +273,7 @@ await click(page, '#file-menu summary');
 await click(page, '[data-file="animation"]');
 await page.waitForSelector('#animation-dialog[open]');
 const who = await page.$$eval('#animation-who option', os => os.map(o => [o.value, o.textContent, o.selected]));
-check('Who: "Whole team" (the default) or each attacking position', eq(who, [['', 'Whole team', true], ['a10', 'Position 10', false], ['a12', 'Position 12', false], ['a13', 'Position 13', false]]), JSON.stringify(who));
+check('Who: "Whole team" (the default), then both teams, our team (the attack) first, named with their team', eq(who, [['', 'Whole team', true], ['a10', 'Attack 10', false], ['a12', 'Attack 12', false], ['a13', 'Attack 13', false], ['d10', 'Defense 10', false], ['d12', 'Defense 12', false]]), JSON.stringify(who));
 await page.select('#animation-who', 'a12');
 const choice = await page.evaluate(() => ({ size: document.getElementById('animation-size-choice').disabled, tip: !document.getElementById('animation-who-tip').hidden }));
 check('…a position has its own upright size (Size is greyed out, a tip says so)', choice.size && choice.tip, JSON.stringify(choice));
@@ -285,11 +285,11 @@ const done = await page.waitForFunction(() => !document.getElementById('animatio
 let file = null;
 for (let i = 0; i < 50 && !file; i++) { file = fs.readdirSync(OUT).find(f => f.endsWith('.gif')); if (!file) await sleep(100); }
 await sleep(300);
-check('a position\'s GIF is saved as "<play name> - <position>.gif"', done && file === 'Cue play - 12.gif', String(file));
+check('a position\'s GIF is saved as "<play name> - Attack 12.gif"', done && file === 'Cue play - Attack 12.gif', String(file));
 const buf = file ? fs.readFileSync(path.join(OUT, file)) : Buffer.alloc(10);
 check(`…720 x 1280 (${buf.readUInt16LE(6)} x ${buf.readUInt16LE(8)}), ${Math.round(buf.length / 1024)} KB`, buf.readUInt16LE(6) === 720 && buf.readUInt16LE(8) === 1280);
 const pics = (await pictures(page)).filter(q => q.w === 720);
-check(`…every frame 720 x 1280 with "Position 12" in its header (${pics.length})`, pics.length > 20 && pics.every(q => q.h === 1280 && /· Position 12$/.test(q.label)), JSON.stringify(pics[0]));
+check(`…every frame 720 x 1280 with "Attack 12" in its header (${pics.length})`, pics.length > 20 && pics.every(q => q.h === 1280 && /· Attack 12$/.test(q.label)), JSON.stringify(pics[0]));
 check('…the cue drawn in its frames, in capitals', pics.some(q => eq(q.cue, ['JUMP!'])) && pics.some(q => eq(q.cue, ['KICK IT'])) && !pics.some(q => q.cue.includes('CHASE!')), JSON.stringify([...new Set(pics.map(q => q.cue.join()))]));
 const jobText = q => q.job.join(' ');
 check('…the job line under the pitch, phase by phase (made, written, made)', pics.some(q => q.label.startsWith('Phase 1') && jobText(q) === JOB_12[0]) && pics.some(q => q.label.startsWith('Phase 2') && jobText(q) === JOB_12[1]) && pics.every(q => q.job.length >= 1 && q.job.length <= 2), JSON.stringify([...new Set(pics.map(jobText))]));

@@ -124,3 +124,19 @@ export function playPoints(play) {
   }
   return points;
 }
+
+// "Our team": the side whose view a play is drawn up for. The defense for a play in the "defense" category,
+// else the attack. The phone viewer lists it first, and Present mode's I play and Save animation's Who put it
+// first.
+export const TEAM_NAMES = { attack: 'Attack', defense: 'Defense' };
+export const ourTeam = play => (play.category === 'defense' ? 'defense' : 'attack');
+export const otherTeam = team => (team === 'defense' ? 'attack' : 'defense');
+// "Defense 13": a player named with their team, so the same number on both sides can't be mixed up.
+export const positionName = p => `${TEAM_NAMES[p.team] ?? ''} ${p.label}`.trim();
+// One team's players by number, or every player with our team first.
+const byNumber = (a, b) => (Number(a.label) || 99) - (Number(b.label) || 99) || a.label.localeCompare(b.label);
+export const teamPlayers = (play, team) => play.players.filter(p => p.team === team).sort(byNumber);
+export const playersOurFirst = play => {
+  const us = ourTeam(play);
+  return [...teamPlayers(play, us), ...teamPlayers(play, otherTeam(us))];
+};

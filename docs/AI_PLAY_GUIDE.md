@@ -53,7 +53,7 @@ Turning the pitch (vertical view) only changes how it is drawn. The data never c
 | Field | Values | Default |
 |---|---|---|
 | `name` | text, up to 60 characters | `"Untitled play"` |
-| `category` | `"attack"`, `"defense"`, `"lineout"`, `"scrum"` | `"attack"` |
+| `category` | `"attack"`, `"defense"`, `"lineout"`, `"scrum"`. It decides whose view players get: a `"defense"` play is the defense's (the phone viewer lists and follows defenders first, and Present mode and Save animation list them first); any other category is the attack's. Use `"defense"` for a defensive system you want the defenders to learn, and give them `instructions` and `cues`. | `"attack"` |
 | `tags` | list of short texts | `[]` |
 | `view` | `"full"`, `"half"` (x 50 to 110, the half attack plays into), `"half-own"` (x −10 to 50). Each half also shows 5 m past halfway (from x 45, or to x 55). | `"full"` |
 | `orientation` | `"horizontal"`, `"vertical"` | `"horizontal"` |
@@ -107,7 +107,7 @@ Use drift and blitz for defenders: drift slides across, blitz rushes up.
 
 `phases` is in play order. Each phase has `note` (text, the coach's caption), `positions`, `objects` and `routes`.
 
-Two optional fields are for players following the play on their phone (a share link, see the README) or in a position's animation (**Save animation → Who**). Neither changes how the play moves, and the PNG and PDF exports don't show them. A new phase built from the one before starts with neither. Leave them out of a phase where nobody needs them.
+Two optional fields are for players following the play on their phone (a share link, see the README) or in a position's animation (**Save animation → Who**). The play's `category` decides whose view they get first: the defenders for a `"defense"` play, the attackers otherwise (the other side can still be picked). So in a defense play, write `instructions` and `cues` for the defenders (`d…` ids). Neither changes how the play moves, and the PNG and PDF exports don't show them. A new phase built from the one before starts with neither. Leave them out of a phase where nobody needs them.
 
 `instructions`: each player's **job** in this phase, by player id, one short line. Up to 120 characters each; longer ones are cut, and empty ones and ids not in the play are dropped. It's shown large at the bottom of the phone, on at most two lines, so write a short command, not a paragraph (the `note` is for the coach's full explanation, which the phone shows on request). A player with no instruction gets one made from their routes in that phase, e.g. *Pass to 12*, *Take the pass from 10*, *Grubber*, *Chase the kick*, *Carry into contact*, *Drift across*, *Hold your spot*, or two of them joined (*Take the pass from 10, then carry into contact*). So only write one when it says more than that.
 

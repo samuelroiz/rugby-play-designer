@@ -22,7 +22,7 @@ import {
 } from './export.js';
 import { loadTemplates, loadExample, thumbnail, isEmptyPlay } from './templates.js';
 import { syncOptions, makeMainOption, optionGroup, optionLetters, OPTION_LABEL_MAX } from './options.js';
-import { nextId, nextOrder, round1, round2, curvePoint, playedRoutes, positionsAfter, BALL_ROUTES, MOVING_ROUTES } from './model.js';
+import { nextId, nextOrder, round1, round2, curvePoint, playedRoutes, positionsAfter, BALL_ROUTES, MOVING_ROUTES, playersOurFirst, positionName } from './model.js';
 import { createPlayback, paintFrame } from './playback.js';
 import { makeAnimation, videoType, videoExtension, ANIMATION_SIZES, POSITION_SIZES, GIF_FPS, VIDEO_FPS } from './animation.js';
 import { focusFrames, strength } from './follow.js';
@@ -2040,7 +2040,7 @@ function saveAnimation({ format, speed, size, who = '' }) {
 // Save animation → Who: a position. The play follows that player on an upright pitch, as the phone viewer
 // does (follow.js, with the same timing: their cues pop up as each step starts, and it eases to half speed
 // while one is new), in a phone-shaped frame (POSITION_SIZES) with the header, their job for each phase at
-// the bottom (jobs.js) and the cue bubbles next to them. Named "<play name> - <position>.gif" (or video).
+// the bottom (jobs.js) and the cue bubbles next to them. Named "<play name> - Attack 10.gif" (or video).
 function savePositionAnimation({ format, speed, who }) {
   const dialog = $('animation-dialog');
   const { width, height } = POSITION_SIZES[format] ?? POSITION_SIZES.gif;
@@ -2059,7 +2059,7 @@ function savePositionAnimation({ format, speed, who }) {
       const frames = focusFrames(play, who, { fps: format === 'gif' ? GIF_FPS : VIDEO_FPS, speed, aspect: width / layout.pitchH });
       const blob = await makeAnimation({
         play, format, speed, frames,
-        picture: frame => focusPicture(play, frame, { who, layout, css, logo, title, label: `Phase ${frame.phase + 1} of ${play.phases.length} · Position ${player.label}`, job: jobs[frame.phase] }),
+        picture: frame => focusPicture(play, frame, { who, layout, css, logo, title, label: `Phase ${frame.phase + 1} of ${play.phases.length} · ${positionName(player)}`, job: jobs[frame.phase] }),
         progress: showAnimationProgress,
         cancelled: () => job.cancelled,
       });
@@ -2068,7 +2068,7 @@ function savePositionAnimation({ format, speed, who }) {
         return null;
       }
       const ext = format === 'gif' ? '.gif' : videoExtension(blob.type);
-      return new File([blob], safeFileName(`${play.name} - ${player.label}`, ext), { type: blob.type });
+      return new File([blob], safeFileName(`${play.name} - ${positionName(player)}`, ext), { type: blob.type });
     } finally {
       animationJob = null;
       if (dialog.open) dialog.close();
@@ -2118,7 +2118,7 @@ function showAnimationProgress(done) {
   updateAnimationWho();
 }
 
-// Who: the whole team, or a position (the play's attacking numbers). A position has its own upright size.
+// Who: the whole team, or a position (both teams, our team first). A position has its own upright size.
 function updateAnimationWho() {
   const position = !!$('animation-who').value;
   $('animation-who-tip').hidden = !position;
@@ -2128,10 +2128,9 @@ function updateAnimationWho() {
 function openAnimationDialog() {
   const select = $('animation-who');
   const keep = select.value;
-  const attackers = state.players.filter(p => p.team === 'attack')
-    .sort((a, b) => (Number(a.label) || 99) - (Number(b.label) || 99) || a.label.localeCompare(b.label));
-  select.replaceChildren(new Option('Whole team', ''), ...attackers.map(p => new Option(`Position ${p.label}`, p.id)));
-  select.value = attackers.some(p => p.id === keep) ? keep : '';
+  const players = playersOurFirst(state);
+  select.replaceChildren(new Option('Whole team', ''), ...players.map(p => new Option(positionName(p), p.id)));
+  select.value = players.some(p => p.id === keep) ? keep : '';
   showAnimationProgress(null);
   $('animation-dialog').showModal();
   $('animation-save').focus();

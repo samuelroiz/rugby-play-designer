@@ -60,7 +60,7 @@ function cuePlay() {
     caption: document.getElementById('caption').textContent, captionHidden: document.getElementById('caption').hidden,
     job: document.getElementById('job-box').hidden ? null : document.getElementById('job').textContent, who: document.getElementById('watch-who').textContent,
   }));
-  check('…his job line, not the whole-play note', shown.captionHidden && shown.caption === '' && shown.job === 'Hold your spot' && shown.who === 'Position 10', JSON.stringify(shown));
+  check('…his job line, not the whole-play note', shown.captionHidden && shown.caption === '' && shown.job === 'Hold your spot' && shown.who === 'Attack 10', JSON.stringify(shown));
   await page.waitForFunction(() => window.rugbyViewer.state().bubbles.some(b => b.text === 'Chase'), { timeout: 10000 }).catch(() => null);
   check('…his cue for phase 2 pops up', (await st()).bubbles.some(b => b.text === 'Chase'), JSON.stringify((await st()).bubbles));
   await page.evaluate(() => { window.__frames = []; });
