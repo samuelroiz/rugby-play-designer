@@ -302,14 +302,40 @@ function replaceOpenPlay(play) {
 }
 
 // A short message in the status line under the pitch: an error (the default), or `ok` for "Saved …".
-function showToast(message, kind = 'error') {
+// action: an optional button after the message, { label, run }; pressing it runs it and closes the toast.
+function showToast(message, kind = 'error', action = null) {
   const toast = $('toast');
   toast.classList.toggle('ok', kind === 'ok');
   toast.setAttribute('role', kind === 'ok' ? 'status' : 'alert');
   toast.textContent = message;
+  const hide = () => { clearTimeout(showToast.timer); toast.hidden = true; fitHint(); };
+  if (action) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'toast-action';
+    b.textContent = action.label;
+    b.addEventListener('click', () => { hide(); action.run(); });
+    toast.append(' ', b);
+  }
   toast.hidden = false;
   clearTimeout(showToast.timer);
-  showToast.timer = setTimeout(() => { toast.hidden = true; fitHint(); }, 5000);
+  showToast.timer = setTimeout(hide, action ? 8000 : 5000);
+}
+
+// Click-to-draw: a click on another player made them the start instead of ending the route on their spot.
+// Say so, and offer to end the route there after all (a drift one channel across, onto a team-mate's spot).
+function startSwitched(from, to) {
+  const tool = ui.tool;
+  const at = { ...phase().positions[to] };
+  const where = ui.phase;
+  const action = tool && tool !== 'pass' ? {
+    label: `End ${playerName(from)}'s ${ROUTE_TYPES[tool]?.label.toLowerCase() ?? 'route'} on ${playerName(to)}'s spot`,
+    run: () => {
+      if (ui.tool !== tool || ui.phase !== where || locked() || !state.players.some(p => p.id === from)) return;
+      if (editor.drawTo(from, at)) render();
+    },
+  } : null;
+  showToast(`Now drawing from ${playerName(to)}.`, 'ok', action);
 }
 
 function strokeAttrs(type) {
@@ -1153,6 +1179,30 @@ function syncInputs() {
     instructionKey = null;
   }
   syncCues(sel);
+  // Selecting a player brings their job and cues into view in the side panel (it scrolls by itself only
+  // when another player is selected, so scrolling it by hand afterwards sticks).
+  if (sel && sel.id !== jobBoxFor) revealJobBox();
+  jobBoxFor = sel?.id ?? null;
+}
+let jobBoxFor = null;
+let editor = null; // initEditor's: drawTo // the player whose job box was last brought into view
+
+// Scrolls the side panel (not the page) the least it takes to show the whole job and cues box: down (or, on
+// a phone, where the panel is a row, sideways) so its end is in view, but never so far its start goes.
+function revealJobBox() {
+  const bar = document.querySelector('.toolbar');
+  const box = $('instruction-group').getBoundingClientRect();
+  const view = bar.getBoundingClientRect();
+  const margin = 8;
+  if (matchMedia('(max-width: 700px)').matches) {
+    const over = Math.min(box.right + margin - view.right, box.left - margin - view.left);
+    if (over > 0) bar.scrollLeft += over;
+    else if (box.left < view.left) bar.scrollLeft -= view.left - box.left + margin;
+  } else {
+    const over = Math.min(box.bottom + margin - view.bottom, box.top - margin - view.top);
+    if (over > 0) bar.scrollTop += over;
+    else if (box.top < view.top) bar.scrollTop -= view.top - box.top + margin;
+  }
 }
 
 // The selected player's cues for this phase: each its text, "step n", Edit and Delete, sorted by step. The
@@ -2328,7 +2378,29 @@ function buildRouteTools() {
   }
 }
 
+// The play's name always gets at least NAME_MIN_REM of the top bar. If the buttons leave less than that on
+// one row, the view controls go to a second row (.two-rows). Measured from the buttons alone (they never
+// change size with the name), so typing a name never moves them.
+const NAME_MIN_REM = 11;
+function fitTopbar() {
+  const bar = document.querySelector('.topbar');
+  if (!bar || matchMedia('(max-width: 700px)').matches) { bar?.classList.remove('two-rows'); return; }
+  if (!bar.clientWidth) return; // hidden (Present mode): keep it as it is until it shows again
+  // Measured on one row: on two, the view controls stretch to the bar's width.
+  bar.classList.remove('two-rows');
+  const cs = getComputedStyle(bar);
+  const gap = parseFloat(cs.columnGap) || 0;
+  const items = [...bar.children].filter(el => !el.matches('.title-edit, [popover]') && el.offsetWidth > 0);
+  // Left margins only: the pencil's right margin is "auto" (it takes the free space).
+  const used = items.reduce((sum, el) => sum + el.getBoundingClientRect().width + (parseFloat(getComputedStyle(el).marginLeft) || 0), 0)
+    + gap * items.length;
+  const room = bar.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - used;
+  bar.classList.toggle('two-rows', room < NAME_MIN_REM * parseFloat(getComputedStyle(document.documentElement).fontSize));
+}
+
 function initTopbar() {
+  new ResizeObserver(fitTopbar).observe(document.querySelector('.topbar'));
+  $('topbar-logo').addEventListener('load', fitTopbar);
   inputs.name.addEventListener('input', () => { state.name = inputs.name.value; render('name'); });
   inputs.category.addEventListener('change', () => { state.category = inputs.category.value; render(); });
   inputs.tags.addEventListener('input', () => {
@@ -2594,6 +2666,7 @@ function updateLogo() {
     line.textContent = name ? `Made for ${name}` : '';
     line.hidden = !name;
   }
+  fitTopbar();
 }
 
 function openLogoDialog() {
@@ -3019,9 +3092,9 @@ async function init() {
   document.addEventListener('visibilitychange', () => { if (document.hidden) flushAutosave(); });
 
   // No editing while playing, presenting or exporting. A press on the pitch drops a paused frame.
-  initEditor(svg, world, {
+  editor = initEditor(svg, world, {
     state, ui, phase, render, renderSoon, hint: renderHint, editLabel, editOrder, moveObject, locked,
-    pressed: () => playback.dropFrame(), place, drew, shown: r => shownRoutes(ui.phase)(r),
+    pressed: () => playback.dropFrame(), place, drew, shown: r => shownRoutes(ui.phase)(r), switched: startSwitched,
   });
   // A press anywhere off the pitch (a button, a menu) while a player or set piece waits to be placed settles
   // it first, so the button then acts on the play as it will be.

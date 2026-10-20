@@ -91,8 +91,17 @@ body {
 .orient-icon, .icon { width: 1.2rem; height: 1.2rem; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .icon { stroke-linecap: round; stroke-linejoin: round; }
 .view-controls { display: flex; flex: none; align-items: center; gap: .75rem; }
-/* Only the play's name gives way when the top bar is short of room: the buttons keep their size and place. */
+/* Only the play's name gives way when the top bar is short of room: the buttons keep their size and place.
+   The name takes the room the buttons leave (up to its own width). When that's less than NAME_MIN_REM, the
+   app gives the bar a second row for the view controls (.two-rows, set from the buttons' widths alone, so
+   typing a name never moves anything), and the name can always be clicked and typed in. */
 .topbar > button { flex: none; }
+@media (min-width: 701px) {
+  .title-edit { flex: 1 1 0; max-width: max-content; }
+  .topbar.two-rows { flex-wrap: wrap; row-gap: .4rem; }
+  .topbar.two-rows #about-button { order: 1; }
+  .topbar.two-rows .view-controls { order: 2; flex: 1 0 100%; }
+}
 .flip-half { gap: 0; }
 /* Hidden in the full view, but it keeps its slot, so the buttons beside it never shift. */
 .flip-half[hidden] { display: flex; visibility: hidden; }
@@ -333,6 +342,8 @@ button.danger { color: #b71c1c; }
 }
 .toast[hidden] { display: none; }
 .toast.ok { background: #effaf0; color: #1b5e20; border-color: #a5d6a7; }
+.toast-action { margin-left: .4rem; padding: .1rem .5rem; font-size: inherit; }
+.toast:has(.toast-action) { flex: none; overflow: visible; }
 
 /* Renaming a player or changing a route's order: a small box over the pitch */
 .inline-edit {
@@ -797,7 +808,39 @@ body.presenting {
   transition: opacity .4s;
 }
 .presenting .phasebar > :not(.play-controls) { display: none; }
-.presenting .play-controls { flex-wrap: wrap; justify-content: center; }
+.presenting .play-controls { flex-wrap: nowrap; justify-content: center; }
+/* More: the controls that don't fit the window's width, in a panel that opens upwards. */
+.presenting .play-controls .present-more { display: block; position: relative; flex: none; }
+.presenting .play-controls .present-more[hidden] { display: none; }
+.present-more summary {
+  list-style: none;
+  padding: .45rem .7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  user-select: none;
+}
+.present-more summary::-webkit-details-marker { display: none; }
+.present-more summary::after { content: " ▴"; font-size: .75em; color: var(--muted); }
+.present-more[open] summary { background: #eef3ee; }
+.present-more-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + .5rem);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: .4rem;
+  width: max-content;
+  max-height: calc(100vh - 8rem);
+  overflow-y: auto;
+  padding: .5rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .97);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .4);
+}
+.present-more-panel > * { justify-content: center; }
 .presenting .present-only { display: flex; }
 .presenting .play-controls .step { min-width: 2.4rem; justify-content: center; }
 .presenting .option-buttons[hidden] { display: none; }

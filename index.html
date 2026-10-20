@@ -249,6 +249,12 @@
       </div>
       <button type="button" data-play="undo-stroke" class="present-only" aria-keyshortcuts="Z">Undo stroke</button>
       <button type="button" data-play="clear" class="present-only" aria-keyshortcuts="C" aria-label="Clear the pen drawings">Clear</button>
+      <!-- When the bar is wider than the window, controls move in here (least used first), so Play and Exit
+           are always on screen. -->
+      <details class="present-only present-more" id="present-more" hidden>
+        <summary>More</summary>
+        <div class="present-more-panel" id="present-more-panel" role="group" aria-label="More controls"></div>
+      </details>
       <button type="button" data-play="exit" class="present-only" aria-keyshortcuts="Escape">Exit</button>
     </div>
     <div class="phase-tools">

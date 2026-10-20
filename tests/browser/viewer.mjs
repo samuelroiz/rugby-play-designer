@@ -222,7 +222,7 @@ check('after the last phase it zooms out to the whole play', replay.length > 10 
   JSON.stringify([replay.at(-1)?.cam, focus[0]?.cam]));
 check('…and replays it once from phase 1, everyone at full strength', replay.some(f => f.phase === 0) && replay.at(-1).phase === 2 && replay.filter(f => f.phase === 0 && f.t > 0).length > 0 && replay.every(f => Object.values(f.players).every(p => p.opacity === 1)));
 const replayCaps = [0, 1, 2].map(i => [...new Set(replay.filter(f => f.phase === i && f.t > 0).map(f => f.caption))]);
-check('…with the phase notes as captions, and "Whole play" in the header', eq(replayCaps, NOTES.map(n => [n])) && replay.every(f => f.who === 'Whole play'), JSON.stringify(replayCaps));
+check('…with the phase notes as captions, and "Attack 10 · replay" in the header', eq(replayCaps, NOTES.map(n => [n])) && replay.every(f => f.who === 'Attack 10 · replay'), JSON.stringify([replayCaps, [...new Set(replay.map(f => f.who))]]));
 const end = await page.evaluate(() => ({
   shown: !document.getElementById('end').hidden,
   name: document.getElementById('end-name').textContent,

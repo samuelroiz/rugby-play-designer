@@ -346,7 +346,8 @@ function updateText() {
   $('watch-phase').textContent = `Phase ${v.phase + 1} of ${n}`;
   const me = play.players.find(p => p.id === v.focus);
   const focus = v.mode === 'focus';
-  $('watch-who').textContent = focus && me ? positionName(me) : 'Whole play'; // "Defense 13": whose view it is
+  // "Defense 13": whose view it is. The replay after following them (and its end screen) keeps it: "Attack 10 · replay".
+  $('watch-who').textContent = !me || v.mode === 'whole' ? 'Whole play' : focus ? positionName(me) : `${positionName(me)} · replay`;
   const ph = play.phases[v.phase];
   // Following a player: their job, with the phase note in the sheet. Otherwise the note, all of it.
   $('job-box').hidden = !focus;

@@ -16,6 +16,10 @@ const JOB_LINES = 2;
 const JOB_MIN = 0.45;
 
 const IDLE_MS = 2000;
+// When the controls don't fit the window on one row, these move into More, first to last (least used
+// first). Play, More and Exit always stay on the bar.
+const OVERFLOW = ['.pen-colours', '[data-play="undo-stroke"]', '[data-play="clear"]', '[data-play="loop"]', '.speed', '.i-play',
+  '[data-play="pen"]', '[data-play="first"]', '#option-buttons', '[data-play="back"]', '[data-play="forward"]'];
 const PEN_STEP = 0.15; // metres the pointer must move before the stroke gets another point
 // Pen colours (each stroke gets its class; styles.css draws them). None is a route's or a team's colour.
 export const PEN_COLOURS = ['black', 'cyan', 'magenta'];
@@ -40,6 +44,7 @@ export function initPresent({ state, ui, svg, world, penLayer, render, phase, pl
     fillPicker();
     wake();
     render();
+    fitControls();
     // Full screen needs a real click or key press; without one, or if the browser refuses, it presents
     // in the window.
     if (navigator.userActivation?.isActive !== false) {
@@ -53,6 +58,7 @@ export function initPresent({ state, ui, svg, world, penLayer, render, phase, pl
     playback.stop();
     ui.presenting = false;
     ui.focusPlayer = null;
+    unfitControls();
     setPen(false);
     clearPen();
     setPenColour('black');
@@ -75,6 +81,49 @@ export function initPresent({ state, ui, svg, world, penLayer, render, phase, pl
     idleTimer = setTimeout(() => { if (ui.presenting) body.classList.add('controls-idle'); }, api.idleMs);
   }
   document.addEventListener('pointermove', () => { if (ui.presenting) wake(); });
+
+  // More: controls move into it, in OVERFLOW's order, until the bar fits the window on one row. Each keeps a
+  // marker where it was on the bar, so it goes back to its place (and the panel lists them in bar order).
+  const controls = document.getElementById('play-controls');
+  const more = document.getElementById('present-more');
+  const morePanel = document.getElementById('present-more-panel');
+  const slots = OVERFLOW.map(sel => controls.querySelector(sel)).filter(Boolean).map(el => {
+    const mark = document.createComment(' ');
+    el.before(mark);
+    return { el, mark };
+  });
+  const barOrder = new Map([...controls.querySelectorAll('*')].map((el, i) => [el, i]));
+  let fitKey = '';
+  function unfitControls() {
+    for (const { el, mark } of slots) if (el.parentNode !== controls) mark.after(el);
+    more.hidden = true;
+    more.open = false;
+    fitKey = '';
+  }
+  function fitControls() {
+    unfitControls();
+    if (!ui.presenting) return;
+    const bar = controls.parentElement;
+    const pad = parseFloat(getComputedStyle(bar).paddingLeft) + parseFloat(getComputedStyle(bar).paddingRight);
+    const room = document.documentElement.clientWidth - 2 * 16 - pad; // the bar's max-width, less its padding
+    const fits = () => controls.scrollWidth <= room + 0.5;
+    if (!fits()) {
+      more.hidden = false;
+      for (const { el } of slots) {
+        if (fits()) break;
+        morePanel.appendChild(el);
+      }
+      const moved = [...morePanel.children].sort((a, b) => barOrder.get(a) - barOrder.get(b));
+      morePanel.replaceChildren(...moved);
+    }
+    fitKey = keyNow();
+  }
+  // What the bar's width depends on: the window, the option buttons and the I play list.
+  const keyNow = () => [document.documentElement.clientWidth, controls.querySelector('#option-buttons')?.hidden, controls.querySelector('#option-buttons')?.childElementCount, pick.options.length].join();
+  addEventListener('resize', () => { if (ui.presenting) fitControls(); });
+  // A click on a button in More does its job and closes it (a list, like I play, closes it once picked).
+  morePanel.addEventListener('click', e => { if (e.target.closest('button')) more.open = false; });
+  morePanel.addEventListener('change', () => { more.open = false; });
 
   // "I play": None, then both teams by number, our team first (the defense for a defense play), e.g. "Defense 13".
   function fillPicker() {
@@ -168,6 +217,7 @@ export function initPresent({ state, ui, svg, world, penLayer, render, phase, pl
       fitJob(job);
     }
     document.getElementById('present-count').textContent = `Phase ${ui.phase + 1} of ${state.phases.length}`;
+    if (ui.presenting && fitKey && keyNow() !== fitKey) fitControls();
   }
 
   // As large as fits the room the caption has without it (the note's height, or one line), on at most
@@ -189,5 +239,5 @@ export function initPresent({ state, ui, svg, world, penLayer, render, phase, pl
     }
   }
 
-  return Object.assign(api, { enter, exit, togglePen, clearPen, undoStroke, setPenColour, update });
+  return Object.assign(api, { enter, exit, togglePen, clearPen, undoStroke, setPenColour, update, fitControls });
 }

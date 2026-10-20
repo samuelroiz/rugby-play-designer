@@ -100,8 +100,12 @@ export function drawingFrom(ui, phase) {
 // place(p): while ui.placing is set (a player or set piece waiting for "click where it goes"), a press puts it at p.
 // drew(route): a new route has just been drawn. ui.hoverRoute is the route whose badge the mouse is over.
 // shown(route): the route as it's drawn (a pass from where its passer is at its step), for bending it.
+// switched(from, to): a click on player `to` while drawing from `from` made `to` the new start (no route).
+// Returns drawTo(from, at): adds a route of the current tool's type from `from` to the spot `at`, as a click
+// there would, even if a player stands there (the app offers it after a switch).
 export function initEditor(svg, space, {
   state, ui, phase, render, renderSoon, hint, editLabel, editOrder, moveObject, locked, pressed, place, drew, shown = r => r,
+  switched = () => {},
 }) {
   let drag = null;
   let lastTap = { id: null, time: 0 };
@@ -172,14 +176,18 @@ export function initEditor(svg, space, {
       ui.selected = { kind: 'player', id: onPlayer };
       return;
     }
+    addRoute(from, to ? phase().positions[to] : { x: clampX(p.x), y: clampY(p.y) }, to);
+  }
+  // A route of the current tool's type from `from` (where its next route starts) to `end`; a pass to `to`.
+  function addRoute(from, end, to = null) {
     const { start } = newRouteStart(phase(), ui.tool, from);
-    const end = to ? phase().positions[to] : { x: clampX(p.x), y: clampY(p.y) };
-    if (Math.hypot(end.x - start.x, end.y - start.y) < MIN_ROUTE_LENGTH) return;
+    if (Math.hypot(end.x - start.x, end.y - start.y) < MIN_ROUTE_LENGTH) return null;
     const route = startRoute(from, start);
     route.points[1] = [round(end.x), round(end.y)];
     if (ui.tool === 'pass') route.to = to;
     syncOptions(phase().routes, [from]);
     drew(route);
+    return route;
   }
 
   svg.addEventListener('pointerdown', e => {
@@ -208,7 +216,7 @@ export function initEditor(svg, space, {
       // as usual; either way they stay selected, so click-to-draw carries on from them.
       ui.selected = { kind: 'player', id };
       ui.preview = null;
-      drag = { mode: 'route', id: startRoute(id, phase().positions[id]).id, keepPlayer: id };
+      drag = { mode: 'route', id: startRoute(id, phase().positions[id]).id, keepPlayer: id, switchedFrom: clickFrom };
       ui.snap = id;
     } else if (kind === 'handle') {
       // Route handles: start, end, or bend (the midpoint). Nothing changes until the pointer has moved,
@@ -324,6 +332,7 @@ export function initEditor(svg, space, {
   const endDrag = e => {
     if (!drag) return;
     const done = drag;
+    let switchedTo = null;
     drag = null;
     ui.dragging = false;
     ui.snap = null;
@@ -338,6 +347,9 @@ export function initEditor(svg, space, {
         phase().routes = phase().routes.filter(x => x !== r);
         // A tap on a player (no drag) with a route tool on selects them, which starts click-to-draw.
         if (e.type === 'pointerup' && r.from) ui.selected = { kind: 'player', id: r.from };
+        // From click-to-draw, that switched the start: say so, after the redraw below (its new hint would
+        // replace the message). The app offers to end the route there instead.
+        if (e.type === 'pointerup' && done.switchedFrom && r.from) switchedTo = [done.switchedFrom, r.from];
       } else {
         ui.selected = done.keepPlayer ? { kind: 'player', id: done.keepPlayer } : { kind: 'route', id: r.id };
         // A second pass or kick from the same player makes them options.
@@ -363,6 +375,7 @@ export function initEditor(svg, space, {
       if (HANDLE_MODES.includes(done.mode)) tapThroughHandle(e);
     }
     render();
+    if (switchedTo) switched(...switchedTo);
   };
 
   // Handles have big touch areas that can cover players, badges and other routes. A press on a handle
@@ -411,4 +424,12 @@ export function initEditor(svg, space, {
   });
   svg.addEventListener('pointerup', endDrag);
   svg.addEventListener('pointercancel', endDrag);
+
+  return {
+    drawTo(from, at) {
+      if (!ui.tool || !phase().positions[from]) return null;
+      ui.selected = { kind: 'player', id: from };
+      return addRoute(from, { x: clampX(at.x), y: clampY(at.y) });
+    },
+  };
 }
