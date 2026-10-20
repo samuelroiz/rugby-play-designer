@@ -175,6 +175,9 @@ async function mouseClick(page, sel) {
   let t = await toast();
   check('a click on 2 while drifting from 1: no route, 2 is the new start', s.phases[0].routes.length === 0 && (await page.$eval('#players-layer [data-id="d2"]', g => g.classList.contains('selected'))), JSON.stringify(s.phases[0].routes));
   check('…and a toast says so, offering to end 1\'s drift on 2\'s spot', t.shown && t.text === 'Now drawing from 2.' && t.action === "End 1's drift on 2's spot", JSON.stringify(t));
+  await sleep(9000);
+  t = await toast();
+  check('…still up 9 s later, while the drift tool is on and 2 is the start', t.shown && t.text === 'Now drawing from 2.' && t.action === "End 1's drift on 2's spot", JSON.stringify(t));
   await mouseClick(page, '#toast .toast-action');
   await sleep(100);
   s = await state(page);
@@ -192,6 +195,24 @@ async function mouseClick(page, sel) {
   await sleep(100);
   t = await toast();
   check('a pass from 10, clicking the defense\'s 3: "Now drawing from 3." with no offer', t.shown && t.text === 'Now drawing from 3.' && t.action === null, JSON.stringify(t));
+  // The offer again; turning the tool off ends it, so the message goes.
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await tap(page, 60, 20);
+  await click(page, '[data-route="drift"]');
+  await tap(page, 60, 26);
+  await sleep(100);
+  check('the offer again, drifting from 1 and clicking 2', (await toast()).action === "End 1's drift on 2's spot", JSON.stringify(await toast()));
+  await click(page, '[data-route="drift"]');
+  await sleep(100);
+  check('…turning the drift tool off takes the message away', !(await toast()).shown, JSON.stringify(await toast()));
+  await click(page, '[data-route="drift"]');
+  await tap(page, 60, 32);
+  await sleep(100);
+  check('…and with the tool on again, clicking 3 offers 2\'s drift on 3\'s spot', (await toast()).action === "End 2's drift on 3's spot", JSON.stringify(await toast()));
+  await page.keyboard.press('Escape');
+  await sleep(100);
+  check('…Escape (nothing selected, the tool off) takes it away', !(await toast()).shown, JSON.stringify(await toast()));
   check('click-to-draw: no console errors', errors.length === 0, errors.join(' | '));
   await browser.close();
 }

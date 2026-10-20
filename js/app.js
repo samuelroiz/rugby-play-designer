@@ -303,23 +303,35 @@ function replaceOpenPlay(play) {
 
 // A short message in the status line under the pitch: an error (the default), or `ok` for "Saved …".
 // action: an optional button after the message, { label, run }; pressing it runs it and closes the toast.
-function showToast(message, kind = 'error', action = null) {
+// keepWhile: instead of fading after a few seconds, the toast stays up for as long as keepWhile() holds
+// (checked after every render).
+function showToast(message, kind = 'error', action = null, keepWhile = null) {
   const toast = $('toast');
   toast.classList.toggle('ok', kind === 'ok');
   toast.setAttribute('role', kind === 'ok' ? 'status' : 'alert');
   toast.textContent = message;
-  const hide = () => { clearTimeout(showToast.timer); toast.hidden = true; fitHint(); };
   if (action) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'toast-action';
     b.textContent = action.label;
-    b.addEventListener('click', () => { hide(); action.run(); });
+    b.addEventListener('click', () => { hideToast(); action.run(); });
     toast.append(' ', b);
   }
   toast.hidden = false;
   clearTimeout(showToast.timer);
-  showToast.timer = setTimeout(hide, action ? 8000 : 5000);
+  showToast.keepWhile = keepWhile;
+  if (!keepWhile) showToast.timer = setTimeout(hideToast, action ? 8000 : 5000);
+}
+function hideToast() {
+  clearTimeout(showToast.timer);
+  showToast.keepWhile = null;
+  $('toast').hidden = true;
+  fitHint();
+}
+// A kept toast whose reason has gone (see showToast's keepWhile).
+function dropKeptToast() {
+  if (showToast.keepWhile && !showToast.keepWhile()) hideToast();
 }
 
 // Click-to-draw: a click on another player made them the start instead of ending the route on their spot.
@@ -331,11 +343,15 @@ function startSwitched(from, to) {
   const action = tool && tool !== 'pass' ? {
     label: `End ${playerName(from)}'s ${ROUTE_TYPES[tool]?.label.toLowerCase() ?? 'route'} on ${playerName(to)}'s spot`,
     run: () => {
-      if (ui.tool !== tool || ui.phase !== where || locked() || !state.players.some(p => p.id === from)) return;
+      if (!applies()) return;
       if (editor.drawTo(from, at)) render();
     },
   } : null;
-  showToast(`Now drawing from ${playerName(to)}.`, 'ok', action);
+  // The same route tool, phase and start, both players still there, and not playing.
+  const applies = () => ui.tool === tool && ui.phase === where && !locked() && isSelected('player', to)
+    && state.players.some(p => p.id === from) && state.players.some(p => p.id === to);
+  // With the offer, the message stays up while it still applies; a plain one fades as usual.
+  showToast(`Now drawing from ${playerName(to)}.`, 'ok', action, action && applies);
 }
 
 function strokeAttrs(type) {
@@ -386,6 +402,7 @@ function render(commitKey = null, { record = true } = {}) {
   updateHistoryButtons();
   playback.afterRender();
   updateEndOfPlay();
+  dropKeptToast();
   if (drawnNote) { showToast(drawnNote, 'ok'); drawnNote = null; }
 }
 
@@ -1027,7 +1044,7 @@ function updateDrawHint() {
   // A new hint is what the user needs now, so it replaces an older "Saved …" message in the status line.
   if (hint.dataset.text !== text || hint.dataset.short !== short || wasHidden) {
     Object.assign(hint.dataset, { text, short });
-    $('toast').hidden = true;
+    if (!showToast.keepWhile?.()) { showToast.keepWhile = null; $('toast').hidden = true; }
   }
   fitHint();
 }
@@ -3119,6 +3136,8 @@ async function init() {
     showToast("Your last play couldn't be opened. A backup was kept.");
   }
   initWelcomeDialog(openTemplates, linked);
+  // Drawn: tell the page's load watchdog (index.html) the app is up.
+  window.appReady?.();
 }
 
 init();

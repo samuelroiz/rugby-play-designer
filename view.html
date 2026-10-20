@@ -6,8 +6,82 @@
   <meta name="theme-color" content="#1b2a1f">
   <title>Rugby play</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="view.css">
-  <script type="module" src="js/view.js"></script>
+  <link rel="stylesheet" href="view.css?v=e9abb1eba9">
+  <!-- Every local module is loaded with ?v=<version> (npm run stamp), so old and new files never mix. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "./js/animate.js": "./js/animate.js?v=e9abb1eba9",
+      "./js/animation.js": "./js/animation.js?v=e9abb1eba9",
+      "./js/app.js": "./js/app.js?v=e9abb1eba9",
+      "./js/cues.js": "./js/cues.js?v=e9abb1eba9",
+      "./js/editor.js": "./js/editor.js?v=e9abb1eba9",
+      "./js/export.js": "./js/export.js?v=e9abb1eba9",
+      "./js/follow.js": "./js/follow.js?v=e9abb1eba9",
+      "./js/history.js": "./js/history.js?v=e9abb1eba9",
+      "./js/jobs.js": "./js/jobs.js?v=e9abb1eba9",
+      "./js/library.js": "./js/library.js?v=e9abb1eba9",
+      "./js/logo.js": "./js/logo.js?v=e9abb1eba9",
+      "./js/model.js": "./js/model.js?v=e9abb1eba9",
+      "./js/options.js": "./js/options.js?v=e9abb1eba9",
+      "./js/phases.js": "./js/phases.js?v=e9abb1eba9",
+      "./js/pitch.js": "./js/pitch.js?v=e9abb1eba9",
+      "./js/playback.js": "./js/playback.js?v=e9abb1eba9",
+      "./js/plays.js": "./js/plays.js?v=e9abb1eba9",
+      "./js/present.js": "./js/present.js?v=e9abb1eba9",
+      "./js/setpiece.js": "./js/setpiece.js?v=e9abb1eba9",
+      "./js/share.js": "./js/share.js?v=e9abb1eba9",
+      "./js/storage.js": "./js/storage.js?v=e9abb1eba9",
+      "./js/templates.js": "./js/templates.js?v=e9abb1eba9",
+      "./js/view.js": "./js/view.js?v=e9abb1eba9",
+      "./vendor/gifenc.esm.js": "./vendor/gifenc.esm.js?v=e9abb1eba9"
+    }
+  }
+  </script>
+  <!-- If the app hasn't called appReady() within 8 s, or a module fails to load (e.g. a cached old file right
+       after an update), show a message and a Reload button that fetches the page afresh, keeping the #hash. -->
+  <script>
+    (() => {
+      let ready = false, box = null;
+      const failed = slow => {
+        if (box) return;
+        document.getElementById('loading')?.setAttribute('hidden', '');
+        box = document.createElement('div');
+        box.id = 'load-failed';
+        box.setAttribute('role', 'alert');
+        box.dataset.slow = slow ? '1' : '';
+        box.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;padding:1.5rem;text-align:center;font:17px/1.4 system-ui,sans-serif;background:#1b2a1f;color:#fff';
+        const p = document.createElement('p');
+        p.textContent = "Couldn't load the app. This can happen right after an update.";
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.id = 'load-failed-reload';
+        b.textContent = 'Reload';
+        b.style.cssText = 'font:inherit;font-weight:600;padding:.7rem 2rem;border:0;border-radius:8px;background:#fff;color:#1b2a1f;cursor:pointer';
+        b.addEventListener('click', () => {
+          const url = new URL(location.href);
+          url.searchParams.set('r', Date.now());
+          location.replace(url.href);
+        });
+        box.append(p, b);
+        (document.body ?? document.documentElement).append(box);
+      };
+      const timer = setTimeout(() => { if (!ready) failed(true); }, 8000);
+      // A script that can't be fetched fires 'error' on its element (seen here while capturing); a module
+      // that can't be linked (a missing export) or throws reports an ErrorEvent.
+      addEventListener('error', e => {
+        if (!ready && (e instanceof ErrorEvent || e.target?.tagName === 'SCRIPT')) failed(false);
+      }, true);
+      addEventListener('unhandledrejection', () => { if (!ready) failed(false); });
+      window.appReady = () => {
+        ready = true;
+        clearTimeout(timer);
+        if (box?.dataset.slow) { box.remove(); box = null; }
+      };
+      window.appFailed = () => failed(false);
+    })();
+  </script>
+  <script type="module" src="js/view.js?v=e9abb1eba9"></script>
   <!-- The phone viewer for share links (view.html#p=<data>, made by File > Share link… in the designer).
        Read-only: the play is in the address hash, which never reaches the server. -->
 </head>

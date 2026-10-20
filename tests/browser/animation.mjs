@@ -8,6 +8,7 @@ import path from 'node:path';
 import { open, click, state, check, failed, outDir } from './lib.mjs';
 import { animPlay } from '../anim-play.mjs';
 import { buildSchedule } from '../../js/animate.js';
+import { stampedVersion } from '../../tools/stamp.mjs';
 
 const OUT = outDir('animation');
 console.log(`Downloads: ${OUT}`);
@@ -154,7 +155,7 @@ check('…it finishes and the box closes', await finished(page));
 let file = await waitFile(['.gif']);
 check('downloads "<play-name>.gif"', file && path.basename(file) === 'Two phases.gif', String(file));
 check('…"Saved Two phases.gif"', (await toast(page)) === 'Saved Two phases.gif', await toast(page));
-check('gifenc loaded only now, from vendor/', gifenc.length >= 1 && gifenc.every(u => u.endsWith('/vendor/gifenc.esm.js')), gifenc.join());
+check('gifenc loaded only now, from vendor/, versioned', gifenc.length >= 1 && gifenc.every(u => u.endsWith(`/vendor/gifenc.esm.js?v=${stampedVersion()}`)), gifenc.join());
 let gif = readGif(fs.readFileSync(file));
 check('a GIF89a, read to its end', gif.header === 'GIF89a' && gif.ended, JSON.stringify({ header: gif.header, ended: gif.ended }));
 check('…with the loop extension, looping forever (count 0)', gif.loop === 0, String(gif.loop));
