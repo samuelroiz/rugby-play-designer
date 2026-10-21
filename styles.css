@@ -325,6 +325,12 @@ button.danger { color: #b71c1c; }
   overflow: hidden;
 }
 .statusbar:has(.toast:not([hidden])) .draw-hint, .statusbar:has(.end-of-play:not([hidden])) .draw-hint { display: none; }
+/* "Selected: 9": only while no hint, message or End of play is in the status line */
+.selection-status { min-width: 0; margin: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.selection-status[hidden],
+.statusbar:has(.draw-hint:not([hidden])) .selection-status,
+.statusbar:has(.toast:not([hidden])) .selection-status,
+.statusbar:has(.end-of-play:not([hidden])) .selection-status { display: none; }
 /* "End of play" with Replay, after the last phase has played */
 .end-of-play { display: flex; align-items: center; gap: .5rem; font-weight: 600; white-space: nowrap; }
 .end-of-play[hidden] { display: none; }
