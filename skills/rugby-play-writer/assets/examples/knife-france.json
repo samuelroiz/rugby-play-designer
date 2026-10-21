@@ -1,0 +1,926 @@
+{
+ "schemaVersion": 1,
+ "name": "KNIFE (France)",
+ "category": "attack",
+ "tags": [
+  "strike",
+  "grubber",
+  "vs rush",
+  "France"
+ ],
+ "view": "full",
+ "orientation": "horizontal",
+ "players": [
+  {
+   "id": "a1",
+   "team": "attack",
+   "label": "1"
+  },
+  {
+   "id": "a2",
+   "team": "attack",
+   "label": "2"
+  },
+  {
+   "id": "a3",
+   "team": "attack",
+   "label": "3"
+  },
+  {
+   "id": "a4",
+   "team": "attack",
+   "label": "4"
+  },
+  {
+   "id": "a5",
+   "team": "attack",
+   "label": "5"
+  },
+  {
+   "id": "a6",
+   "team": "attack",
+   "label": "6"
+  },
+  {
+   "id": "a7",
+   "team": "attack",
+   "label": "7"
+  },
+  {
+   "id": "a8",
+   "team": "attack",
+   "label": "8"
+  },
+  {
+   "id": "a9",
+   "team": "attack",
+   "label": "9"
+  },
+  {
+   "id": "a10",
+   "team": "attack",
+   "label": "10"
+  },
+  {
+   "id": "a11",
+   "team": "attack",
+   "label": "11"
+  },
+  {
+   "id": "a12",
+   "team": "attack",
+   "label": "12"
+  },
+  {
+   "id": "a13",
+   "team": "attack",
+   "label": "13"
+  },
+  {
+   "id": "a14",
+   "team": "attack",
+   "label": "14"
+  },
+  {
+   "id": "a15",
+   "team": "attack",
+   "label": "15"
+  },
+  {
+   "id": "d1",
+   "team": "defense",
+   "label": "1"
+  },
+  {
+   "id": "d2",
+   "team": "defense",
+   "label": "2"
+  },
+  {
+   "id": "d3",
+   "team": "defense",
+   "label": "3"
+  },
+  {
+   "id": "d4",
+   "team": "defense",
+   "label": "4"
+  },
+  {
+   "id": "d5",
+   "team": "defense",
+   "label": "5"
+  },
+  {
+   "id": "d6",
+   "team": "defense",
+   "label": "6"
+  },
+  {
+   "id": "d7",
+   "team": "defense",
+   "label": "7"
+  },
+  {
+   "id": "d8",
+   "team": "defense",
+   "label": "8"
+  },
+  {
+   "id": "d9",
+   "team": "defense",
+   "label": "9"
+  },
+  {
+   "id": "d10",
+   "team": "defense",
+   "label": "10"
+  },
+  {
+   "id": "d11",
+   "team": "defense",
+   "label": "11"
+  },
+  {
+   "id": "d12",
+   "team": "defense",
+   "label": "12"
+  },
+  {
+   "id": "d13",
+   "team": "defense",
+   "label": "13"
+  },
+  {
+   "id": "d14",
+   "team": "defense",
+   "label": "14"
+  },
+  {
+   "id": "d15",
+   "team": "defense",
+   "label": "15"
+  }
+ ],
+ "phases": [
+  {
+   "note": "Quick ruck ball on halfway. 9 to 10, with 12 and 13 running hard to hold their eyes, and their 10, 12 and 13 fly out of the line.",
+   "positions": {
+    "a9": {
+     "x": 51.6,
+     "y": 26.6
+    },
+    "a1": {
+     "x": 52,
+     "y": 29.5
+    },
+    "a2": {
+     "x": 52,
+     "y": 32.3
+    },
+    "a3": {
+     "x": 52,
+     "y": 35.1
+    },
+    "a4": {
+     "x": 49.5,
+     "y": 30.9
+    },
+    "a5": {
+     "x": 49.5,
+     "y": 33.7
+    },
+    "a6": {
+     "x": 52.5,
+     "y": 20.5
+    },
+    "a7": {
+     "x": 52.5,
+     "y": 17.7
+    },
+    "a8": {
+     "x": 49.5,
+     "y": 22
+    },
+    "a11": {
+     "x": 49,
+     "y": 11
+    },
+    "a10": {
+     "x": 46,
+     "y": 38
+    },
+    "a12": {
+     "x": 44.5,
+     "y": 45
+    },
+    "a13": {
+     "x": 43.5,
+     "y": 52
+    },
+    "a14": {
+     "x": 42.5,
+     "y": 62
+    },
+    "a15": {
+     "x": 37,
+     "y": 50
+    },
+    "d7": {
+     "x": 58,
+     "y": 12
+    },
+    "d1": {
+     "x": 58,
+     "y": 16.5
+    },
+    "d3": {
+     "x": 58,
+     "y": 21
+    },
+    "d2": {
+     "x": 58,
+     "y": 25.5
+    },
+    "d4": {
+     "x": 58,
+     "y": 30
+    },
+    "d5": {
+     "x": 58,
+     "y": 34.5
+    },
+    "d10": {
+     "x": 58,
+     "y": 39.5
+    },
+    "d12": {
+     "x": 58,
+     "y": 45.5
+    },
+    "d13": {
+     "x": 58,
+     "y": 51.5
+    },
+    "d8": {
+     "x": 58,
+     "y": 56
+    },
+    "d6": {
+     "x": 58,
+     "y": 60
+    },
+    "d11": {
+     "x": 58,
+     "y": 64.5
+    },
+    "d9": {
+     "x": 61.5,
+     "y": 25
+    },
+    "d14": {
+     "x": 70,
+     "y": 16
+    },
+    "d15": {
+     "x": 74,
+     "y": 42
+    }
+   },
+   "objects": [
+    {
+     "id": "o1",
+     "type": "ruck",
+     "x": 55,
+     "y": 25
+    },
+    {
+     "id": "o2",
+     "type": "ball",
+     "x": 53,
+     "y": 25.9
+    }
+   ],
+   "routes": [
+    {
+     "id": "r1",
+     "type": "pass",
+     "from": "a9",
+     "to": "a10",
+     "points": [
+      [
+       51.6,
+       26.6
+      ],
+      [
+       46,
+       38
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r2",
+     "type": "run",
+     "from": "a12",
+     "points": [
+      [
+       44.5,
+       45
+      ],
+      [
+       49.5,
+       42.5
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r3",
+     "type": "run",
+     "from": "a13",
+     "points": [
+      [
+       43.5,
+       52
+      ],
+      [
+       49,
+       49
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r4",
+     "type": "blitz",
+     "from": "d10",
+     "points": [
+      [
+       58,
+       39.5
+      ],
+      [
+       53,
+       40
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r5",
+     "type": "blitz",
+     "from": "d12",
+     "points": [
+      [
+       58,
+       45.5
+      ],
+      [
+       53,
+       45.5
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r6",
+     "type": "blitz",
+     "from": "d13",
+     "points": [
+      [
+       58,
+       51.5
+      ],
+      [
+       53,
+       50.5
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    }
+   ],
+   "instructions": {
+    "a9": "Fast hands to 10",
+    "a10": "Catch deep, read their 10 and 12",
+    "a12": "Hard line at their 10-12 gap, sell the crash",
+    "a13": "Hold your line outside 12",
+    "a14": "Max width, hold the touchline"
+   }
+  },
+  {
+   "note": "10 carries to the line and reads it. If they keep rushing: grubber into the space behind their 12. If they hold: flat ball to 12 on the crash.",
+   "positions": {
+    "a9": {
+     "x": 51.6,
+     "y": 26.6
+    },
+    "a1": {
+     "x": 52,
+     "y": 29.5
+    },
+    "a2": {
+     "x": 52,
+     "y": 32.3
+    },
+    "a3": {
+     "x": 52,
+     "y": 35.1
+    },
+    "a4": {
+     "x": 49.5,
+     "y": 30.9
+    },
+    "a5": {
+     "x": 49.5,
+     "y": 33.7
+    },
+    "a6": {
+     "x": 52.5,
+     "y": 20.5
+    },
+    "a7": {
+     "x": 52.5,
+     "y": 17.7
+    },
+    "a8": {
+     "x": 49.5,
+     "y": 22
+    },
+    "a11": {
+     "x": 49,
+     "y": 11
+    },
+    "a10": {
+     "x": 46,
+     "y": 38
+    },
+    "a12": {
+     "x": 49.5,
+     "y": 42.5
+    },
+    "a13": {
+     "x": 49,
+     "y": 49
+    },
+    "a14": {
+     "x": 42.5,
+     "y": 62
+    },
+    "a15": {
+     "x": 37,
+     "y": 50
+    },
+    "d7": {
+     "x": 58,
+     "y": 12
+    },
+    "d1": {
+     "x": 58,
+     "y": 16.5
+    },
+    "d3": {
+     "x": 58,
+     "y": 21
+    },
+    "d2": {
+     "x": 58,
+     "y": 25.5
+    },
+    "d4": {
+     "x": 58,
+     "y": 30
+    },
+    "d5": {
+     "x": 58,
+     "y": 34.5
+    },
+    "d10": {
+     "x": 53,
+     "y": 40
+    },
+    "d12": {
+     "x": 53,
+     "y": 45.5
+    },
+    "d13": {
+     "x": 53,
+     "y": 50.5
+    },
+    "d8": {
+     "x": 58,
+     "y": 56
+    },
+    "d6": {
+     "x": 58,
+     "y": 60
+    },
+    "d11": {
+     "x": 58,
+     "y": 64.5
+    },
+    "d9": {
+     "x": 61.5,
+     "y": 25
+    },
+    "d14": {
+     "x": 70,
+     "y": 16
+    },
+    "d15": {
+     "x": 74,
+     "y": 42
+    }
+   },
+   "objects": [
+    {
+     "id": "o1",
+     "type": "ruck",
+     "x": 55,
+     "y": 25
+    },
+    {
+     "id": "o2",
+     "type": "ball",
+     "x": 47.1,
+     "y": 38.9
+    }
+   ],
+   "routes": [
+    {
+     "id": "r1",
+     "type": "run",
+     "from": "a10",
+     "points": [
+      [
+       46,
+       38
+      ],
+      [
+       51,
+       37.5
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r2",
+     "type": "kick",
+     "from": "a10",
+     "points": [
+      [
+       46,
+       38
+      ],
+      [
+       62,
+       44
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": "A",
+     "optionLabel": "if they rush"
+    },
+    {
+     "id": "r3",
+     "type": "pass",
+     "from": "a10",
+     "to": "a12",
+     "points": [
+      [
+       46,
+       38
+      ],
+      [
+       49.5,
+       42.5
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": "B",
+     "optionLabel": "if they hold"
+    },
+    {
+     "id": "r4",
+     "type": "run",
+     "from": "d15",
+     "points": [
+      [
+       74,
+       42
+      ],
+      [
+       70,
+       42
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    }
+   ],
+   "instructions": {
+    "a10": "Rush: grubber behind. Hold: hit 12 flat",
+    "a12": "Stay square, be the flat target",
+    "a13": "Stay alive, you chase the grubber",
+    "a14": "Read the kick, start your arc"
+   },
+   "cues": [
+    {
+     "player": "a10",
+     "step": 1,
+     "text": "READ THE RUSH"
+    }
+   ]
+  },
+  {
+   "note": "The grubber dies in behind their rush. 13 wins the race, 14 arrives on the outside shoulder, 12 trails inside. Their 15 has too much ground to make up.",
+   "positions": {
+    "a9": {
+     "x": 51.6,
+     "y": 26.6
+    },
+    "a1": {
+     "x": 52,
+     "y": 29.5
+    },
+    "a2": {
+     "x": 52,
+     "y": 32.3
+    },
+    "a3": {
+     "x": 52,
+     "y": 35.1
+    },
+    "a4": {
+     "x": 49.5,
+     "y": 30.9
+    },
+    "a5": {
+     "x": 49.5,
+     "y": 33.7
+    },
+    "a6": {
+     "x": 52.5,
+     "y": 20.5
+    },
+    "a7": {
+     "x": 52.5,
+     "y": 17.7
+    },
+    "a8": {
+     "x": 49.5,
+     "y": 22
+    },
+    "a11": {
+     "x": 49,
+     "y": 11
+    },
+    "a10": {
+     "x": 51,
+     "y": 37.5
+    },
+    "a12": {
+     "x": 49.5,
+     "y": 42.5
+    },
+    "a13": {
+     "x": 49,
+     "y": 49
+    },
+    "a14": {
+     "x": 42.5,
+     "y": 62
+    },
+    "a15": {
+     "x": 37,
+     "y": 50
+    },
+    "d7": {
+     "x": 58,
+     "y": 12
+    },
+    "d1": {
+     "x": 58,
+     "y": 16.5
+    },
+    "d3": {
+     "x": 58,
+     "y": 21
+    },
+    "d2": {
+     "x": 58,
+     "y": 25.5
+    },
+    "d4": {
+     "x": 58,
+     "y": 30
+    },
+    "d5": {
+     "x": 58,
+     "y": 34.5
+    },
+    "d10": {
+     "x": 53,
+     "y": 40
+    },
+    "d12": {
+     "x": 53,
+     "y": 45.5
+    },
+    "d13": {
+     "x": 53,
+     "y": 50.5
+    },
+    "d8": {
+     "x": 58,
+     "y": 56
+    },
+    "d6": {
+     "x": 58,
+     "y": 60
+    },
+    "d11": {
+     "x": 58,
+     "y": 64.5
+    },
+    "d9": {
+     "x": 61.5,
+     "y": 25
+    },
+    "d14": {
+     "x": 70,
+     "y": 16
+    },
+    "d15": {
+     "x": 70,
+     "y": 42
+    }
+   },
+   "objects": [
+    {
+     "id": "o2",
+     "type": "ball",
+     "x": 62,
+     "y": 44
+    }
+   ],
+   "routes": [
+    {
+     "id": "r1",
+     "type": "run",
+     "from": "a13",
+     "points": [
+      [
+       49,
+       49
+      ],
+      [
+       61.5,
+       44.8
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r2",
+     "type": "run",
+     "from": "a14",
+     "points": [
+      [
+       42.5,
+       62
+      ],
+      [
+       59,
+       51
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r3",
+     "type": "run",
+     "from": "a12",
+     "points": [
+      [
+       49.5,
+       42.5
+      ],
+      [
+       54,
+       38
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r4",
+     "type": "run",
+     "from": "d15",
+     "points": [
+      [
+       70,
+       42
+      ],
+      [
+       64.5,
+       43
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r5",
+     "type": "run",
+     "from": "d10",
+     "points": [
+      [
+       53,
+       40
+      ],
+      [
+       56.5,
+       40.5
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r6",
+     "type": "run",
+     "from": "d12",
+     "points": [
+      [
+       53,
+       45.5
+      ],
+      [
+       58.5,
+       43
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r7",
+     "type": "run",
+     "from": "d13",
+     "points": [
+      [
+       53,
+       50.5
+      ],
+      [
+       57.5,
+       48
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    }
+   ],
+   "instructions": {
+    "a13": "Win the race, scoop it low",
+    "a14": "Run the outside line, call for it",
+    "a12": "Trail inside for the tip pass"
+   },
+   "cues": [
+    {
+     "player": "a13",
+     "step": 1,
+     "text": "RACE TO IT!"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 1,
+  "name": "Backline attack",
+  "category": "attack",
+  "tags": [
+    "backs"
+  ],
+  "view": "full",
+  "orientation": "horizontal",
+  "players": [
+    {
+      "id": "a1",
+      "team": "attack",
+      "label": "1"
+    },
+    {
+      "id": "a2",
+      "team": "attack",
+      "label": "2"
+    },
+    {
+      "id": "a3",
+      "team": "attack",
+      "label": "3"
+    },
+    {
+      "id": "a4",
+      "team": "attack",
+      "label": "4"
+    },
+    {
+      "id": "a5",
+      "team": "attack",
+      "label": "5"
+    },
+    {
+      "id": "a6",
+      "team": "attack",
+      "label": "6"
+    },
+    {
+      "id": "a7",
+      "team": "attack",
+      "label": "7"
+    },
+    {
+      "id": "a8",
+      "team": "attack",
+      "label": "8"
+    },
+    {
+      "id": "a9",
+      "team": "attack",
+      "label": "9"
+    },
+    {
+      "id": "a10",
+      "team": "attack",
+      "label": "10"
+    },
+    {
+      "id": "a11",
+      "team": "attack",
+      "label": "11"
+    },
+    {
+      "id": "a12",
+      "team": "attack",
+      "label": "12"
+    },
+    {
+      "id": "a13",
+      "team": "attack",
+      "label": "13"
+    },
+    {
+      "id": "a14",
+      "team": "attack",
+      "label": "14"
+    },
+    {
+      "id": "a15",
+      "team": "attack",
+      "label": "15"
+    }
+  ],
+  "phases": [
+    {
+      "note": "",
+      "positions": {
+        "a1": {
+          "x": 47,
+          "y": 24.5
+        },
+        "a2": {
+          "x": 47,
+          "y": 27.3
+        },
+        "a3": {
+          "x": 47,
+          "y": 30.1
+        },
+        "a4": {
+          "x": 44.5,
+          "y": 25.9
+        },
+        "a5": {
+          "x": 44.5,
+          "y": 28.7
+        },
+        "a6": {
+          "x": 47.5,
+          "y": 15.5
+        },
+        "a7": {
+          "x": 47.5,
+          "y": 12.7
+        },
+        "a8": {
+          "x": 44.5,
+          "y": 17
+        },
+        "a9": {
+          "x": 46.6,
+          "y": 21.6
+        },
+        "a10": {
+          "x": 41,
+          "y": 33
+        },
+        "a12": {
+          "x": 39.5,
+          "y": 40
+        },
+        "a13": {
+          "x": 38.5,
+          "y": 47
+        },
+        "a14": {
+          "x": 37.5,
+          "y": 57
+        },
+        "a11": {
+          "x": 44,
+          "y": 6
+        },
+        "a15": {
+          "x": 32,
+          "y": 45
+        }
+      },
+      "objects": [
+        {
+          "id": "o1",
+          "type": "ruck",
+          "x": 50,
+          "y": 20
+        },
+        {
+          "id": "o2",
+          "type": "ball",
+          "x": 48,
+          "y": 20.9
+        }
+      ],
+      "routes": []
+    }
+  ]
+}

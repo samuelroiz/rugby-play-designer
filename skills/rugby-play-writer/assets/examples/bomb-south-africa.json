@@ -1,0 +1,1142 @@
+{
+ "schemaVersion": 1,
+ "name": "BOMB (South Africa)",
+ "category": "attack",
+ "tags": [
+  "kick",
+  "chase",
+  "exit",
+  "South Africa"
+ ],
+ "view": "full",
+ "orientation": "horizontal",
+ "players": [
+  {
+   "id": "a1",
+   "team": "attack",
+   "label": "1"
+  },
+  {
+   "id": "a2",
+   "team": "attack",
+   "label": "2"
+  },
+  {
+   "id": "a3",
+   "team": "attack",
+   "label": "3"
+  },
+  {
+   "id": "a4",
+   "team": "attack",
+   "label": "4"
+  },
+  {
+   "id": "a5",
+   "team": "attack",
+   "label": "5"
+  },
+  {
+   "id": "a6",
+   "team": "attack",
+   "label": "6"
+  },
+  {
+   "id": "a7",
+   "team": "attack",
+   "label": "7"
+  },
+  {
+   "id": "a8",
+   "team": "attack",
+   "label": "8"
+  },
+  {
+   "id": "a9",
+   "team": "attack",
+   "label": "9"
+  },
+  {
+   "id": "a10",
+   "team": "attack",
+   "label": "10"
+  },
+  {
+   "id": "a11",
+   "team": "attack",
+   "label": "11"
+  },
+  {
+   "id": "a12",
+   "team": "attack",
+   "label": "12"
+  },
+  {
+   "id": "a13",
+   "team": "attack",
+   "label": "13"
+  },
+  {
+   "id": "a14",
+   "team": "attack",
+   "label": "14"
+  },
+  {
+   "id": "a15",
+   "team": "attack",
+   "label": "15"
+  },
+  {
+   "id": "d1",
+   "team": "defense",
+   "label": "1"
+  },
+  {
+   "id": "d2",
+   "team": "defense",
+   "label": "2"
+  },
+  {
+   "id": "d3",
+   "team": "defense",
+   "label": "3"
+  },
+  {
+   "id": "d4",
+   "team": "defense",
+   "label": "4"
+  },
+  {
+   "id": "d5",
+   "team": "defense",
+   "label": "5"
+  },
+  {
+   "id": "d6",
+   "team": "defense",
+   "label": "6"
+  },
+  {
+   "id": "d7",
+   "team": "defense",
+   "label": "7"
+  },
+  {
+   "id": "d8",
+   "team": "defense",
+   "label": "8"
+  },
+  {
+   "id": "d9",
+   "team": "defense",
+   "label": "9"
+  },
+  {
+   "id": "d10",
+   "team": "defense",
+   "label": "10"
+  },
+  {
+   "id": "d11",
+   "team": "defense",
+   "label": "11"
+  },
+  {
+   "id": "d12",
+   "team": "defense",
+   "label": "12"
+  },
+  {
+   "id": "d13",
+   "team": "defense",
+   "label": "13"
+  },
+  {
+   "id": "d14",
+   "team": "defense",
+   "label": "14"
+  },
+  {
+   "id": "d15",
+   "team": "defense",
+   "label": "15"
+  }
+ ],
+ "phases": [
+  {
+   "note": "Ruck 35 m out. 9 hits 10 sitting deep. It looks like a normal backline strike, so their line holds and their back three sit deep.",
+   "positions": {
+    "a9": {
+     "x": 31.6,
+     "y": 31.6
+    },
+    "a1": {
+     "x": 32,
+     "y": 34.5
+    },
+    "a2": {
+     "x": 32,
+     "y": 37.3
+    },
+    "a3": {
+     "x": 32,
+     "y": 40.1
+    },
+    "a4": {
+     "x": 29.5,
+     "y": 35.9
+    },
+    "a5": {
+     "x": 29.5,
+     "y": 38.7
+    },
+    "a6": {
+     "x": 32.5,
+     "y": 25.5
+    },
+    "a7": {
+     "x": 32.5,
+     "y": 22.7
+    },
+    "a8": {
+     "x": 29.5,
+     "y": 27
+    },
+    "a11": {
+     "x": 29,
+     "y": 16
+    },
+    "a10": {
+     "x": 26,
+     "y": 43
+    },
+    "a12": {
+     "x": 24.5,
+     "y": 50
+    },
+    "a13": {
+     "x": 23.5,
+     "y": 57
+    },
+    "a14": {
+     "x": 22.5,
+     "y": 67
+    },
+    "a15": {
+     "x": 17,
+     "y": 55
+    },
+    "d7": {
+     "x": 38,
+     "y": 14
+    },
+    "d1": {
+     "x": 38,
+     "y": 18.5
+    },
+    "d3": {
+     "x": 38,
+     "y": 23
+    },
+    "d2": {
+     "x": 38,
+     "y": 27.5
+    },
+    "d4": {
+     "x": 38,
+     "y": 32
+    },
+    "d5": {
+     "x": 38,
+     "y": 36.5
+    },
+    "d6": {
+     "x": 38,
+     "y": 41
+    },
+    "d8": {
+     "x": 38,
+     "y": 45.5
+    },
+    "d10": {
+     "x": 38,
+     "y": 50
+    },
+    "d12": {
+     "x": 38,
+     "y": 54.5
+    },
+    "d13": {
+     "x": 38,
+     "y": 59
+    },
+    "d9": {
+     "x": 41.5,
+     "y": 30
+    },
+    "d14": {
+     "x": 55,
+     "y": 14
+    },
+    "d15": {
+     "x": 62,
+     "y": 38
+    },
+    "d11": {
+     "x": 56,
+     "y": 58
+    }
+   },
+   "objects": [
+    {
+     "id": "o1",
+     "type": "ruck",
+     "x": 35,
+     "y": 30
+    },
+    {
+     "id": "o2",
+     "type": "ball",
+     "x": 33,
+     "y": 30.9
+    }
+   ],
+   "routes": [
+    {
+     "id": "r1",
+     "type": "pass",
+     "from": "a9",
+     "to": "a10",
+     "points": [
+      [
+       31.6,
+       31.6
+      ],
+      [
+       26,
+       43
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    }
+   ],
+   "instructions": {
+    "a9": "Quick ball, hit 10 deep",
+    "a10": "Take it deep, pick your landing spot",
+    "a14": "Creep in off your wing, ready to chase",
+    "a15": "Stay deep behind the kick"
+   }
+  },
+  {
+   "note": "10 takes one step to settle, then bombs their back three. 14 chases flat out, 13 locks the inside, 11 and 12 connect the chase, 15 sweeps behind.",
+   "positions": {
+    "a9": {
+     "x": 31.6,
+     "y": 31.6
+    },
+    "a1": {
+     "x": 32,
+     "y": 34.5
+    },
+    "a2": {
+     "x": 32,
+     "y": 37.3
+    },
+    "a3": {
+     "x": 32,
+     "y": 40.1
+    },
+    "a4": {
+     "x": 29.5,
+     "y": 35.9
+    },
+    "a5": {
+     "x": 29.5,
+     "y": 38.7
+    },
+    "a6": {
+     "x": 32.5,
+     "y": 25.5
+    },
+    "a7": {
+     "x": 32.5,
+     "y": 22.7
+    },
+    "a8": {
+     "x": 29.5,
+     "y": 27
+    },
+    "a11": {
+     "x": 29,
+     "y": 16
+    },
+    "a10": {
+     "x": 26,
+     "y": 43
+    },
+    "a12": {
+     "x": 24.5,
+     "y": 50
+    },
+    "a13": {
+     "x": 23.5,
+     "y": 57
+    },
+    "a14": {
+     "x": 22.5,
+     "y": 67
+    },
+    "a15": {
+     "x": 17,
+     "y": 55
+    },
+    "d7": {
+     "x": 38,
+     "y": 14
+    },
+    "d1": {
+     "x": 38,
+     "y": 18.5
+    },
+    "d3": {
+     "x": 38,
+     "y": 23
+    },
+    "d2": {
+     "x": 38,
+     "y": 27.5
+    },
+    "d4": {
+     "x": 38,
+     "y": 32
+    },
+    "d5": {
+     "x": 38,
+     "y": 36.5
+    },
+    "d6": {
+     "x": 38,
+     "y": 41
+    },
+    "d8": {
+     "x": 38,
+     "y": 45.5
+    },
+    "d10": {
+     "x": 38,
+     "y": 50
+    },
+    "d12": {
+     "x": 38,
+     "y": 54.5
+    },
+    "d13": {
+     "x": 38,
+     "y": 59
+    },
+    "d9": {
+     "x": 41.5,
+     "y": 30
+    },
+    "d14": {
+     "x": 55,
+     "y": 14
+    },
+    "d15": {
+     "x": 62,
+     "y": 38
+    },
+    "d11": {
+     "x": 56,
+     "y": 58
+    }
+   },
+   "objects": [
+    {
+     "id": "o1",
+     "type": "ruck",
+     "x": 35,
+     "y": 30
+    },
+    {
+     "id": "o2",
+     "type": "ball",
+     "x": 27.1,
+     "y": 43.9
+    }
+   ],
+   "routes": [
+    {
+     "id": "r1",
+     "type": "run",
+     "from": "a10",
+     "points": [
+      [
+       26,
+       43
+      ],
+      [
+       29,
+       41.5
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r2",
+     "type": "kick",
+     "from": "a10",
+     "points": [
+      [
+       26,
+       43
+      ],
+      [
+       60,
+       52
+      ]
+     ],
+     "curve": 0,
+     "order": 2,
+     "option": null
+    },
+    {
+     "id": "r3",
+     "type": "run",
+     "from": "a14",
+     "points": [
+      [
+       22.5,
+       67
+      ],
+      [
+       59.5,
+       51.5
+      ]
+     ],
+     "curve": 0,
+     "order": 2,
+     "option": null
+    },
+    {
+     "id": "r4",
+     "type": "run",
+     "from": "a13",
+     "points": [
+      [
+       23.5,
+       57
+      ],
+      [
+       54.5,
+       45
+      ]
+     ],
+     "curve": 0,
+     "order": 2,
+     "option": null
+    },
+    {
+     "id": "r5",
+     "type": "run",
+     "from": "a12",
+     "points": [
+      [
+       24.5,
+       50
+      ],
+      [
+       47,
+       48
+      ]
+     ],
+     "curve": 0,
+     "order": 2,
+     "option": null
+    },
+    {
+     "id": "r6",
+     "type": "run",
+     "from": "a11",
+     "points": [
+      [
+       29,
+       16
+      ],
+      [
+       46.5,
+       37.5
+      ]
+     ],
+     "curve": -4.5,
+     "order": 2,
+     "option": null
+    },
+    {
+     "id": "r7",
+     "type": "run",
+     "from": "a15",
+     "points": [
+      [
+       17,
+       55
+      ],
+      [
+       22,
+       42
+      ]
+     ],
+     "curve": 0,
+     "order": 2,
+     "option": null
+    },
+    {
+     "id": "r8",
+     "type": "run",
+     "from": "d15",
+     "points": [
+      [
+       62,
+       38
+      ],
+      [
+       61.5,
+       53.8
+      ]
+     ],
+     "curve": 0,
+     "order": 2,
+     "option": null
+    },
+    {
+     "id": "r9",
+     "type": "run",
+     "from": "d11",
+     "points": [
+      [
+       56,
+       58
+      ],
+      [
+       58.5,
+       55.5
+      ]
+     ],
+     "curve": 0,
+     "order": 2,
+     "option": null
+    },
+    {
+     "id": "r10",
+     "type": "drift",
+     "from": "d14",
+     "points": [
+      [
+       55,
+       14
+      ],
+      [
+       52,
+       24
+      ]
+     ],
+     "curve": 0,
+     "order": 2,
+     "option": null
+    },
+    {
+     "id": "r11",
+     "type": "run",
+     "from": "d13",
+     "points": [
+      [
+       38,
+       59
+      ],
+      [
+       48,
+       54
+      ]
+     ],
+     "curve": 0,
+     "order": 2,
+     "option": null
+    },
+    {
+     "id": "r12",
+     "type": "run",
+     "from": "d12",
+     "points": [
+      [
+       38,
+       54.5
+      ],
+      [
+       44,
+       51
+      ]
+     ],
+     "curve": 0,
+     "order": 2,
+     "option": null
+    },
+    {
+     "id": "r13",
+     "type": "run",
+     "from": "d10",
+     "points": [
+      [
+       38,
+       50
+      ],
+      [
+       41,
+       46
+      ]
+     ],
+     "curve": 0,
+     "order": 2,
+     "option": null
+    }
+   ],
+   "instructions": {
+    "a10": "One step, then bomb it high on their 15",
+    "a14": "Chase flat out, time your jump",
+    "a13": "Chase inside 14, shut the inside door",
+    "a12": "Chase connected, just inside 13",
+    "a11": "Work across field, link the chase line",
+    "a15": "Hold the backfield for the return kick"
+   },
+   "cues": [
+    {
+     "player": "a15",
+     "step": 2,
+     "text": "STAY DEEP"
+    }
+   ]
+  },
+  {
+   "note": "The ball comes down with the chase arriving together. 14 contests, 13 and 12 take the catcher or the tap-back, the pod works up as the next wave. 15 stays home.",
+   "positions": {
+    "a9": {
+     "x": 31.6,
+     "y": 31.6
+    },
+    "a1": {
+     "x": 32,
+     "y": 34.5
+    },
+    "a2": {
+     "x": 32,
+     "y": 37.3
+    },
+    "a3": {
+     "x": 32,
+     "y": 40.1
+    },
+    "a4": {
+     "x": 29.5,
+     "y": 35.9
+    },
+    "a5": {
+     "x": 29.5,
+     "y": 38.7
+    },
+    "a6": {
+     "x": 32.5,
+     "y": 25.5
+    },
+    "a7": {
+     "x": 32.5,
+     "y": 22.7
+    },
+    "a8": {
+     "x": 29.5,
+     "y": 27
+    },
+    "a11": {
+     "x": 46.5,
+     "y": 37.5
+    },
+    "a10": {
+     "x": 29,
+     "y": 41.5
+    },
+    "a12": {
+     "x": 47,
+     "y": 48
+    },
+    "a13": {
+     "x": 54.5,
+     "y": 45
+    },
+    "a14": {
+     "x": 59.5,
+     "y": 51.5
+    },
+    "a15": {
+     "x": 22,
+     "y": 42
+    },
+    "d7": {
+     "x": 38,
+     "y": 14
+    },
+    "d1": {
+     "x": 38,
+     "y": 18.5
+    },
+    "d3": {
+     "x": 38,
+     "y": 23
+    },
+    "d2": {
+     "x": 38,
+     "y": 27.5
+    },
+    "d4": {
+     "x": 38,
+     "y": 32
+    },
+    "d5": {
+     "x": 38,
+     "y": 36.5
+    },
+    "d6": {
+     "x": 38,
+     "y": 41
+    },
+    "d8": {
+     "x": 38,
+     "y": 45.5
+    },
+    "d10": {
+     "x": 41,
+     "y": 46
+    },
+    "d12": {
+     "x": 44,
+     "y": 51
+    },
+    "d13": {
+     "x": 48,
+     "y": 54
+    },
+    "d9": {
+     "x": 41.5,
+     "y": 30
+    },
+    "d14": {
+     "x": 52,
+     "y": 24
+    },
+    "d15": {
+     "x": 61.5,
+     "y": 53.8
+    },
+    "d11": {
+     "x": 58.5,
+     "y": 55.5
+    }
+   },
+   "objects": [
+    {
+     "id": "o2",
+     "type": "ball",
+     "x": 60,
+     "y": 52
+    }
+   ],
+   "routes": [
+    {
+     "id": "r1",
+     "type": "run",
+     "from": "a1",
+     "points": [
+      [
+       32,
+       34.5
+      ],
+      [
+       43,
+       35
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r2",
+     "type": "run",
+     "from": "a2",
+     "points": [
+      [
+       32,
+       37.3
+      ],
+      [
+       43,
+       39
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r3",
+     "type": "run",
+     "from": "a3",
+     "points": [
+      [
+       32,
+       40.1
+      ],
+      [
+       43,
+       43
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r4",
+     "type": "run",
+     "from": "a9",
+     "points": [
+      [
+       31.6,
+       31.6
+      ],
+      [
+       48,
+       33.5
+      ]
+     ],
+     "curve": -0.8,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r5",
+     "type": "run",
+     "from": "a11",
+     "points": [
+      [
+       46.5,
+       37.5
+      ],
+      [
+       51,
+       41
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r6",
+     "type": "run",
+     "from": "a12",
+     "points": [
+      [
+       47,
+       48
+      ],
+      [
+       53,
+       49
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r7",
+     "type": "run",
+     "from": "a13",
+     "points": [
+      [
+       54.5,
+       45
+      ],
+      [
+       57,
+       48
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r8",
+     "type": "run",
+     "from": "d2",
+     "points": [
+      [
+       38,
+       27.5
+      ],
+      [
+       43,
+       28
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r9",
+     "type": "run",
+     "from": "d4",
+     "points": [
+      [
+       38,
+       32
+      ],
+      [
+       46,
+       31
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r10",
+     "type": "run",
+     "from": "d5",
+     "points": [
+      [
+       38,
+       36.5
+      ],
+      [
+       46,
+       40
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r11",
+     "type": "run",
+     "from": "d6",
+     "points": [
+      [
+       38,
+       41
+      ],
+      [
+       45,
+       45
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r12",
+     "type": "run",
+     "from": "d9",
+     "points": [
+      [
+       41.5,
+       30
+      ],
+      [
+       50,
+       36
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r13",
+     "type": "run",
+     "from": "d12",
+     "points": [
+      [
+       44,
+       51
+      ],
+      [
+       52,
+       52
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r14",
+     "type": "run",
+     "from": "d13",
+     "points": [
+      [
+       48,
+       54
+      ],
+      [
+       55,
+       55
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    },
+    {
+     "id": "r15",
+     "type": "run",
+     "from": "d14",
+     "points": [
+      [
+       52,
+       24
+      ],
+      [
+       50,
+       30
+      ]
+     ],
+     "curve": 0,
+     "order": 1,
+     "option": null
+    }
+   ],
+   "instructions": {
+    "a14": "Go up and win it, or tap it back",
+    "a13": "Tackle the catcher or take the tap",
+    "a12": "Mop up anything loose",
+    "a1": "Lead the pod up as the second wave",
+    "a15": "Stay home, expect the clearing kick"
+   },
+   "cues": [
+    {
+     "player": "a14",
+     "step": 1,
+     "text": "JUMP!"
+    }
+   ]
+  }
+ ]
+}
