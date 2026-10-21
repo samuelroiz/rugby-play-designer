@@ -1,0 +1,26 @@
+# Our team
+
+Fill this in and the skill shapes plays to your squad. Until it's filled in (the placeholders
+below still read "..."), the skill ignores this file and writes for a generic team.
+
+## Kickers
+- Box kicks (9): ...
+- Tactical kicks / bombs (10 or 15): ...
+- Long range / touch finders: ...
+- Cross-field: ...
+
+## Strengths
+<!-- e.g. "Big carrying 12, quick ruck ball", "14 wins everything in the air", "dominant scrum" -->
+- ...
+
+## Weaknesses / avoid
+<!-- e.g. "Slow lineout, keep throws to 4", "don't run set moves off 2nd phase", "10 can't kick off left foot" -->
+- ...
+
+## Our calls
+<!-- Names you already use, so generated plays reuse them. e.g. "TOWER = bomb on 15", "SNAP = 12 crash short side" -->
+- ...
+
+## Defaults
+<!-- e.g. "default defense we practise against: blitz", "preferred view: full pitch, horizontal" -->
+- ...
