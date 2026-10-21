@@ -318,17 +318,7 @@ llms.txt         for AI assistants: what the app is, the guide, and how to paste
 docs/            AI_PLAY_GUIDE.md, how to write a play file
 styles.css       layout (the toolbar moves to the bottom on phones) and SVG styling
 js/app.js        play state, toolbar and phase bar wiring, redraw (which also records undo steps and autosaves)
-js/scene.js      drawing the editing pitch: players, routes, badges, markers, the ghost, cue marks, edge arrows
-js/badges.js     where a route's order badge goes, and which routes show one
-js/open-play.js  the open play: autosaving it to the library, opening others, another tab's changes, the Plays panel's actions
-js/pitch-edits.js  boxes over the pitch: a label or order number typed in place, an option's box, the route bar
-js/cue-panel.js  the side panel's cue list and form
-js/draw-hint.js  the status line's hint while drawing or placing
-js/start.js      Templates, About, Welcome, Try an example, the AI play guide, Paste play
-js/exporting.js  Save image, PDF and animation from the app, and handing the file to the user
-js/share-dialog.js  the Share link box
-js/dialogs.js    helpers shared by the dialogs: click outside closes, the in-app confirm
-js/pitch.js      pitch markings, screen-to-metre conversion, and the route lines, arrowheads and ball shared with the viewer
+js/pitch.js      pitch markings and screen-to-metre conversion
 js/editor.js     dragging, drawing routes and editing them with handles, selecting
 js/setpiece.js   scrum and lineout presets: formations, snapping the mark, moving each set piece's players and ball together
 js/model.js      the shared play rules: route curves, ball routes, ids, rounding, which ball moves and who catches it
@@ -350,6 +340,16 @@ js/follow.js     following one player: the camera, who is faded, and a position'
 js/jobs.js       a player's job line: the written instruction, or one made from their routes
 js/cues.js       position cues: the default step, when each pops up, the slowdown, placing the bubble
 js/logo.js       the team logo setting: localStorage, reading and shrinking uploads, cleaning SVGs, the logo for exports
+js/scene.js      drawing the editing pitch: players, routes, badges, markers, the ghost, cue marks, edge arrows
+js/badges.js     where a route's order badge goes, and which routes show one
+js/open-play.js  the open play: autosaving it to the library, opening others, another tab's changes, the Plays panel's actions
+js/pitch-edits.js  boxes over the pitch: a label or order number typed in place, an option's box, the route bar
+js/cue-panel.js  the side panel's cue list and form
+js/draw-hint.js  the status line's hint while drawing or placing
+js/start.js      Templates, About, Welcome, Try an example, the AI play guide, Paste play
+js/exporting.js  Save image, PDF and animation from the app, and handing the file to the user
+js/share-dialog.js  the Share link box
+js/dialogs.js    helpers shared by the dialogs: click outside closes, the in-app confirm
 assets/          sfv-logo.jpeg, the default team logo
 templates/       starter templates (play files) and index.json listing them; example.json, the About box's example
 vendor/          jsPDF 4.2.1 (jspdf.umd.min.js) and gifenc 1.0.3 (gifenc.esm.js), each with its licence
