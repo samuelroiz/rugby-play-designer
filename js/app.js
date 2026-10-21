@@ -4,40 +4,37 @@
 // Redraws that only show hover feedback pass { record: false } and record nothing.
 // The larger parts live in their own modules, each set up here with what it needs: the pitch's drawing
 // (scene.js), the open play and library (open-play.js), the boxes over the pitch (pitch-edits.js), the
-// exports (exporting.js, share-dialog.js), the side panel's cues (cue-panel.js), the drawing hint
-// (draw-hint.js) and Templates, About, Welcome and Paste play (start.js).
+// exports (exporting.js, share-dialog.js), the side panel's cues (cue-panel.js), the status line under the
+// pitch (status-line.js) and Templates, About, Welcome and Paste play (start.js). Browser settings: settings.js.
 
 import {
   routeSample, viewCentre, viewRange, isHalf, startSpot, directionBox, uprightTurn, buildArrowMarkers, BOUNDS, ROUTE_TYPES,
 } from './pitch.js';
 import { initEditor } from './editor.js';
 import { placeScrum, moveScrum, placeLineout, moveLineout } from './setpiece.js';
-import { appendPhase, insertPhaseAfter, movePhase } from './phases.js';
+
 import { createHistory } from './history.js';
 import { blankPlay, downloadPlay, readPlayFile, safeFileName, INSTRUCTION_MAX } from './storage.js';
 import { syncOptions, optionLetters } from './options.js';
 import { nextId, round1, BALL_ROUTES, MOVING_ROUTES } from './model.js';
 import { createPlayback } from './playback.js';
 import { autoJob } from './jobs.js';
-import { readLogoSettings, saveLogoSettings, logoSrc, readLogoFile, sanitizeSvg, LOGO_KEY, TEAM_NAME_MAX } from './logo.js';
+
 import { initPresent } from './present.js';
 import { createScene, PLAYER_SIZES } from './scene.js';
 import { createExporting } from './exporting.js';
 import { createShareDialog } from './share-dialog.js';
 import { createCuePanel } from './cue-panel.js';
-import { createDrawHint } from './draw-hint.js';
+import { createStatusLine } from './status-line.js';
+import { createLogoDialog } from './logo-dialog.js';
+import { createPhaseBar } from './phase-bar.js';
+import { readPlayerSize, readStepNumbers, saveStepNumbers, savePlayerSize } from './settings.js';
 import { createPitchEdits } from './pitch-edits.js';
-import { closeOnClickOutside, askConfirm } from './dialogs.js';
+import { closeOnClickOutside } from './dialogs.js';
 import { createStart } from './start.js';
 import { createOpenPlay } from './open-play.js';
 
 const MAX_PER_TEAM = 15;
-// Layers → Player size (scene.js PLAYER_SIZES): a setting of this browser, not of the play; pictures and PDFs
-// use the size on screen.
-const PLAYER_SIZE_KEY = 'rugby-play-designer.player-size';
-// Layers → Step numbers: whether route order badges are shown, on screen and in every export. Also a
-// setting of this browser, not of the play.
-const STEP_NUMBERS_KEY = 'rugby-play-designer.step-numbers';
 // A phone held upright gets the vertical pitch; anything else starts horizontal.
 const portraitPhone = matchMedia('(max-width: 700px) and (orientation: portrait)');
 // Phones and tablets: a saved picture goes to the share sheet rather than a download.
@@ -71,24 +68,6 @@ const ui = {
   orderEdit: null, // the route whose order number is being typed: highlighted the same way
   playerSize: readPlayerSize(),
 };
-
-function readPlayerSize() {
-  try {
-    const saved = localStorage.getItem(PLAYER_SIZE_KEY);
-    return saved in PLAYER_SIZES ? saved : 'medium';
-  } catch {
-    return 'medium';
-  }
-}
-function readStepNumbers() {
-  try { return localStorage.getItem(STEP_NUMBERS_KEY) !== 'off'; } catch { return true; }
-}
-function saveStepNumbers(on) {
-  try { localStorage.setItem(STEP_NUMBERS_KEY, on ? 'on' : 'off'); } catch { /* storage blocked: it lasts until the page closes */ }
-}
-function savePlayerSize(size) {
-  try { localStorage.setItem(PLAYER_SIZE_KEY, size); } catch { /* storage blocked: it lasts until the page closes */ }
-}
 
 const $ = id => document.getElementById(id);
 const svg = $('pitch');
@@ -147,6 +126,10 @@ const playback = createPlayback({
   changed: () => render(),
   tick: (...args) => scene.presentCueTick(...args),
 });
+// The status line under the pitch: messages, the drawing hint, what's selected, End of play.
+const { showToast, dropKeptToast, updateDrawHint, fitHint, updateSelectionStatus, updateEndOfPlay } = createStatusLine({
+  state, ui, phase, locked, playback, playerName, touchScreen,
+});
 const scene = createScene({ state, ui, svg, world, legend, layers, phase, playback, locked, isSelected, turn });
 const { drawScene, shownRoutes, clearPresentCues, playerR } = scene;
 // Boxes over the pitch: a label or order number typed in place, an option's box and the route bar.
@@ -158,14 +141,14 @@ const present = initPresent({ state, ui, svg, world, penLayer: layers.pen, rende
 window.rugbyPlayback = playback;
 window.rugbyPresent = present;
 
-// The team logo: a setting of this browser, not of the play (see logo.js), so it never goes in the play,
-// its files, the autosave or the undo history.
-let teamLogo = readLogoSettings();
-
+// The phase bar under the pitch.
+const { updatePhaseBar, initPhaseBar } = createPhaseBar({ state, ui, busy, render, playback, step, note: inputs.note });
+// The team logo setting and its box.
+const { teamLogo, openLogoDialog, initLogoDialog } = createLogoDialog({ showToast, fitTopbar });
 // File → Save image, Save PDF and Save animation.
 const { savePdf, openAnimationDialog, initAnimationDialog, initImageDialog } = createExporting({
   state, ui, svg, layers, scene, playback, render, finishEdit, showToast, busy,
-  teamLogo: () => teamLogo, touchScreen, turn,
+  teamLogo, touchScreen, turn,
 });
 // The open play, its autosave, the play library and the Plays panel.
 const {
@@ -177,45 +160,10 @@ const {
 const {
   openPasteDialog, initPasteDialog, initGuideLinks, initTemplatesDialog, openAbout, initAboutDialog, initWelcomeDialog,
 } = createStart({ state, ui, busy, playback, showToast, createAndOpen, replaceOpenPlay });
-// The status line's hint while drawing or placing.
-const { updateDrawHint, fitHint } = createDrawHint({ state, ui, phase, playerName, touchScreen, showToast });
 // The selected player's cues, in the side panel.
 const { syncCues, initCues } = createCuePanel({ state, ui, phase, locked, render });
 // File → Share link.
-const { open: openShareDialog, init: initShareDialog } = createShareDialog({ state, teamLogo: () => teamLogo });
-
-// A short message in the status line under the pitch: an error (the default), or `ok` for "Saved …".
-// action: an optional button after the message, { label, run }; pressing it runs it and closes the toast.
-// keepWhile: instead of fading after a few seconds, the toast stays up for as long as keepWhile() holds
-// (checked after every render).
-function showToast(message, kind = 'error', action = null, keepWhile = null) {
-  const toast = $('toast');
-  toast.classList.toggle('ok', kind === 'ok');
-  toast.setAttribute('role', kind === 'ok' ? 'status' : 'alert');
-  toast.textContent = message;
-  if (action) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'toast-action';
-    b.textContent = action.label;
-    b.addEventListener('click', () => { hideToast(); action.run(); });
-    toast.append(' ', b);
-  }
-  toast.hidden = false;
-  clearTimeout(showToast.timer);
-  showToast.keepWhile = keepWhile;
-  if (!keepWhile) showToast.timer = setTimeout(hideToast, action ? 8000 : 5000);
-}
-function hideToast() {
-  clearTimeout(showToast.timer);
-  showToast.keepWhile = null;
-  $('toast').hidden = true;
-  fitHint();
-}
-// A kept toast whose reason has gone (see showToast's keepWhile).
-function dropKeptToast() {
-  if (showToast.keepWhile && !showToast.keepWhile()) hideToast();
-}
+const { open: openShareDialog, init: initShareDialog } = createShareDialog({ state, teamLogo });
 
 // Click-to-draw: a click on another player made them the start instead of ending the route on their spot.
 // Say so, and offer to end the route there after all (a drift one channel across, onto a team-mate's spot).
@@ -267,12 +215,6 @@ function render(commitKey = null, { record = true } = {}) {
   updateEndOfPlay();
   dropKeptToast();
   if (drawnNote) { showToast(drawnNote, 'ok'); drawnNote = null; }
-}
-
-// After the last phase has played (Loop off): "End of play" and Replay in the status line, until the play is
-// edited, another phase is shown, or Play is pressed (each drops the end frame).
-function updateEndOfPlay() {
-  $('end-of-play').hidden = !playback.ended || ui.presenting;
 }
 
 // A run, decoy, drift or blitz moves with the latest step: say so when it shares that step with other routes.
@@ -357,65 +299,9 @@ function updateToolbar() {
   updateSelectionStatus();
 }
 
-// "Selected: 9", "Selected: ball", "Selected: ruck", "Selected: 10's pass to 12" in the status line. The
-// drawing hint, a message and End of play each take its place while they're up (see styles.css).
-function updateSelectionStatus() {
-  const line = $('selection-status');
-  const sel = ui.selected;
-  let what = '';
-  if (sel && !locked()) {
-    if (sel.kind === 'player') what = playerName(sel.id);
-    else if (sel.kind === 'object') what = phase().objects.find(o => o.id === sel.id)?.type ?? '';
-    else if (sel.kind === 'route') {
-      const r = phase().routes.find(q => q.id === sel.id);
-      const type = r && (ROUTE_TYPES[r.type]?.label.toLowerCase() ?? 'route');
-      if (r) what = [r.from ? `${playerName(r.from)}'s ${type}` : type, r.to && `to ${playerName(r.to)}`].filter(Boolean).join(' ');
-    }
-  }
-  line.hidden = !what;
-  line.textContent = what ? `Selected: ${what}` : '';
-  line.title = line.textContent;
-}
-
 function updateHistoryButtons() {
   document.querySelector('[data-action="undo"]').disabled = !history.canUndo || locked();
   document.querySelector('[data-action="redo"]').disabled = !history.canRedo || locked();
-}
-
-let shownPhase = -1;
-
-function updatePhaseBar() {
-  const n = state.phases.length;
-  const tabs = $('phase-tabs');
-  if (tabs.children.length !== n) {
-    tabs.replaceChildren(...state.phases.map((_, i) => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.dataset.phase = 'goto';
-      b.dataset.index = i;
-      b.textContent = i + 1;
-      b.setAttribute('aria-label', `Phase ${i + 1}`);
-      return b;
-    }));
-  }
-  [...tabs.children].forEach((b, i) => b.setAttribute('aria-current', i === ui.phase ? 'step' : 'false'));
-  if (shownPhase !== ui.phase) {
-    shownPhase = ui.phase;
-    tabs.children[ui.phase]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }
-  $('phase-count').textContent = `Phase ${ui.phase + 1} of ${n}`;
-  const btn = name => document.querySelector(`[data-phase="${name}"]`);
-  btn('prev').disabled = ui.phase === 0;
-  btn('next').disabled = ui.phase === n - 1;
-  btn('left').disabled = ui.phase === 0;
-  btn('right').disabled = ui.phase === n - 1;
-  btn('delete').disabled = n === 1;
-  btn('add').disabled = false;
-  btn('insert').disabled = false;
-  // While playing (or exporting) only moving between phases works; the phases can't be changed.
-  if (busy()) for (const name of ['add', 'left', 'right', 'insert', 'delete']) btn(name).disabled = true;
-  // While playing the note can still be typed in: focusing it stops the play (see initTopbar).
-  inputs.note.disabled = ui.exporting;
 }
 
 // Play/Pause, speed and Loop. Tooltips only outside Present mode, so nothing pops up on a recording.
@@ -504,8 +390,8 @@ function syncInputs() {
   if (sel && sel.id !== jobBoxFor) revealJobBox();
   jobBoxFor = sel?.id ?? null;
 }
-let jobBoxFor = null;
-let editor = null; // initEditor's: drawTo // the player whose job box was last brought into view
+let jobBoxFor = null; // the player whose job box was last brought into view
+let editor = null; // initEditor's: drawTo
 
 // Scrolls the side panel (not the page) the least it takes to show the whole job and cues box: down (or, on
 // a phone, where the panel is a row, sideways) so its end is in view, but never so far its start goes.
@@ -514,7 +400,7 @@ function revealJobBox() {
   const box = $('instruction-group').getBoundingClientRect();
   const view = bar.getBoundingClientRect();
   const margin = 8;
-  if (matchMedia('(max-width: 700px)').matches) {
+  if (phoneLayout.matches) {
     const over = Math.min(box.right + margin - view.right, box.left - margin - view.left);
     if (over > 0) bar.scrollLeft += over;
     else if (box.left < view.left) bar.scrollLeft -= view.left - box.left + margin;
@@ -716,35 +602,6 @@ function setOrientation(orientation) {
   render();
 }
 
-function goToPhase(i) {
-  if (i < 0 || i >= state.phases.length || i === ui.phase) return;
-  ui.phase = i;
-  ui.tool = null;
-}
-
-// Phase bar actions. Each returns after changing state; the caller re-renders, which records one undo step.
-function phaseAction(action, index) {
-  const i = ui.phase;
-  const phases = state.phases;
-  if (action === 'prev') goToPhase(i - 1);
-  else if (action === 'next') goToPhase(i + 1);
-  else if (action === 'goto') goToPhase(index);
-  else if (action === 'add' || action === 'insert') {
-    ui.phase = action === 'add' ? appendPhase(phases, state.players) : insertPhaseAfter(phases, i, state.players);
-    ui.tool = null;
-  } else if (action === 'left' || action === 'right') {
-    ui.phase = movePhase(phases, i, action === 'left' ? i - 1 : i + 1);
-  } else if (action === 'delete') {
-    if (phases.length === 1) return;
-    askConfirm(`Delete phase ${i + 1}? You can undo this.`, 'Delete phase').then(ok => {
-      if (!ok || state.phases !== phases) return;
-      phases.splice(i, 1);
-      ui.phase = Math.min(i, phases.length - 1);
-      render();
-    });
-  }
-}
-
 function fileAction(action) {
   $('file-menu').open = false;
   if (busy()) return;
@@ -827,7 +684,7 @@ function buildRouteTools() {
 const NAME_MIN_REM = 11;
 function fitTopbar() {
   const bar = document.querySelector('.topbar');
-  if (!bar || matchMedia('(max-width: 700px)').matches) { bar?.classList.remove('two-rows'); return; }
+  if (!bar || phoneLayout.matches) { bar?.classList.remove('two-rows'); return; }
   if (!bar.clientWidth) return; // hidden (Present mode): keep it as it is until it shows again
   // Measured on one row: on two, the view controls stretch to the bar's width.
   bar.classList.remove('two-rows');
@@ -940,21 +797,6 @@ function initTopbar() {
   for (const m of menus) m.addEventListener('toggle', () => { if (m.open) for (const o of menus) if (o !== m) o.open = false; });
 }
 
-function initPhaseBar() {
-  document.querySelector('.phasebar').addEventListener('click', e => {
-    const b = e.target.closest('[data-phase]');
-    // Nothing changes phase in the middle of a drag (a second finger, or a key).
-    if (!b || b.disabled || ui.dragging) return;
-    const action = b.dataset.phase;
-    // Moving between phases also works while playing (it carries on from that phase).
-    if (action === 'prev' || action === 'next') { step(action === 'prev' ? -1 : 1); return; }
-    if (action === 'goto') { playback.jump(Number(b.dataset.index)); return; }
-    if (busy()) return;
-    phaseAction(action, Number(b.dataset.index));
-    render();
-  });
-}
-
 function initSetPieceDialog() {
   const dialog = $('set-piece-dialog');
   dialog.addEventListener('close', () => {
@@ -963,114 +805,6 @@ function initSetPieceDialog() {
   });
   return () => { dialog.returnValue = ''; dialog.showModal(); };
 }
-
-// Team logo: shown left of the play name, in a corner in Present mode, on exports (if "Show logo on exports"
-// is on) and, through the team name, in the About box. Every change in the box is kept straight away.
-function updateLogo() {
-  const src = logoSrc(teamLogo);
-  const name = teamLogo.name.trim();
-  for (const img of [$('topbar-logo'), $('present-logo'), $('welcome-logo')]) {
-    if (!src) { img.hidden = true; img.removeAttribute('src'); continue; }
-    img.alt = name ? `${name} logo` : 'Team logo';
-    if (img.getAttribute('src') !== src) { img.hidden = false; img.src = src; }
-  }
-  for (const line of [$('about-team'), $('welcome-team')]) {
-    line.textContent = name ? `Made for ${name}` : '';
-    line.hidden = !name;
-  }
-  fitTopbar();
-}
-
-function openLogoDialog() {
-  const dialog = $('logo-dialog');
-  $('logo-name').value = teamLogo.name;
-  $('logo-exports').checked = teamLogo.exports;
-  logoStatus('');
-  updateLogoPreview();
-  dialog.returnValue = '';
-  dialog.showModal();
-}
-
-function updateLogoPreview() {
-  const src = logoSrc(teamLogo);
-  const preview = $('logo-preview');
-  preview.hidden = !src;
-  if (src) preview.src = src; else preview.removeAttribute('src');
-  $('logo-empty').hidden = !!src;
-  $('logo-remove').disabled = !src;
-}
-
-function logoStatus(message, error = false) {
-  const status = $('logo-status');
-  status.textContent = message;
-  status.classList.toggle('error', error);
-}
-
-// Keeps the setting; if storage is blocked or full it still applies until the page is closed.
-const LOGO_NOT_SAVED = "Couldn't save the logo setting in this browser. It's used until you close this page.";
-function keepLogo(done) {
-  updateLogo();
-  updateLogoPreview();
-  if (saveLogoSettings(teamLogo)) {
-    if (done) logoStatus(done);
-    return;
-  }
-  logoStatus(LOGO_NOT_SAVED, true);
-  showToast(LOGO_NOT_SAVED);
-}
-
-function initLogoDialog() {
-  const dialog = $('logo-dialog');
-  const input = $('logo-input');
-  const name = $('logo-name');
-  name.maxLength = TEAM_NAME_MAX;
-  $('logo-upload').addEventListener('click', () => input.click());
-  input.addEventListener('change', async () => {
-    const file = input.files?.[0];
-    input.value = ''; // so picking the same file again still fires "change"
-    if (!file) return;
-    logoStatus('Reading the image…');
-    try {
-      teamLogo.logo = await readLogoFile(file);
-    } catch (err) {
-      logoStatus(err.message, true);
-      return;
-    }
-    keepLogo('Logo saved.');
-  });
-  $('logo-remove').addEventListener('click', () => {
-    teamLogo.logo = null;
-    keepLogo('Logo removed.');
-  });
-  $('logo-exports').addEventListener('change', e => {
-    teamLogo.exports = e.target.checked;
-    keepLogo('');
-  });
-  // The name shows in the About box as it's typed, and is kept when it's done (on change, or on closing).
-  let nameChanged = false;
-  name.addEventListener('input', () => {
-    teamLogo.name = name.value.slice(0, TEAM_NAME_MAX);
-    nameChanged = true;
-    updateLogo();
-  });
-  const keepName = () => { if (nameChanged) { nameChanged = false; keepLogo(''); } };
-  name.addEventListener('change', keepName);
-  dialog.addEventListener('close', keepName);
-  closeOnClickOutside(dialog);
-  // A logo that can't be shown (the default file missing, say) is hidden rather than drawn broken.
-  for (const img of [$('topbar-logo'), $('present-logo'), $('welcome-logo'), $('logo-preview')]) {
-    img.addEventListener('error', () => { img.hidden = true; });
-  }
-  // Another tab changed it.
-  addEventListener('storage', e => {
-    if (e.key !== LOGO_KEY) return;
-    teamLogo = readLogoSettings();
-    updateLogo();
-  });
-  updateLogo();
-}
-// For tests: the SVG cleaner, so a check can look at what it keeps.
-window.rugbyLogo = { sanitizeSvg, settings: () => ({ ...teamLogo }) };
 
 // "? Tips" at the top of the sidebar opens a small popup beside it (a popover, so clicking away or
 // Escape closes it). It floats over the page and never moves the toolbar.

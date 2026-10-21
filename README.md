@@ -348,7 +348,10 @@ js/badges.js     where a route's order badge goes, and which routes show one
 js/open-play.js  the open play: autosaving it to the library, opening others, another tab's changes, the Plays panel's actions
 js/pitch-edits.js  boxes over the pitch: a label or order number typed in place, an option's box, the route bar
 js/cue-panel.js  the side panel's cue list and form
-js/draw-hint.js  the status line's hint while drawing or placing
+js/status-line.js  the status line under the pitch: messages, the drawing hint, what's selected, End of play
+js/phase-bar.js  the phase bar: tabs, Prev and Next, adding, inserting, moving and deleting phases
+js/logo-dialog.js  the Team logo box, and showing the logo and team name around the app
+js/settings.js   this browser's settings: player size and step numbers
 js/start.js      Templates, About, Welcome, Try an example, the AI play guide, Paste play
 js/exporting.js  Save image, PDF and animation from the app, and handing the file to the user
 js/share-dialog.js  the Share link box
