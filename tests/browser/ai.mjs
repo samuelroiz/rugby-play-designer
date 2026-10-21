@@ -1,5 +1,5 @@
 // For AI assistants: File → Paste play…, the AI play guide's links in About and the File menu, Copy guide,
-// and llms.txt and the guide served by the site. Desktop 1440x900, then a 390px phone.
+// the Claude skill's download links, and llms.txt and the guide served by the site. Desktop 1440x900, then a 390px phone.
 import fs from 'node:fs';
 import { open, addPlayer, click, state, check, failed, openId, plays, URL_, sleep, eq, visible, openPaste } from './lib.mjs';
 
@@ -116,6 +116,18 @@ const paste = (page, text) => page.$eval('#paste-play-text', (t, text) => {
   const linked = await page.evaluate(async url => { const r = await fetch(url); return { ok: r.ok, text: await r.text() }; }, about.url);
   check('…which loads the guide', linked.ok && linked.text === guide);
 
+  // About: the Claude skill, a download of the zip that tools/pack-skill.mjs builds.
+  const skill = await page.evaluate(async () => {
+    const line = document.querySelector('#about-dialog .about-skill');
+    const a = document.getElementById('about-skill');
+    const r = await fetch(a.href);
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    return { text: line?.textContent.replace(/\s+/g, ' ').trim(), href: a.getAttribute('href'), download: a.hasAttribute('download'), inLine: line?.contains(a), ok: r.ok, zip: bytes[0] === 0x50 && bytes[1] === 0x4b, size: bytes.length };
+  });
+  check('About: "Using Claude?" with the Claude skill link', skill.inLine && skill.text.startsWith('Using Claude? Get the Claude skill and upload the .zip'), skill.text);
+  check('…a download of skills/rugby-play-writer.zip', skill.href === 'skills/rugby-play-writer.zip' && skill.download, JSON.stringify(skill));
+  check('…which loads the zip', skill.ok && skill.zip && skill.size === fs.statSync(new URL('../../skills/rugby-play-writer.zip', import.meta.url)).size, JSON.stringify(skill));
+
   await page.evaluate(() => navigator.clipboard.writeText(''));
   await click(page, '#about-copy-guide');
   await page.waitForFunction(() => document.getElementById('about-copy-guide').textContent === 'Copied', { timeout: 3000 }).catch(() => {});
@@ -133,6 +145,8 @@ const paste = (page, text) => page.$eval('#paste-play-text', (t, text) => {
   const menu = await page.$eval('#menu-guide', a => ({ text: a.textContent, href: a.getAttribute('href'), target: a.target, rel: a.rel }));
   check('File menu: "AI play guide" link, new tab, rel="noopener"', eq(menu, { text: 'AI play guide', href: 'docs/AI_PLAY_GUIDE.md', target: '_blank', rel: 'noopener' }), JSON.stringify(menu));
   check('…and Copy guide', (await page.$eval('#menu-copy-guide', b => b.textContent)) === 'Copy guide' && (await visible(page, '#menu-copy-guide')));
+  const menuSkill = await page.$eval('#menu-skill', a => ({ text: a.textContent, href: a.getAttribute('href'), download: a.hasAttribute('download') }));
+  check('…and "Claude skill (.zip)", a download of the zip', eq(menuSkill, { text: 'Claude skill (.zip)', href: 'skills/rugby-play-writer.zip', download: true }) && (await visible(page, '#menu-skill')), JSON.stringify(menuSkill));
   await page.evaluate(() => navigator.clipboard.writeText(''));
   await page.click('#menu-copy-guide');
   await page.waitForFunction(() => document.getElementById('toast').textContent === 'Copied the AI play guide', { timeout: 3000 }).catch(() => {});
@@ -149,6 +163,7 @@ const paste = (page, text) => page.$eval('#paste-play-text', (t, text) => {
   });
   check('llms.txt loads as plain text', served.llms.status === 200 && /^text\/plain/.test(served.llms.type) && served.llms.text.startsWith('# Rugby Play Designer\n'), `${served.llms.status} ${served.llms.type}`);
   check('…links the guide and says how to paste a play', served.llms.text.includes('/docs/AI_PLAY_GUIDE.md') && served.llms.text.includes('File → Paste play…') && served.llms.text.includes('Import'));
+  check('…and links the Claude skill', served.llms.text.includes('/skills/rugby-play-writer.zip') && served.llms.text.includes('/skills/rugby-play-writer/SKILL.md'));
   check('the guide loads as text', served.guide.status === 200 && /^text\//.test(served.guide.type) && served.guide.text === guide, `${served.guide.status} ${served.guide.type}`);
   check('the guide starts with how to put a play into the app', guide.includes('## Putting a play into the app') && guide.indexOf('## Putting a play into the app') < guide.indexOf('## 1. The pitch'));
   check('<link rel="help"> points to the guide', served.help === 'docs/AI_PLAY_GUIDE.md' && served.helpUrl === new URL('docs/AI_PLAY_GUIDE.md', URL_).href, served.help);
@@ -162,7 +177,7 @@ const paste = (page, text) => page.$eval('#paste-play-text', (t, text) => {
   console.log('\n== Paste play (390px phone) ==');
   const { browser, page, errors } = await open({ mobile: true });
   await page.tap('#file-menu summary');
-  check('Paste play… and the guide are in the File menu', (await visible(page, '[data-file="paste"]')) && (await visible(page, '#menu-guide')) && (await visible(page, '#menu-copy-guide')));
+  check('Paste play…, the guide and the Claude skill are in the File menu', (await visible(page, '[data-file="paste"]')) && (await visible(page, '#menu-guide')) && (await visible(page, '#menu-copy-guide')) && (await visible(page, '#menu-skill')));
   await page.tap('[data-file="paste"]');
   await page.waitForSelector('#paste-dialog[open]');
   const fits = await page.$eval('#paste-dialog', d => { const r = d.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; });

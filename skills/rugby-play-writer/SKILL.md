@@ -17,6 +17,7 @@ https://playbook.samuelroiz.com/docs/AI_PLAY_GUIDE.md and wins if they ever diff
 
 ### 1. Intake
 
+`references/our-team.md` ships blank: it's for the user to fill in with their squad after installing.
 Read `references/our-team.md`; if it's filled in (no "..." placeholders), shape kickers, calls and
 targets to it. If key details are missing, ask at most 3 short questions, only about things that
 change the play: where on the pitch, set piece or ruck, attack or defense, what each phase should

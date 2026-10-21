@@ -532,9 +532,10 @@ button.link:hover:not(:disabled) { background: none; }
 #paste-dialog .choices button { flex: 0 0 auto; padding: .5rem 1.2rem; }
 #paste-dialog .cancel { margin: 0; }
 #about-dialog .about-ai { margin: .2rem 0 .6rem; font-size: .85rem; }
+#about-dialog .about-skill { margin: -.4rem 0 .6rem; font-size: .85rem; }
 .about-ai button.link { margin-left: .5rem; }
 .menu-actions a.button { justify-content: flex-start; }
-#about-guide { color: var(--accent); }
+#about-guide, #about-skill { color: var(--accent); }
 #logo-dialog { width: min(24rem, calc(100vw - 2rem)); }
 .logo-preview { display: grid; place-items: center; height: 8rem; margin-bottom: .6rem; border: 1px dashed var(--border); border-radius: 8px; background: #fafaf8; }
 .logo-preview img { max-width: calc(100% - 1rem); max-height: 7rem; object-fit: contain; }

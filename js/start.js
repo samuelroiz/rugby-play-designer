@@ -95,7 +95,8 @@ export function createStart({ state, ui, busy, playback, showToast, createAndOpe
         copyGuide(b);
       });
     }
-    $('menu-guide').addEventListener('click', () => { $('file-menu').open = false; });
+    // The Claude skill (skills/rugby-play-writer.zip, built by tools/pack-skill.mjs) is a plain download link.
+    for (const id of ['menu-guide', 'menu-skill']) $(id).addEventListener('click', () => { $('file-menu').open = false; });
     $('file-menu').addEventListener('toggle', () => { if ($('file-menu').open) fetchGuide().catch(() => {}); });
   }
 

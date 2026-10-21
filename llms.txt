@@ -14,11 +14,14 @@ To make a play for someone:
 
 A saved `.json` file can also be opened with File → Load file….
 
+Claude users can install the Claude skill instead of reading the guide each time: download https://playbook.samuelroiz.com/skills/rugby-play-writer.zip (also in the app: File → Claude skill (.zip), and in About) and upload it under Skills in Claude's settings, or unzip it into `~/.claude/skills/` for Claude Code. It writes, checks and fixes plays with the app's own rules, then the play goes in with File → Paste play….
+
 To send a play to players' phones, use File → Share link… in the app: it copies a link to https://playbook.samuelroiz.com/view.html with the play inside the link. Give a player a short job per phase with `instructions` (otherwise one is made from their routes), and short cues that pop up next to them as a step starts with `cues`, e.g. `"cues": [{ "player": "a13", "step": 2, "text": "JUMP!" }]` (see the guide): the viewer shows them when they pick their position, and so does a position's animation from File → Save animation….
 
 ## Docs
 
 - [AI play guide](https://playbook.samuelroiz.com/docs/AI_PLAY_GUIDE.md): everything needed to write a play that loads and plays correctly
+- [Claude skill: rugby-play-writer](https://playbook.samuelroiz.com/skills/rugby-play-writer/SKILL.md): the skill's instructions; the whole skill as a .zip is https://playbook.samuelroiz.com/skills/rugby-play-writer.zip
 - [Worked example play](https://playbook.samuelroiz.com/templates/example.json): a finished three-phase play file
 
 ## Optional
