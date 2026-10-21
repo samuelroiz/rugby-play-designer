@@ -24,7 +24,8 @@ const PRINT_CSS = `
 .print .distance { fill: rgba(0, 0, 0, .72); }
 .print .grid line { stroke: rgba(0, 0, 0, .28); }
 .print .marker .outline { stroke: #141414; }`;
-const JSPDF_URL = new URL('../vendor/jspdf.umd.min.js', import.meta.url).href;
+// With this module's own ?v=<version> (see tools/stamp.mjs), so it's never a cached copy from another version.
+const JSPDF_URL = Object.assign(new URL('../vendor/jspdf.umd.min.js', import.meta.url), { search: new URL(import.meta.url).search }).href;
 
 // All-phases PNG, in CSS px before scaling: outer margin, gap between tiles, text sizes, and at most
 // two lines of note under each pitch. The scale is cut if the picture would pass MAX_PIXELS, which keeps

@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Static site; these packages are only for the headless browser tests.",
   "scripts": {
-    "test": "node tests/run.mjs"
+    "test": "node tests/run.mjs",
+    "stamp": "node tools/stamp.mjs"
   },
   "devDependencies": {
     "pdfjs-dist": "^4.10.38",

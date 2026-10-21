@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { open, drag, tap, click, state, shown, check, failed, toScreen, outDir, addPlayer, placeSetPiece, answerConfirm, nextFrame, openId, plays, loadFile, sleep, eq } from './lib.mjs';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { stampedVersion } from '../../tools/stamp.mjs';
 
 const OUT = outDir('suite');
 console.log(`Downloads and screenshots: ${OUT}`);
@@ -323,7 +324,7 @@ async function dragHold(page, from, to, during) {
   const pdf = await waitFile(dl, '.pdf');
   check('PDF downloaded as <play-name>.pdf', pdf && path.basename(pdf) === 'Blind side 2nd wave.pdf', String(pdf));
   check('print dialog never opened', (await page.evaluate(() => window.__prints)) === 0);
-  check('jsPDF loaded only on export, from vendor/', requests.some(u => u.endsWith('/vendor/jspdf.umd.min.js')) && !requests.some(u => /cdn|unpkg|jsdelivr/.test(u)));
+  check('jsPDF loaded only on export, from vendor/, versioned', requests.some(u => u.endsWith(`/vendor/jspdf.umd.min.js?v=${stampedVersion()}`)) && !requests.some(u => /cdn|unpkg|jsdelivr/.test(u)));
   pics = await svgs(page);
   check('PDF pictures: the route key, then 5 pitches, none with ghost or handles', pics.length === 6 && pics.every(p => !/class="(ghost[^"]*|handle[^"]*|route-highlight)"/.test(noCss(p))));
   if (pdf) {

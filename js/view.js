@@ -71,6 +71,7 @@ async function load() {
   } catch (err) {
     $('broken-text').textContent = err.message;
     show('broken');
+    window.appReady?.();
     return;
   }
   document.title = `${play.name} · Rugby play`;
@@ -82,6 +83,8 @@ async function load() {
   buildArrowMarkers($('defs'));
   buildPlayers();
   show('start');
+  // The play is open: tell the page's load watchdog (view.html).
+  window.appReady?.();
 }
 
 function show(screen) {
@@ -331,7 +334,8 @@ function updateText() {
   $('watch-phase').textContent = `Phase ${v.phase + 1} of ${n}`;
   const me = play.players.find(p => p.id === v.focus);
   const focus = v.mode === 'focus';
-  $('watch-who').textContent = focus && me ? positionName(me) : 'Whole play'; // "Defense 13": whose view it is
+  // "Defense 13": whose view it is. The replay after following them (and its end screen) keeps it: "Attack 10 · replay".
+  $('watch-who').textContent = !me || v.mode === 'whole' ? 'Whole play' : focus ? positionName(me) : `${positionName(me)} · replay`;
   const ph = play.phases[v.phase];
   // Following a player: their job, with the phase note in the sheet. Otherwise the note, all of it.
   $('job-box').hidden = !focus;
@@ -443,7 +447,10 @@ function backToPositions() {
 }
 
 async function share() {
-  const url = location.href;
+  // Without the ?r= a Reload after a failed load adds (see view.html).
+  const link = new URL(location.href);
+  link.searchParams.delete('r');
+  const url = link.href;
   try {
     if (navigator.share) {
       await navigator.share({ title: play.name, text: `${play.name}: pick your position and watch the play.`, url });
@@ -544,6 +551,12 @@ window.rugbyViewer = {
   get timeScale() { return v.timeScale; },
   onFrame: fn => { frameHook = fn; },
 };
+
+// Anything that goes wrong while the play is opening (now or on a new link) shows the page's "Couldn't load
+// the app" message with its Reload button (view.html), rather than leaving "Opening the play…" up.
+const openFailed = () => { if (v.screen === 'loading') window.appFailed?.(); };
+addEventListener('error', openFailed);
+addEventListener('unhandledrejection', openFailed);
 
 initControls();
 load();

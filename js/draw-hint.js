@@ -4,8 +4,9 @@
 import { ROUTE_TYPES } from './pitch.js';
 import { drawingFrom, continuation } from './editor.js';
 
-// playerName(id) names a player in the hint ("12", or "defender 12").
-export function createDrawHint({ state, ui, phase, playerName, touchScreen }) {
+// playerName(id) names a player in the hint ("12", or "defender 12"). A new hint hides a message in the status
+// line, unless showToast.keepWhile() says it still applies.
+export function createDrawHint({ state, ui, phase, playerName, touchScreen, showToast }) {
   const $ = id => document.getElementById(id);
 
   // Shown while a player or set piece waits to be placed ("Click where 12 stands", "Click where the mark
@@ -56,7 +57,7 @@ export function createDrawHint({ state, ui, phase, playerName, touchScreen }) {
     // A new hint is what the user needs now, so it replaces an older "Saved …" message in the status line.
     if (hint.dataset.text !== text || hint.dataset.short !== short || wasHidden) {
       Object.assign(hint.dataset, { text, short });
-      $('toast').hidden = true;
+      if (!showToast.keepWhile?.()) { showToast.keepWhile = null; $('toast').hidden = true; }
     }
     fitHint();
   }

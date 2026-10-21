@@ -15,7 +15,8 @@ export const END_HOLD_MS = 1500;
 export const ANIMATION_SIZES = { small: 640, medium: 960, large: 1280 };
 // A position's animation (following one player) is upright, phone shaped, at this size for each format.
 export const POSITION_SIZES = { gif: { width: 720, height: 1280 }, video: { width: 1080, height: 1920 } };
-const GIFENC_URL = new URL('../vendor/gifenc.esm.js', import.meta.url).href;
+// With this module's own ?v=<version> (see tools/stamp.mjs), so it's never a cached copy from another version.
+const GIFENC_URL = Object.assign(new URL('../vendor/gifenc.esm.js', import.meta.url), { search: new URL(import.meta.url).search }).href;
 // GIF: one palette for every frame, made from this many frames spread through the play. Index 255 is kept
 // for "same as the frame before" (transparent), so a frame only stores the pixels that changed.
 const PALETTE_SAMPLES = 8;

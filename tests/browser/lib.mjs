@@ -18,6 +18,20 @@ export const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // that address hash (e.g. '#phase=2').
 export const WELCOME_KEY = 'rugby-play-designer.welcome-seen';
 export async function open({ mobile = false, downloads = null, welcome = false, hash = '' } = {}) {
+  const { browser, page, errors } = await launch({ mobile, downloads });
+  await page.goto(URL_);
+  await page.waitForSelector('#phase-tabs button'); // the app has opened its library
+  await page.evaluate(clearStorage, welcome, WELCOME_KEY);
+  // A fresh load of the address (a reload would keep the #phase=1 the first load wrote).
+  await page.goto('about:blank');
+  await page.goto(URL_ + hash);
+  await page.waitForSelector('#phase-tabs button');
+  return { browser, page, errors };
+}
+
+// A fresh browser with a blank page: console errors and page errors collected, any native dialog failing the
+// suite, a phone (390×844, touch) when `mobile`, and downloads into `downloads`.
+export async function launch({ mobile = false, downloads = null } = {}) {
   const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage();
   const errors = [];
@@ -41,13 +55,6 @@ export async function open({ mobile = false, downloads = null, welcome = false, 
     const cdp = await page.createCDPSession();
     await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads, eventsEnabled: true });
   }
-  await page.goto(URL_);
-  await page.waitForSelector('#phase-tabs button'); // the app has opened its library
-  await page.evaluate(clearStorage, welcome, WELCOME_KEY);
-  // A fresh load of the address (a reload would keep the #phase=1 the first load wrote).
-  await page.goto('about:blank');
-  await page.goto(URL_ + hash);
-  await page.waitForSelector('#phase-tabs button');
   return { browser, page, errors };
 }
 

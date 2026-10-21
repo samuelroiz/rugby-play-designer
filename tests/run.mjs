@@ -15,8 +15,24 @@ const TYPES = {
   '.md': 'text/markdown; charset=utf-8', '.txt': 'text/plain; charset=utf-8',
 };
 
+// For tests/browser/deploy.mjs, the site again under two made-up folders, as a browser might see it right
+// after an update: under /__broken__/ js/model.js is an old copy that lacks the exports the other modules
+// need, and under /__hang__/ js/model.js never arrives.
+const BROKEN_MODULE = 'export const OLD_COPY = true;\n';
+const hanging = new Set();
+
 const server = http.createServer((req, res) => {
-  let file = path.join(ROOT, decodeURIComponent(new URL(req.url, 'http://x').pathname));
+  let pathname = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+  const fake = /^\/(__broken__|__hang__)\//.exec(pathname)?.[1];
+  if (fake) {
+    pathname = pathname.slice(fake.length + 1);
+    if (pathname === '/js/model.js' && fake === '__broken__') {
+      res.writeHead(200, { 'Content-Type': 'text/javascript' }).end(BROKEN_MODULE);
+      return;
+    }
+    if (pathname === '/js/model.js') { hanging.add(res); return; }
+  }
+  let file = path.join(ROOT, pathname);
   if (!file.startsWith(ROOT)) { res.writeHead(403).end(); return; }
   if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');
   fs.readFile(file, (err, data) => {
@@ -48,6 +64,8 @@ const steps = [
   ['Test session fixes suite', ['tests/browser/session.mjs']],
   ['Viewer, Present, auto jobs and restore suite', ['tests/browser/coach.mjs']],
   ['Our team suite', ['tests/browser/team.mjs']],
+  ['Laptop widths and editing suite', ['tests/browser/laptop.mjs']],
+  ['Versioned modules and load failures suite', ['tests/browser/deploy.mjs']],
 ];
 
 // Async child processes, so this process keeps serving while they run.
@@ -58,6 +76,7 @@ for (const [name, args] of steps) {
   console.log(`\n##### ${name}`);
   results.push([name, await run(args)]);
 }
+for (const res of hanging) res.destroy();
 server.close();
 
 console.log('\n##### Summary');
