@@ -1,5 +1,5 @@
 // A play's shape: a blank play, and the checks every play passes when it's loaded (parsePlay). Also the old
-// single autosave (moved into the play library on first run, see library.js and app.js), and saving/loading
+// single autosave (moved into the play library on first run, see library.js and open-play.js), and saving/loading
 // plays as .json files.
 // Storage can be missing or throw (private mode, blocked site data, full quota), so every access is
 // wrapped and the app carries on without it.

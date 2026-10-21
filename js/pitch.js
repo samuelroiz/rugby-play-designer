@@ -83,6 +83,13 @@ export function buildArrowMarkers(defs) {
   }
 }
 
+// Small sample line for a route type (used on the buttons, in the legend and on exports).
+export function routeSample(type) {
+  const s = svgEl('svg', { viewBox: '0 -1 8 2', class: 'route-sample', 'aria-hidden': 'true' });
+  routePaths(s, 'line', { x1: 0.4, y1: 0, x2: 6.6, y2: 0 }, type);
+  return s;
+}
+
 // The ball, and a lineout's mark (two short lines), drawn at the origin of `g`.
 export const drawBall = g => svgEl('ellipse', { rx: 0.7, ry: 0.45, class: 'ball', transform: 'rotate(-25)' }, g);
 export function drawLineoutMark(g) {

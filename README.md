@@ -307,6 +307,16 @@ llms.txt         for AI assistants: what the app is, the guide, and how to paste
 docs/            AI_PLAY_GUIDE.md, how to write a play file
 styles.css       layout (the toolbar moves to the bottom on phones) and SVG styling
 js/app.js        play state, toolbar and phase bar wiring, redraw (which also records undo steps and autosaves)
+js/scene.js      drawing the editing pitch: players, routes, badges, markers, the ghost, cue marks, edge arrows
+js/badges.js     where a route's order badge goes, and which routes show one
+js/open-play.js  the open play: autosaving it to the library, opening others, another tab's changes, the Plays panel's actions
+js/pitch-edits.js  boxes over the pitch: a label or order number typed in place, an option's box, the route bar
+js/cue-panel.js  the side panel's cue list and form
+js/draw-hint.js  the status line's hint while drawing or placing
+js/start.js      Templates, About, Welcome, Try an example, the AI play guide, Paste play
+js/exporting.js  Save image, PDF and animation from the app, and handing the file to the user
+js/share-dialog.js  the Share link box
+js/dialogs.js    helpers shared by the dialogs: click outside closes, the in-app confirm
 js/pitch.js      pitch markings, screen-to-metre conversion, and the route lines, arrowheads and ball shared with the viewer
 js/editor.js     dragging, drawing routes and editing them with handles, selecting
 js/setpiece.js   scrum and lineout presets: formations, snapping the mark, moving each set piece's players and ball together
@@ -333,7 +343,7 @@ assets/          sfv-logo.jpeg, the default team logo
 templates/       starter templates (play files) and index.json listing them; example.json, the About box's example
 vendor/          jsPDF 4.2.1 (jspdf.umd.min.js) and gifenc 1.0.3 (gifenc.esm.js), each with its licence
 tests/           *.test.js Node tests (phases, model rules, animation, options, history, loading files, templates, share links,
-                 jobs, cues, library, set pieces, our team); anim-play.mjs, a play shared by the Node tests and several
+                 jobs, cues, library, set pieces, our team, badges); anim-play.mjs, a play shared by the Node tests and several
                  browser suites; run.mjs (npm test); browser/ headless Chrome suites, with their shared helpers in lib.mjs
 ```
 
