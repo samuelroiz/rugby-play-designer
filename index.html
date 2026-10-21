@@ -5,36 +5,36 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Rugby Play Designer</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="styles.css?v=e9abb1eba9">
+  <link rel="stylesheet" href="styles.css?v=a5cf2def8c">
   <link rel="help" href="docs/AI_PLAY_GUIDE.md">
   <!-- Every local module is loaded with ?v=<version> (npm run stamp), so old and new files never mix. -->
   <script type="importmap">
   {
     "imports": {
-      "./js/animate.js": "./js/animate.js?v=e9abb1eba9",
-      "./js/animation.js": "./js/animation.js?v=e9abb1eba9",
-      "./js/app.js": "./js/app.js?v=e9abb1eba9",
-      "./js/cues.js": "./js/cues.js?v=e9abb1eba9",
-      "./js/editor.js": "./js/editor.js?v=e9abb1eba9",
-      "./js/export.js": "./js/export.js?v=e9abb1eba9",
-      "./js/follow.js": "./js/follow.js?v=e9abb1eba9",
-      "./js/history.js": "./js/history.js?v=e9abb1eba9",
-      "./js/jobs.js": "./js/jobs.js?v=e9abb1eba9",
-      "./js/library.js": "./js/library.js?v=e9abb1eba9",
-      "./js/logo.js": "./js/logo.js?v=e9abb1eba9",
-      "./js/model.js": "./js/model.js?v=e9abb1eba9",
-      "./js/options.js": "./js/options.js?v=e9abb1eba9",
-      "./js/phases.js": "./js/phases.js?v=e9abb1eba9",
-      "./js/pitch.js": "./js/pitch.js?v=e9abb1eba9",
-      "./js/playback.js": "./js/playback.js?v=e9abb1eba9",
-      "./js/plays.js": "./js/plays.js?v=e9abb1eba9",
-      "./js/present.js": "./js/present.js?v=e9abb1eba9",
-      "./js/setpiece.js": "./js/setpiece.js?v=e9abb1eba9",
-      "./js/share.js": "./js/share.js?v=e9abb1eba9",
-      "./js/storage.js": "./js/storage.js?v=e9abb1eba9",
-      "./js/templates.js": "./js/templates.js?v=e9abb1eba9",
-      "./js/view.js": "./js/view.js?v=e9abb1eba9",
-      "./vendor/gifenc.esm.js": "./vendor/gifenc.esm.js?v=e9abb1eba9"
+      "./js/animate.js": "./js/animate.js?v=a5cf2def8c",
+      "./js/animation.js": "./js/animation.js?v=a5cf2def8c",
+      "./js/app.js": "./js/app.js?v=a5cf2def8c",
+      "./js/cues.js": "./js/cues.js?v=a5cf2def8c",
+      "./js/editor.js": "./js/editor.js?v=a5cf2def8c",
+      "./js/export.js": "./js/export.js?v=a5cf2def8c",
+      "./js/follow.js": "./js/follow.js?v=a5cf2def8c",
+      "./js/history.js": "./js/history.js?v=a5cf2def8c",
+      "./js/jobs.js": "./js/jobs.js?v=a5cf2def8c",
+      "./js/library.js": "./js/library.js?v=a5cf2def8c",
+      "./js/logo.js": "./js/logo.js?v=a5cf2def8c",
+      "./js/model.js": "./js/model.js?v=a5cf2def8c",
+      "./js/options.js": "./js/options.js?v=a5cf2def8c",
+      "./js/phases.js": "./js/phases.js?v=a5cf2def8c",
+      "./js/pitch.js": "./js/pitch.js?v=a5cf2def8c",
+      "./js/playback.js": "./js/playback.js?v=a5cf2def8c",
+      "./js/plays.js": "./js/plays.js?v=a5cf2def8c",
+      "./js/present.js": "./js/present.js?v=a5cf2def8c",
+      "./js/setpiece.js": "./js/setpiece.js?v=a5cf2def8c",
+      "./js/share.js": "./js/share.js?v=a5cf2def8c",
+      "./js/storage.js": "./js/storage.js?v=a5cf2def8c",
+      "./js/templates.js": "./js/templates.js?v=a5cf2def8c",
+      "./js/view.js": "./js/view.js?v=a5cf2def8c",
+      "./vendor/gifenc.esm.js": "./vendor/gifenc.esm.js?v=a5cf2def8c"
     }
   }
   </script>
@@ -81,7 +81,7 @@
       window.appFailed = () => failed(false);
     })();
   </script>
-  <script type="module" src="js/app.js?v=e9abb1eba9"></script>
+  <script type="module" src="js/app.js?v=a5cf2def8c"></script>
   <!--
     AI agents: see llms.txt and docs/AI_PLAY_GUIDE.md for how to write a play as JSON.
     To put it into the app: File > Paste play…, paste it into #paste-play-text, press #paste-play-import.
@@ -279,6 +279,8 @@
        field, with the route key (Legend layer) at its right end. -->
   <div class="statusbar" id="statusbar">
     <p class="draw-hint" id="draw-hint" aria-live="polite" hidden></p>
+    <!-- What's selected ("Selected: 9"), while nothing else is being said here. -->
+    <p class="selection-status" id="selection-status" hidden></p>
     <div class="toast" id="toast" role="alert" hidden></div>
     <div class="end-of-play" id="end-of-play" role="status" hidden><span>End of play</span><button type="button" id="replay-button">Replay</button></div>
     <div class="legend" id="legend" aria-hidden="true"></div>

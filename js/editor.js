@@ -10,6 +10,7 @@ const MIN_ROUTE_LENGTH = 1; // metres; shorter drags are treated as a mis-tap
 const MOVE_THRESHOLD = 0.3; // metres a press must travel before it counts as a drag
 const SNAP_RADIUS = 2; // metres from a player's centre: a route starting (or a pass ending) this close attaches to them
 const HANDLE_MODES = ['start', 'end', 'bend'];
+const SAME_SPOT_PX = 6; // a click this close to the last one (on the pitch, at its current size) is "the same spot again" (see pick)
 
 const clampX = x => Math.min(BOUNDS.maxX, Math.max(BOUNDS.minX, x));
 const clampY = y => Math.min(BOUNDS.maxY, Math.max(BOUNDS.minY, y));
@@ -109,6 +110,7 @@ export function initEditor(svg, space, {
 }) {
   let drag = null;
   let lastTap = { id: null, time: 0 };
+  let lastClick = null; // { x, y } in pitch metres: the last click (a press released without moving) on something
   const findRoute = id => phase().routes.find(r => r.id === id);
   const findObject = id => phase().objects.find(o => o.id === id);
 
@@ -200,11 +202,14 @@ export function initEditor(svg, space, {
       place({ x: clampX(p.x), y: clampY(p.y) });
       return;
     }
-    const hit = e.target.closest('[data-kind]');
+    const clickFrom = drawingFrom(ui, phase());
+    let hit = e.target.closest('[data-kind]');
+    const cycle = !clickFrom && !ui.tool ? pick(e, hit) : null;
+    if (cycle) hit = cycle.hit;
+    else lastClick = null;
     const kind = hit?.dataset.kind;
     const id = hit?.dataset.id;
 
-    const clickFrom = drawingFrom(ui, phase());
     const passTo = clickFrom && ui.tool === 'pass' && kind === 'player' && teamOf(id) === teamOf(clickFrom);
     if (clickFrom && !(kind === 'player' && id !== clickFrom && !passTo)) {
       // Click-to-draw: nothing is made until release, so a press can still be moved to aim (and on a
@@ -236,11 +241,13 @@ export function initEditor(svg, space, {
     } else if (kind === 'player' || kind === 'object') {
       const pos = kind === 'player' ? phase().positions[id] : findObject(id);
       ui.selected = { kind, id };
-      drag = { mode: 'move', kind, id, dx: pos.x - p.x, dy: pos.y - p.y, start: p, moved: false };
+      drag = { mode: 'move', kind, id, dx: pos.x - p.x, dy: pos.y - p.y, start: p, moved: false, cycle };
     } else if (kind === 'route') {
       ui.selected = { kind, id };
-      // A route that isn't attached to a player can be moved by dragging its line.
-      if (!isAttached(findRoute(id))) drag = { mode: 'shift', id, last: p, start: p, moved: false };
+      // A route that isn't attached to a player can be moved by dragging its line. One that is only waits
+      // for the release, in case it's a click on the same spot again.
+      if (!isAttached(findRoute(id))) drag = { mode: 'shift', id, last: p, start: p, moved: false, cycle };
+      else if (cycle) drag = { mode: 'pick', cycle };
     } else {
       ui.selected = null;
     }
@@ -274,6 +281,7 @@ export function initEditor(svg, space, {
       renderSoon();
       return;
     }
+    if (drag.mode === 'pick') return;
     const p = toMetres(space, e);
     const r = drag.mode === 'move' ? null : findRoute(drag.id);
     // What's being dragged can vanish under the pointer (the play replaced from another tab): drop the drag.
@@ -370,13 +378,47 @@ export function initEditor(svg, space, {
     // Editors open straight from the tap (they're in-page, not blocking), so phones show the keyboard.
     if (done.mode === 'badge' && e.type === 'pointerup') editOrder(done.id);
 
+    if (done.moved) lastClick = null;
     if (e.type === 'pointerup' && !done.moved) {
-      if (done.mode === 'move' && done.kind === 'player') tapPlayer(done.id);
+      const now = performance.now();
+      // The same spot clicked again (not a double click on a player, which edits its number): the next
+      // thing under the pointer. A double click elsewhere cycles on as two clicks.
+      const doubleClick = done.kind === 'player' && lastTap.id === done.id && now - lastTap.time < DOUBLE_TAP_MS;
+      if (done.cycle?.again && !doubleClick) {
+        const { under } = done.cycle;
+        const at = under.findIndex(el => isSelected(el));
+        const next = under[(at + 1) % under.length].dataset;
+        ui.selected = { kind: next.kind, id: next.id };
+        lastTap = { id: null, time: 0 };
+      } else if (done.mode === 'move' && done.kind === 'player') tapPlayer(done.id);
+      // The press's spot, not the release's: selecting can move the pitch under a still pointer.
+      if (done.cycle) lastClick = done.cycle.at;
       if (HANDLE_MODES.includes(done.mode)) tapThroughHandle(e);
     }
     render();
     if (switchedTo) switched(...switchedTo);
   };
+
+  // Crowded spots, for a press with no route tool on whose top hit is a player, marker, ball or route:
+  // everything selectable under the pointer, players first (so a player standing on the ball or a ruck is
+  // picked, while a part of the ball clear of the player still picks the ball), then the rest top down.
+  // A press on the spot of the last click whose selection is among them keeps that selection, to drag it;
+  // its release then moves on to the next one (see endDrag). Returns { hit, under, again, at }, or null.
+  const isSelected = el => ui.selected?.kind === el.dataset.kind && ui.selected.id === el.dataset.id;
+  function pick(e, top) {
+    if (!['player', 'object', 'route'].includes(top?.dataset.kind)) return null;
+    const under = [...new Set(document.elementsFromPoint(e.clientX, e.clientY)
+      .map(el => el.closest('[data-kind]'))
+      .filter(el => el && svg.contains(el) && ['player', 'object', 'route'].includes(el.dataset.kind)))];
+    under.sort((a, b) => (b.dataset.kind === 'player') - (a.dataset.kind === 'player'));
+    // Measured on the pitch, not the screen: selecting can resize the pitch (a phone's side panel grows).
+    const p = toMetres(space, e);
+    const m = space.getScreenCTM();
+    const near = SAME_SPOT_PX / Math.hypot(m.a, m.b);
+    const again = !!lastClick && Math.hypot(p.x - lastClick.x, p.y - lastClick.y) <= near
+      && under.length > 1 && under.some(isSelected);
+    return { hit: again ? under.find(isSelected) : under[0] ?? top, under, again, at: p };
+  }
 
   // Handles have big touch areas that can cover players, badges and other routes. A press on a handle
   // that doesn't move is passed on to whatever is under the pointer apart from the handle itself.

@@ -994,6 +994,27 @@ function updateToolbar() {
   flip.hidden = !isHalf(state.view);
   flip.disabled = busy();
   updateDrawHint();
+  updateSelectionStatus();
+}
+
+// "Selected: 9", "Selected: ball", "Selected: ruck", "Selected: 10's pass to 12" in the status line. The
+// drawing hint, a message and End of play each take its place while they're up (see styles.css).
+function updateSelectionStatus() {
+  const line = $('selection-status');
+  const sel = ui.selected;
+  let what = '';
+  if (sel && !locked()) {
+    if (sel.kind === 'player') what = playerName(sel.id);
+    else if (sel.kind === 'object') what = phase().objects.find(o => o.id === sel.id)?.type ?? '';
+    else if (sel.kind === 'route') {
+      const r = phase().routes.find(q => q.id === sel.id);
+      const type = r && (ROUTE_TYPES[r.type]?.label.toLowerCase() ?? 'route');
+      if (r) what = [r.from ? `${playerName(r.from)}'s ${type}` : type, r.to && `to ${playerName(r.to)}`].filter(Boolean).join(' ');
+    }
+  }
+  line.hidden = !what;
+  line.textContent = what ? `Selected: ${what}` : '';
+  line.title = line.textContent;
 }
 
 // Shown while a player or set piece waits to be placed ("Click where 12 stands", "Click where the mark
